@@ -8,15 +8,15 @@
       "Leo P.: Pure theatre—handled with discretion."
     ],
     "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
+    "address": "15-21 Ganton Street Soho London GB W1F 9BN",
     "daysOpen": "Mon|Wed|Fri|Sat",
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Mon",
     "venueType": "lounge",
-    "lat": 51.512,
-    "lng": -0.143,
-    "accessTier": "£3000 / Table",
-    "minSpend": "Performance-led rooms|Talent liaison|Late licence partners|Private green room",
+    "lat": 51.51289552575513,
+    "lng": -0.1391195165544926,
+    "accessTier": "",
+    "minSpend": "£1000-2500 / Normal Table - Best Table",
     "amenities": [],
     "images": [
       "/clubs/Cirque-Le-Soir/01-cover.jpg"
@@ -31,7 +31,7 @@
       "Amelia C.: Effortlessly chic—from door to car."
     ],
     "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
+    "address": "91 Jermyn St London SW1Y 6JB England",
     "daysOpen": "Thu|Fri|Sat|Sun",
     "featured": false,
     "featuredDay": "",
@@ -60,21 +60,16 @@
       "Alexandra M.: A standout Knightsbridge evening with impeccable table service."
     ],
     "locationTag": "LONDON • KNIGHTSBRIDGE",
-    "address": "Knightsbridge London SW1",
-    "daysOpen": "Thu-Sat",
+    "address": "2 Kensington High Street London GB W8 4RE",
+    "daysOpen": "Wed-Sat",
     "featured": true,
     "featuredDay": "2026-03-29",
     "venueType": "lounge",
-    "lat": 51.502,
-    "lng": -0.1635,
-    "accessTier": "Tier I – Principal",
+    "lat": 51.50823890975732,
+    "lng": -0.13708483474701091,
+    "accessTier": "",
     "minSpend": "£2500 / Table",
-    "amenities": [
-      "Curated art programme",
-      "Private rooms",
-      "Discreet entry",
-      "House champagne list"
-    ],
+    "amenities": [],
     "images": [
       "/clubs/Gallery-Club/01-cover.jpg"
     ]
@@ -88,21 +83,16 @@
       "T. H.: The Mayfair room we return to for closing deals."
     ],
     "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
+    "address": "3-5 Mill St London W1S 2AU England",
     "daysOpen": "Thu-Sat",
-    "featured": false,
+    "featured": true,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.511,
     "lng": -0.144,
-    "accessTier": "Tier I – Executive",
+    "accessTier": "",
     "minSpend": "£2800 / Table",
-    "amenities": [
-      "Members' screening room",
-      "24-hour concierge desk",
-      "Side-street ingress",
-      "VIP lift"
-    ],
+    "amenities": [],
     "images": [
       "/clubs/Maddox-Club/01-cover.jpg",
       "/clubs/Maddox-Club/02-interior.png"
