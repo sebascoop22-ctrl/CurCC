@@ -15,14 +15,9 @@
     "venueType": "lounge",
     "lat": 51.512,
     "lng": -0.143,
-    "accessTier": "Tier I – Principal",
-    "minSpend": "£3000 / Table",
-    "amenities": [
-      "Performance-led rooms",
-      "Talent liaison",
-      "Late licence partners",
-      "Private green room"
-    ],
+    "accessTier": "£3000 / Table",
+    "minSpend": "Performance-led rooms|Talent liaison|Late licence partners|Private green room",
+    "amenities": [],
     "images": [
       "/clubs/Cirque-Le-Soir/01-cover.jpg"
     ]
