@@ -1,4 +1,5 @@
 import { getSocialLinkItems, whatsappHref } from "./site-config";
+import { initAnalytics } from "./analytics";
 import "./styles/global.css";
 
 export type ActivePage =
@@ -27,6 +28,9 @@ function drawerLinks(active: ActivePage): string {
 }
 
 export function initChrome(active: ActivePage): void {
+  // Initialize Vercel Web Analytics
+  initAnalytics();
+
   const header = document.getElementById("cc-header");
   const footer = document.getElementById("cc-footer");
   const modalRoot = document.getElementById("cc-modal-root");
