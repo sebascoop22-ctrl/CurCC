@@ -1,6 +1,8 @@
 import type { Club } from "../types";
 import { fetchClubs } from "../data/fetch-data";
 import {
+  hideFormError,
+  showFormError,
   showFormSuccess,
   submitInquiry,
   validateEmail,
@@ -162,6 +164,7 @@ export async function initHome(): Promise<void> {
 
   const form = document.getElementById("home-lead-form") as HTMLFormElement | null;
   const successEl = document.getElementById("home-lead-success");
+  const errorEl = document.getElementById("home-lead-error");
   const leadFields = document.getElementById("lead-fields");
 
   function syncContactMode(): void {
@@ -196,6 +199,8 @@ export async function initHome(): Promise<void> {
     form.querySelectorAll(".lead-invite__input").forEach((el) =>
       el.classList.remove("lead-invite__input--error"),
     );
+    hideFormError(errorEl);
+    successEl?.classList.remove("is-visible");
     if (!name) ok = false;
     if (method === "email" && !validateEmail(email)) ok = false;
     if (method === "phone" && phone.length < 8) ok = false;
@@ -215,9 +220,20 @@ export async function initHome(): Promise<void> {
       email: method === "email" ? email : undefined,
       phone: method === "phone" ? phone : undefined,
     };
-    submitInquiry(payload, "home_lead");
-    showFormSuccess(successEl);
-    form.reset();
-    syncContactMode();
+    const btn = form.querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement | null;
+    btn && (btn.disabled = true);
+    void (async () => {
+      const result = await submitInquiry(payload, "home_lead");
+      btn && (btn.disabled = false);
+      if (!result.ok) {
+        showFormError(errorEl, result.error ?? "Something went wrong.");
+        return;
+      }
+      showFormSuccess(successEl);
+      form.reset();
+      syncContactMode();
+    })();
   });
 }

@@ -548,6 +548,21 @@ p {
   display: block;
 }
 
+.cc-form-error {
+  display: none;
+  padding: var(--cc-space-md);
+  border: 1px solid rgba(196, 68, 68, 0.45);
+  border-radius: var(--cc-radius);
+  color: #e8a0a0;
+  margin-top: var(--cc-space-md);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.cc-form-error.is-visible {
+  display: block;
+}
+
 .cc-radio-row {
   display: flex;
   gap: var(--cc-space-md);

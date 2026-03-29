@@ -1,9 +1,4 @@
-import {
-  getSocialLinkItems,
-  mailtoHref,
-  siteConfig,
-  whatsappHref,
-} from "./site-config";
+import { getSocialLinkItems, whatsappHref } from "./site-config";
 import "./styles/global.css";
 
 export type ActivePage =
@@ -78,7 +73,7 @@ export function initChrome(active: ActivePage): void {
           <a href="privacy.html">Privacy policy</a>
           <a href="terms.html">Terms of service</a>
           <a href="enquiry.html">Contact</a>
-          <a href="${mailtoHref("Cooper Concierge")}">Email</a>
+          <a href="enquiry.html">Enquiry form</a>
         </nav>
       </div>
     </div>`;
@@ -88,10 +83,10 @@ export function initChrome(active: ActivePage): void {
       <div class="modal">
         <button type="button" class="modal__close" id="cc-modal-close" aria-label="Close">×</button>
         <h3 id="cc-modal-title">Contact Concierge</h3>
-        <p class="cc-form-hint">Reach your concierge directly. Update details in <code>src/site-config.ts</code>.</p>
+        <p class="cc-form-hint">Send a message through the enquiry form—replies go to your concierge inbox.</p>
         <div class="modal__actions">
           <a class="cc-btn cc-btn--gold" href="${whatsappHref("Cooper Concierge enquiry")}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
-          <a class="cc-btn cc-btn--ghost" href="${mailtoHref("Cooper Concierge enquiry")}">Email</a>
+          <a class="cc-btn cc-btn--ghost" href="enquiry.html">Enquiry form</a>
         </div>
       </div>
     </div>`;

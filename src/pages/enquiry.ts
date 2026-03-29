@@ -1,4 +1,6 @@
 import {
+  hideFormError,
+  showFormError,
   showFormSuccess,
   submitInquiry,
   validateEmail,
@@ -43,6 +45,7 @@ export function initEnquiry(): void {
 
   const form = document.getElementById("enquiry-form") as HTMLFormElement | null;
   const successEl = document.getElementById("enquiry-success");
+  const errorEl = document.getElementById("enquiry-error");
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -53,6 +56,8 @@ export function initEnquiry(): void {
     const details = String(fd.get("details") || "").trim();
     let ok = true;
     form.querySelectorAll(".cc-field").forEach((x) => x.classList.remove("cc-field--error"));
+    hideFormError(errorEl);
+    successEl?.classList.remove("is-visible");
     if (!name) ok = false;
     if (!validateEmail(email)) ok = false;
     if (phone.length < 8) ok = false;
@@ -66,11 +71,22 @@ export function initEnquiry(): void {
       if (!details) form.querySelector('[name="details"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       return;
     }
-    submitInquiry(
-      { name, email, phone, serviceOfInterest: interest, details },
-      "general_enquiry",
-    );
-    showFormSuccess(successEl);
-    form.reset();
+    const btn = form.querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement | null;
+    btn && (btn.disabled = true);
+    void (async () => {
+      const result = await submitInquiry(
+        { name, email, phone, serviceOfInterest: interest, details },
+        "general_enquiry",
+      );
+      btn && (btn.disabled = false);
+      if (!result.ok) {
+        showFormError(errorEl, result.error ?? "Something went wrong.");
+        return;
+      }
+      showFormSuccess(successEl);
+      form.reset();
+    })();
   });
 }

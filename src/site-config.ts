@@ -22,12 +22,6 @@ export function getSocialLinkItems(): { label: string; href: string }[] {
   return items;
 }
 
-export function mailtoHref(subject: string, body?: string): string {
-  const s = encodeURIComponent(subject);
-  const b = body ? encodeURIComponent(body) : "";
-  return `mailto:${siteConfig.email}?subject=${s}${b ? `&body=${b}` : ""}`;
-}
-
 export function whatsappHref(text?: string): string {
   const q = text ? `?text=${encodeURIComponent(text)}` : "";
   return `https://wa.me/${siteConfig.whatsappE164}${q}`;

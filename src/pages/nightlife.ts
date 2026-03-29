@@ -1,6 +1,8 @@
 import { fetchClubs } from "../data/fetch-data";
 import type { Club } from "../types";
 import {
+  hideFormError,
+  showFormError,
   showFormSuccess,
   submitInquiry,
   validateEmail,
@@ -59,6 +61,7 @@ export async function initNightlife(): Promise<void> {
 
   const form = document.getElementById("nightlife-lead-form") as HTMLFormElement | null;
   const successEl = document.getElementById("nightlife-lead-success");
+  const errorEl = document.getElementById("nightlife-lead-error");
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -67,6 +70,8 @@ export async function initNightlife(): Promise<void> {
     const whenWhere = String(fd.get("when_where") || "").trim();
     let ok = true;
     form.querySelectorAll(".cc-field").forEach((el) => el.classList.remove("cc-field--error"));
+    hideFormError(errorEl);
+    successEl?.classList.remove("is-visible");
     if (!fullName) ok = false;
     if (!validateEmail(email)) ok = false;
     if (!whenWhere) ok = false;
@@ -76,9 +81,23 @@ export async function initNightlife(): Promise<void> {
       if (!whenWhere) form.querySelector('[name="when_where"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       return;
     }
-    submitInquiry({ fullName, email, whenWhere }, "nightlife_lead");
-    showFormSuccess(successEl);
-    form.reset();
+    const btn = form.querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement | null;
+    btn && (btn.disabled = true);
+    void (async () => {
+      const result = await submitInquiry(
+        { name: fullName, email, whenWhere },
+        "nightlife_lead",
+      );
+      btn && (btn.disabled = false);
+      if (!result.ok) {
+        showFormError(errorEl, result.error ?? "Something went wrong.");
+        return;
+      }
+      showFormSuccess(successEl);
+      form.reset();
+    })();
   });
 }
 
