@@ -1,0 +1,17 @@
+{
+  "name": "Cooper Concierge",
+  "short_name": "Cooper",
+  "description": "Private nightlife, chauffeuring, and protection.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/media/home/brand-logo.jpeg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

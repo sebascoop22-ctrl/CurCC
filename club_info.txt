@@ -1,0 +1,82 @@
+const venueOpeningDays: Record<string, string[]> = {
+  "Gallery Club": ["Thursday", "Friday", "Saturday"],
+  "Paloma Chelsea": ["Thursday", "Friday", "Saturday"],
+  "Maddox Club": ["Thursday", "Friday", "Saturday"],
+  "The Cuckoo Club": ["Wednesday", "Friday", "Saturday"],
+  "Cirque Le Soir": ["Monday", "Wednesday", "Friday", "Saturday"],
+  "Selene Club": ["Thursday", "Friday", "Saturday", "Sunday"],
+  "Tape London": ["Tuesday", "Friday", "Saturday", "Sunday"],
+  "Dear Darling": ["Thursday", "Friday", "Saturday", "Sunday"],
+  "Tabu London": ["Wednesday", "Thursday", "Friday", "Saturday"],
+  "The London Reign": ["Tuesday", "Thursday", "Friday", "Saturday"],
+  "The Rex Rooms": ["Monday", "Wednesday", "Thursday", "Friday", "Saturday"],
+};
+
+const venues = [
+  {
+    name: "Gallery Club",
+    description: "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
+    location: "Knightsbridge",
+    image: "/Gall.jpg",
+  },
+  {
+    name: "Paloma Chelsea",
+    description: "A refined venue where sophistication meets contemporary style, hosting London's most exclusive gatherings.",
+    location: "South Kensington",
+    image: "/Pal.jpg",
+  },
+  {
+    name: "Maddox Club",
+    description: "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
+    location: "Mayfair",
+    image: "/Madd.jpg",
+  },
+  {
+    name: "The Cuckoo Club",
+    description: "A legendary venue combining vintage glamour with contemporary luxury, frequented by London's elite.",
+    location: "Mayfair",
+    image: "/Cuckoo.jpg",
+  },
+  {
+    name: "Cirque Le Soir",
+    description: "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
+    location: "Mayfair",
+    image: "/Cirque.jpg",
+  },
+  {
+    name: "Selene Club",
+    description: "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    location: "Mayfair",
+    image: "/Selene.jpg",
+  },
+  {
+    name: "Tape London",
+    description: "A sophisticated establishment offering refined experiences for the most discerning patrons.",
+    location: "Mayfair",
+    image: "/Tape.jpg",
+  },
+  {
+    name: "Dear Darling",
+    description: "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
+    location: "Mayfair",
+    image: "/DEAR.jpg",
+  },
+  {
+    name: "Tabu London",
+    description: "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience, combining underground energy with refined sophistication.",
+    location: "Mayfair",
+    image: "/Tabu.jpg",
+  },
+  {
+    name: "The London Reign",
+    description: "A vibrant Mayfair establishment known for its theatrical performances, dynamic atmosphere, and world-class entertainment.",
+    location: "Mayfair",
+    image: "/Reign.jpg",
+  },
+  {
+    name: "The Rex Rooms",
+    description: "Chelsea's most exclusive private members' club, known for discretion and exceptional service.",
+    location: "Chelsea",
+    image: "/Room.jpg",
+  },
+];

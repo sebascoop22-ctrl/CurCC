@@ -1,0 +1,82 @@
+import { fetchCars } from "../data/fetch-data";
+import type { Car } from "../types";
+import {
+  showFormSuccess,
+  submitInquiry,
+  validateEmail,
+} from "../forms";
+import "../styles/pages/chauffeuring.css";
+
+function layoutClass(car: Car, mediumCount: { n: number }): string {
+  if (car.gridSize === "large") return "fleet-tile--large";
+  if (car.gridSize === "feature") return "fleet-tile--feature";
+  const idx = mediumCount.n++;
+  return idx === 0 ? "fleet-tile--medium-a" : "fleet-tile--medium-b";
+}
+
+export async function initChauffeuring(): Promise<void> {
+  const mount = document.getElementById("fleet-bento");
+  if (!mount) return;
+  const cars = await fetchCars().catch(() => [] as Car[]);
+  const mediumCount = { n: 0 };
+  mount.innerHTML = cars
+    .map((car) => {
+      const extra = layoutClass(car, mediumCount);
+      const bgImage =
+        car.images[0] != null
+          ? `background-image: url(${JSON.stringify(car.images[0])})`
+          : "";
+      const specs = car.specsHover
+        .map((s) => `• ${escapeHtml(s)}`)
+        .join("<br/>");
+      return `<article class="fleet-tile ${extra}" style="${bgImage}" tabindex="0">
+        <div class="fleet-tile__body">
+          <span class="role">${escapeHtml(car.roleLabel)}</span>
+          <h3>${escapeHtml(car.name)}</h3>
+          <p class="fleet-tile__hover">${specs}</p>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  mount.querySelectorAll(".fleet-tile").forEach((el) => {
+    el.addEventListener("click", () => el.classList.toggle("is-tapped"));
+  });
+
+  const form = document.getElementById("fleet-form") as HTMLFormElement | null;
+  const successEl = document.getElementById("fleet-success");
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const name = String(fd.get("name") || "").trim();
+    const email = String(fd.get("email") || "").trim();
+    const phone = String(fd.get("phone") || "").trim();
+    const preference = String(fd.get("fleet_preference") || "").trim();
+    let ok = true;
+    form.querySelectorAll(".cc-field").forEach((x) => x.classList.remove("cc-field--error"));
+    if (!name) ok = false;
+    if (!validateEmail(email)) ok = false;
+    if (phone.length < 8) ok = false;
+    if (!preference) ok = false;
+    if (!ok) {
+      if (!name) form.querySelector('[name="name"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      if (!validateEmail(email)) form.querySelector('[name="email"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      if (phone.length < 8) form.querySelector('[name="phone"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      if (!preference) form.querySelector('[name="fleet_preference"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      return;
+    }
+    submitInquiry(
+      { name, email, phone, fleetPreference: preference },
+      "fleet_request",
+    );
+    showFormSuccess(successEl);
+    form.reset();
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
+}

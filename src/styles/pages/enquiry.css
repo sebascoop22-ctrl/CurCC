@@ -1,0 +1,113 @@
+.enquiry-hero {
+  padding-block: var(--cc-space-xl);
+  text-align: center;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.enquiry-hero h1 {
+  color: var(--cc-cream);
+}
+
+.enquiry-socials {
+  margin-top: var(--cc-space-lg);
+  padding-top: var(--cc-space-lg);
+  border-top: 1px solid var(--cc-border);
+}
+
+.enquiry-socials:empty {
+  display: none;
+}
+
+.enquiry-socials__label {
+  margin: 0 0 var(--cc-space-sm);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+}
+
+.enquiry-socials__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: center;
+}
+
+.enquiry-socials__links a {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-cream);
+  text-decoration: none;
+}
+
+.enquiry-socials__links a:hover {
+  color: var(--cc-gold);
+  text-decoration: none;
+}
+
+.form-grid-2 {
+  display: grid;
+  gap: var(--cc-space-md);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.process-split {
+  display: grid;
+  gap: var(--cc-space-lg);
+  align-items: center;
+  margin-top: var(--cc-space-xl);
+}
+
+@media (min-width: 900px) {
+  .process-split {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.process-split img {
+  width: 100%;
+  border-radius: calc(var(--cc-radius) + 4px);
+  border: 1px solid var(--cc-border);
+}
+
+.process-steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.process-steps li {
+  position: relative;
+  padding-left: 3.5rem;
+  margin-bottom: var(--cc-space-lg);
+}
+
+.process-steps li::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--cc-font-serif);
+  font-size: 1.75rem;
+  color: var(--cc-gold);
+}
+
+.process-steps h3 {
+  color: var(--cc-cream);
+  margin: 0 0 0.35rem;
+}
+
+.process-steps p {
+  margin: 0;
+}

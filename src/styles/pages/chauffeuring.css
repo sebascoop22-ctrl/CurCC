@@ -1,0 +1,177 @@
+.chauffeur-hero {
+  padding-block: var(--cc-space-xl);
+  text-align: center;
+  background: url(/media/chauffeuring/hero-cover.jpg) center / cover;
+  border-bottom: 1px solid var(--cc-border);
+  position: relative;
+}
+
+.chauffeur-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 11, 0.88),
+    rgba(10, 10, 11, 0.95)
+  );
+}
+
+.chauffeur-hero .cc-container {
+  position: relative;
+  z-index: 1;
+}
+
+.chauffeur-hero h1 {
+  color: var(--cc-cream);
+}
+
+.fleet-bento {
+  display: grid;
+  gap: var(--cc-space-md);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 860px) {
+  .fleet-bento {
+    grid-template-columns: repeat(6, 1fr);
+    grid-auto-rows: minmax(160px, auto);
+  }
+
+  .fleet-tile--large {
+    grid-column: span 4;
+    grid-row: span 2;
+    min-height: 320px;
+  }
+
+  .fleet-tile--medium-a {
+    grid-column: span 2;
+    grid-row: 1;
+    min-height: 240px;
+  }
+
+  .fleet-tile--medium-b {
+    grid-column: span 2;
+    grid-row: 2;
+    min-height: 240px;
+  }
+
+  .fleet-tile--feature {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-height: 260px;
+  }
+}
+
+.fleet-tile {
+  position: relative;
+  border-radius: calc(var(--cc-radius) + 4px);
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+  background-size: cover;
+  background-position: center;
+  isolation: isolate;
+  min-height: 200px;
+}
+
+.fleet-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 20%,
+    rgba(10, 10, 11, 0.92) 100%
+  );
+  z-index: 0;
+}
+
+.fleet-tile__body {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--cc-space-md);
+  padding-bottom: 1.1rem;
+  box-sizing: border-box;
+}
+
+.fleet-tile__body h3 {
+  color: var(--cc-cream);
+  margin: 0 0 0.25rem;
+}
+
+.fleet-tile__body .role {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin-bottom: 0.35rem;
+}
+
+.fleet-tile__hover {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.2s ease;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(200, 198, 192, 0.95);
+  margin: 0;
+}
+
+@media (hover: hover) {
+  .fleet-tile:hover .fleet-tile__hover {
+    max-height: 320px;
+    opacity: 1;
+    margin-top: 0.4rem;
+  }
+}
+
+.fleet-tile:focus-within .fleet-tile__hover,
+.fleet-tile.is-tapped .fleet-tile__hover {
+  max-height: 320px;
+  opacity: 1;
+  margin-top: 0.4rem;
+}
+
+.personnel-list {
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.personnel-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cc-space-md);
+  align-items: start;
+  padding: var(--cc-space-md) 0;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.personnel-item:last-child {
+  border-bottom: none;
+}
+
+.personnel-item .ico {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.fleet-card-form {
+  max-width: 480px;
+  margin-inline: auto;
+  padding: var(--cc-space-lg);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-bg-card);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+}

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/media/home/brand-logo.jpeg" />
+    <meta name="description" content="Discreet close protection — Cooper Concierge." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/media/home/brand-logo.jpeg" type="image/jpeg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet" />
+    <title>Security — Cooper Concierge</title>
+  </head>
+  <body>
+    <header id="cc-header" class="site-header"></header>
+    <div id="cc-drawer" class="mobile-drawer"></div>
+
+    <main>
+      <section class="security-hero cc-container">
+        <h1>Discreet protection.</h1>
+        <p>
+          For principals who require calibrated risk management without visibility. Our close protection teams operate with absolute professional discretion—blending
+          into your itinerary while maintaining decisive control.
+        </p>
+        <p style="margin-top: 1rem">
+          <button type="button" class="cc-btn cc-btn--gold" id="security-deploy">Request deployment</button>
+        </p>
+      </section>
+
+      <section class="protocol cc-container">
+        <p class="cc-eyebrow">Core protocol</p>
+        <h2>Operational excellence</h2>
+        <div class="protocol__grid" style="margin-top: var(--cc-space-lg)">
+          <div class="protocol__card">
+            <div class="protocol__icon" aria-hidden="true">◆</div>
+            <h3>Security-trained personnel</h3>
+            <p>Vetted specialists with protective operations backgrounds and hospitality-grade presence.</p>
+          </div>
+          <div class="protocol__card">
+            <div class="protocol__icon" aria-hidden="true">◇</div>
+            <h3>Bespoke logistics</h3>
+            <p>Routes venues airside movements and contingencies mapped before you depart.</p>
+          </div>
+          <div class="protocol__card">
+            <div class="protocol__icon" aria-hidden="true">◎</div>
+            <h3>International standards</h3>
+            <p>Consistent protocols across cities—London Dubai Monaco and beyond.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="cc-section cc-container">
+        <div class="cp-split">
+          <div>
+            <h2>Elite bodyguard services</h2>
+            <p>
+              Threat assessment advance work and extraction protocols are integrated into every deployment. We do not advertise our clients—we shield them. Communication
+              is encrypted documentation is minimal and rotations are planned so your day feels uninterrupted.
+            </p>
+            <p>
+              Whether you require a single principal detail or overlapping teams for corporate events we match posture to environment: visible when useful invisible when
+              essential.
+            </p>
+          </div>
+          <div class="feature-box">
+            <h3 style="margin-top: 0; color: var(--cc-cream)">Operational specialties</h3>
+            <ul>
+              <li>24/7 executive protection teams</li>
+              <li>Tactical driver specialists</li>
+              <li>International travel escorts</li>
+              <li>Residential security assessments</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="cc-section cc-container" id="security-form-section" style="background: var(--cc-bg-raised); padding: var(--cc-space-xl); border-radius: calc(var(--cc-radius) + 6px); border: 1px solid var(--cc-border)">
+        <p class="cc-eyebrow">Secure consultation</p>
+        <h2>Begin confidentially</h2>
+        <div class="consult-form-wrap" style="margin-top: var(--cc-space-lg)">
+          <form id="security-form" novalidate>
+            <div class="cc-field">
+              <label for="sec-name">Full name</label>
+              <input id="sec-name" name="full_name" type="text" autocomplete="name" required />
+            </div>
+            <div class="cc-field">
+              <label for="sec-email">Email</label>
+              <input id="sec-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="cc-field">
+              <label for="sec-phone">Phone number</label>
+              <input id="sec-phone" name="phone" type="tel" autocomplete="tel" required />
+            </div>
+            <div class="cc-field">
+              <label for="sec-req">Specific security requirements</label>
+              <textarea id="sec-req" name="requirements" rows="5" required placeholder="Itinerary cities risk context team size…"></textarea>
+            </div>
+            <button type="submit" class="cc-btn cc-btn--gold">Submit consultation</button>
+            <div class="cc-form-success" id="security-success" role="status">Your consultation request was recorded. A director will reply encrypted.</div>
+          </form>
+          <div class="trust-badges">
+            <div class="trust-badge"><span aria-hidden="true">🔒</span> Encrypted communication</div>
+            <div class="trust-badge"><span aria-hidden="true">📋</span> Strict NDA policy</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="cc-footer" class="site-footer"></footer>
+    <div id="cc-modal-root"></div>
+    <script type="module" src="/src/main/security.ts"></script>
+  </body>
+</html>

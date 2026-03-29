@@ -1,0 +1,65 @@
+[
+  {
+    "slug": "range-rover-autobiography",
+    "name": "Range Rover Autobiography",
+    "roleLabel": "The Workhorse",
+    "specsHover": [
+      "4.4L V8",
+      "P405 HP",
+      "Air suspension",
+      "Rear executive seats"
+    ],
+    "gridSize": "large",
+    "order": 1,
+    "images": [
+      "/cars/range-rover-autobiography/01-hero.svg",
+      "/cars/range-rover-autobiography/02-detail.svg"
+    ]
+  },
+  {
+    "slug": "mercedes-s-class",
+    "name": "Mercedes S-Class",
+    "roleLabel": "Team Logistics",
+    "specsHover": [
+      "Chauffeur partition",
+      "Executive recline",
+      "Wi-Fi",
+      "Ice well"
+    ],
+    "gridSize": "medium",
+    "order": 2,
+    "images": [
+      "/cars/mercedes-s-class/01-hero.svg"
+    ]
+  },
+  {
+    "slug": "mercedes-v-class",
+    "name": "Mercedes V-Class",
+    "roleLabel": "Group movements",
+    "specsHover": [
+      "Captains chairs",
+      "Privacy glass",
+      "Luggage bay for 8"
+    ],
+    "gridSize": "medium",
+    "order": 3,
+    "images": [
+      "/cars/mercedes-v-class/01-hero.svg"
+    ]
+  },
+  {
+    "slug": "rolls-royce-ghost",
+    "name": "Rolls-Royce Ghost",
+    "roleLabel": "Bespoke appointments",
+    "specsHover": [
+      "Starlight headliner",
+      "Bespoke audio",
+      "Discreet plate options"
+    ],
+    "gridSize": "feature",
+    "order": 4,
+    "images": [
+      "/cars/rolls-royce-ghost/01-hero.svg"
+    ]
+  }
+]

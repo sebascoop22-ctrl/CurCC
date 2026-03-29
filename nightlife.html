@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/media/home/brand-logo.jpeg" />
+    <meta name="description" content="Nightlife — private access to London’s elite venues. Cooper Concierge." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/media/home/brand-logo.jpeg" type="image/jpeg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet" />
+    <title>Nightlife — Cooper Concierge</title>
+  </head>
+  <body>
+    <header id="cc-header" class="site-header"></header>
+    <div id="cc-drawer" class="mobile-drawer"></div>
+
+    <main>
+      <section class="nightlife-hero">
+        <div class="cc-container nightlife-hero__stack">
+          <p class="nightlife-hero__eyebrow">Private access arranged</p>
+          <h1>Nightlife</h1>
+          <p class="nightlife-hero__lede">
+            Member rooms, private tables, and evenings designed without compromise—secured before you arrive.
+          </p>
+          <div class="nightlife-actions">
+            <a class="cc-btn cc-btn--gold" href="#nightlife-lead">Request access</a>
+            <a class="cc-btn cc-btn--ghost" href="nightlife-map.html">Show venue map</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="cc-section cc-container">
+        <div class="elite-venues-head">
+          <p class="cc-eyebrow">Elite venues</p>
+          <h2>Signature destinations</h2>
+        </div>
+        <div class="clubs-grid" id="clubs-grid"></div>
+      </section>
+
+      <section class="nl-lead" id="nightlife-lead">
+        <div class="cc-container lead-split">
+          <div>
+            <p class="cc-eyebrow">Secure your evening</p>
+            <h2 style="color: var(--cc-cream); margin-top: 0">Request inquiry</h2>
+            <form id="nightlife-lead-form" class="nl-form--minimal" novalidate>
+              <div class="cc-field">
+                <label for="nl-full-name">Full name</label>
+                <input id="nl-full-name" name="full_name" type="text" autocomplete="name" required placeholder="Full name" />
+              </div>
+              <div class="cc-field">
+                <label for="nl-email">Email address</label>
+                <input id="nl-email" name="email" type="email" autocomplete="email" required placeholder="Email address" />
+              </div>
+              <div class="cc-field">
+                <label for="nl-when">Preferred date &amp; location</label>
+                <input id="nl-when" name="when_where" type="text" required placeholder="Preferred date & location" />
+              </div>
+              <button type="submit" class="cc-btn cc-btn--gold">Request inquiry <span class="btn-arrow" aria-hidden="true">→</span></button>
+            </form>
+            <div class="cc-form-success" id="nightlife-lead-success" role="status">Your inquiry has been logged. A concierge will respond shortly.</div>
+          </div>
+          <div class="lead-split__graphic" aria-hidden="true">
+            <img src="/media/nightlife/lead-atmosphere.jpg" alt="" width="500" height="500" loading="lazy" />
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="cc-footer" class="site-footer"></footer>
+    <div id="cc-modal-root"></div>
+    <script type="module" src="/src/main/nightlife.ts"></script>
+  </body>
+</html>

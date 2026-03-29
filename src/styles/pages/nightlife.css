@@ -1,0 +1,280 @@
+.nightlife-hero {
+  position: relative;
+  padding-block: var(--cc-space-xl);
+  text-align: center;
+  background: var(--cc-bg-deep) url(/media/nightlife/hero-atmosphere.svg) center / cover no-repeat;
+  border-bottom: 1px solid var(--cc-border);
+  overflow: hidden;
+}
+
+.nightlife-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 0%,
+    rgba(212, 196, 168, 0.06) 0%,
+    transparent 55%
+  );
+  pointer-events: none;
+}
+
+.nightlife-hero__stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.nightlife-hero__eyebrow {
+  font-family: var(--cc-font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin: 0 0 var(--cc-space-md);
+  font-weight: 500;
+}
+
+.nightlife-hero h1 {
+  color: var(--cc-cream);
+  font-size: clamp(3rem, 8vw, 5.25rem);
+  margin-bottom: var(--cc-space-sm);
+}
+
+.nightlife-hero__lede {
+  color: var(--cc-muted);
+  font-size: 1rem;
+  max-width: 36rem;
+  margin: 0 auto var(--cc-space-lg);
+}
+
+.nightlife-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cc-space-sm);
+  justify-content: center;
+  margin-bottom: var(--cc-space-lg);
+}
+
+.elite-venues-head {
+  margin-bottom: var(--cc-space-lg);
+}
+
+.elite-venues-head h2 {
+  color: var(--cc-cream);
+  margin: 0.35rem 0 0;
+}
+
+.clubs-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 700px) {
+  .clubs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Featured banner cards */
+.club-card {
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  background: var(--cc-bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.club-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.45);
+}
+
+.club-card__media {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+}
+
+.club-card__media--solid {
+  background: linear-gradient(145deg, #252a31 0%, #15171a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.club-card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.club-card__pill--static {
+  position: static;
+  display: inline-block;
+  margin-bottom: 0.75rem;
+}
+
+.club-card__pill {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  background: rgba(10, 10, 10, 0.82);
+  border: 1px solid rgba(212, 196, 168, 0.28);
+  border-radius: 4px;
+}
+
+.club-card__body {
+  padding: 1.35rem 1.35rem 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.club-card__body h3 {
+  color: var(--cc-cream);
+  font-size: 1.45rem;
+  margin-bottom: 0.35rem;
+  font-family: var(--cc-font-serif);
+}
+
+.club-card__meta {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  margin-bottom: 0.85rem;
+  font-weight: 500;
+}
+
+.club-card__desc {
+  margin: 0 0 1rem;
+  line-height: 1.65;
+  flex: 1;
+}
+
+.club-card__inquire {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  text-decoration: none;
+  margin-top: auto;
+}
+
+.club-card__inquire:hover {
+  text-decoration: none;
+  opacity: 0.92;
+}
+
+.club-card__gem {
+  font-size: 2.5rem;
+  color: var(--cc-gold);
+  opacity: 0.55;
+  line-height: 1;
+}
+
+/* Secure evening — underline inputs */
+.nl-lead {
+  position: relative;
+  padding-block: var(--cc-space-xl);
+  background: var(--cc-bg-deep);
+  overflow: hidden;
+}
+
+.nl-lead::before {
+  content: "";
+  position: absolute;
+  right: -10%;
+  top: 10%;
+  width: min(55vw, 420px);
+  height: min(55vw, 420px);
+  background: url(/media/nightlife/lead-gen-moon-graphic.svg) center / contain no-repeat;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.nl-lead .cc-container {
+  position: relative;
+  z-index: 1;
+}
+
+.lead-split {
+  display: grid;
+  gap: var(--cc-space-xl);
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .lead-split {
+    grid-template-columns: 1fr 0.85fr;
+  }
+}
+
+.lead-split__graphic {
+  max-width: 400px;
+  margin-inline: auto;
+  opacity: 0.85;
+}
+
+.lead-split__graphic img {
+  width: 100%;
+}
+
+.nl-form--minimal .cc-field label {
+  display: none;
+}
+
+.nl-form--minimal .cc-field {
+  margin-bottom: 1.35rem;
+}
+
+.nl-form--minimal input {
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  padding: 0.85rem 0;
+  color: var(--cc-cream);
+}
+
+.nl-form--minimal input::placeholder {
+  color: var(--cc-muted);
+  opacity: 1;
+}
+
+.nl-form--minimal input:focus {
+  border-bottom-color: var(--cc-gold);
+  outline: none;
+}
+
+.nl-form--minimal button.cc-btn--gold {
+  margin-top: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+
+.nl-form--minimal button.cc-btn--gold .btn-arrow {
+  font-size: 1.1em;
+}

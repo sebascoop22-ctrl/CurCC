@@ -1,0 +1,129 @@
+.security-hero {
+  padding-block: var(--cc-space-xl);
+  text-align: center;
+  background: var(--cc-bg-deep) url(/media/security/hero-cover.jpg) center / cover no-repeat;
+  border-bottom: 1px solid var(--cc-border);
+  position: relative;
+}
+
+.security-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 10, 0.22) 0%,
+    rgba(10, 10, 10, 0.45) 100%
+  );
+  pointer-events: none;
+}
+
+.security-hero .cc-container {
+  position: relative;
+  z-index: 1;
+}
+
+.security-hero h1 {
+  color: #ffffff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
+}
+
+.security-hero p {
+  color: rgba(248, 246, 242, 0.98);
+  max-width: 42rem;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.65);
+}
+
+.protocol {
+  padding-block: var(--cc-space-xl);
+}
+
+.protocol__grid {
+  display: grid;
+  gap: var(--cc-space-lg);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .protocol__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.protocol__card {
+  text-align: center;
+  padding: var(--cc-space-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-bg-card);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+.protocol__icon {
+  font-size: 2rem;
+  margin-bottom: var(--cc-space-sm);
+  opacity: 0.85;
+}
+
+.cp-split {
+  display: grid;
+  gap: var(--cc-space-lg);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .cp-split {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+}
+
+.feature-box {
+  background: var(--cc-bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--cc-radius-lg);
+  padding: var(--cc-space-lg);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+.feature-box ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--cc-muted);
+}
+
+.feature-box li {
+  margin-bottom: 0.5rem;
+}
+
+.consult-form-wrap {
+  display: grid;
+  gap: var(--cc-space-lg);
+  align-items: start;
+}
+
+@media (min-width: 800px) {
+  .consult-form-wrap {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+.trust-badges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cc-space-md);
+  font-size: 0.85rem;
+  color: var(--cc-muted);
+}
+
+.trust-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--cc-space-sm);
+  padding: var(--cc-space-sm);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+}

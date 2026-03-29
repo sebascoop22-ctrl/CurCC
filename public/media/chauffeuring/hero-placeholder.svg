@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 520">
+  <defs><linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#14161a"/><stop offset="1" stop-color="#0a0a0a"/></linearGradient></defs>
+  <rect width="1400" height="520" fill="url(#c)"/>
+  <text x="700" y="275" text-anchor="middle" fill="#d4c4a8" opacity="0.2" font-family="Georgia,serif" font-size="38" letter-spacing="0.3em">CHAUFFEUR</text>
+</svg>

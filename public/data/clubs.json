@@ -1,0 +1,313 @@
+[
+  {
+    "slug": "Cirque-Le-Soir",
+    "name": "Cirque Le Soir",
+    "shortDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
+    "longDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
+    "reviews": [
+      "Leo P.: Pure theatre—handled with discretion."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Mon|Wed|Fri|Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.512,
+    "lng": -0.143,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£3000 / Table",
+    "amenities": [
+      "Performance-led rooms",
+      "Talent liaison",
+      "Late licence partners",
+      "Private green room"
+    ],
+    "images": [
+      "/clubs/Cirque-Le-Soir/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "Dear-Darling",
+    "name": "Dear Darling",
+    "shortDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
+    "longDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
+    "reviews": [
+      "Amelia C.: Effortlessly chic—from door to car."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Thu|Fri|Sat|Sun",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.51,
+    "lng": -0.1425,
+    "accessTier": "Tier I – Executive",
+    "minSpend": "£2500 / Table",
+    "amenities": [
+      "Rosewood interiors",
+      "Invitation-only salon",
+      "Private lift",
+      "House DJ roster"
+    ],
+    "images": [
+      "/clubs/Dear-Darling/01-cover.jpg",
+      "/clubs/Dear-Darling/02-interior.png"
+    ]
+  },
+  {
+    "slug": "Gallery-Club",
+    "name": "Gallery Club",
+    "shortDescription": "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
+    "longDescription": "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
+    "reviews": [
+      "Alexandra M.: A standout Knightsbridge evening with impeccable table service."
+    ],
+    "locationTag": "LONDON • KNIGHTSBRIDGE",
+    "address": "Knightsbridge London SW1",
+    "daysOpen": "Thu-Sat",
+    "featured": true,
+    "featuredDay": "2026-03-29",
+    "venueType": "lounge",
+    "lat": 51.502,
+    "lng": -0.1635,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2500 / Table",
+    "amenities": [
+      "Curated art programme",
+      "Private rooms",
+      "Discreet entry",
+      "House champagne list"
+    ],
+    "images": [
+      "/clubs/Gallery-Club/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "Maddox-Club",
+    "name": "Maddox Club",
+    "shortDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
+    "longDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
+    "reviews": [
+      "T. H.: The Mayfair room we return to for closing deals."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Thu-Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.511,
+    "lng": -0.144,
+    "accessTier": "Tier I – Executive",
+    "minSpend": "£2800 / Table",
+    "amenities": [
+      "Members' screening room",
+      "24-hour concierge desk",
+      "Side-street ingress",
+      "VIP lift"
+    ],
+    "images": [
+      "/clubs/Maddox-Club/01-cover.jpg",
+      "/clubs/Maddox-Club/02-interior.png"
+    ]
+  },
+  {
+    "slug": "Paloma-Chelsea",
+    "name": "Paloma Chelsea",
+    "shortDescription": "A refined venue where sophistication meets contemporary style hosting London's most exclusive gatherings.",
+    "longDescription": "A refined venue where sophistication meets contemporary style, hosting London's most exclusive gatherings.",
+    "reviews": [
+      "Jordan K.: Elegant crowd and flawless hospitality."
+    ],
+    "locationTag": "LONDON • SOUTH KENSINGTON",
+    "address": "South Kensington London SW7",
+    "daysOpen": "Thu-Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.4945,
+    "lng": -0.1745,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2200 / Table",
+    "amenities": [
+      "Intimate booths",
+      "Reservation-only bar",
+      "Private arrival lane",
+      "Sommelier partnerships"
+    ],
+    "images": [
+      "/clubs/Paloma-Chelsea/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "Selene-Club",
+    "name": "Selene Club",
+    "shortDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    "longDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    "reviews": [
+      "Elena V.: Quiet luxury—the room feels bespoke."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Thu|Fri|Sat|Sun",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.5095,
+    "lng": -0.146,
+    "accessTier": "Tier I – Executive",
+    "minSpend": "£2400 / Table",
+    "amenities": [
+      "Low-lit lounge",
+      "Champagne cellar access",
+      "Private member lift",
+      "Mosaic bar"
+    ],
+    "images": [
+      "/clubs/Selene-Club/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "Tabu-London",
+    "name": "Tabu London",
+    "shortDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience combining underground energy with refined sophistication.",
+    "longDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience, combining underground energy with refined sophistication.",
+    "reviews": [
+      "James L.: Tokyo energy in W1—perfectly controlled."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Wed-Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.513,
+    "lng": -0.141,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2700 / Table",
+    "amenities": [
+      "Speakeasy entry",
+      "Omakase bar",
+      "Private tatami room",
+      "Security escort"
+    ],
+    "images": [
+      "/clubs/Tabu-London/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "Tape-London",
+    "name": "Tape London",
+    "shortDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
+    "longDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
+    "reviews": [
+      "Marcus D.: Music-forward without losing polish."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Tue|Fri|Sat|Sun",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.5112,
+    "lng": -0.1438,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2600 / Table",
+    "amenities": [
+      "Artist green room",
+      "Bespoke sound",
+      "Bottle showcase",
+      "Secure holding lounge"
+    ],
+    "images": [
+      "/clubs/Tape-London/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "The-Cuckoo-Club",
+    "name": "The Cuckoo Club",
+    "shortDescription": "A legendary venue combining vintage glamour with contemporary luxury frequented by London's elite.",
+    "longDescription": "A legendary venue combining vintage glamour with contemporary luxury, frequented by London's elite.",
+    "reviews": [
+      "Sofia R.: Timeless glamour without the crowds."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Wed|Fri|Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.5105,
+    "lng": -0.1455,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2600 / Table",
+    "amenities": [
+      "Rooftop terrace",
+      "Vintage cocktail salon",
+      "Private dining",
+      "Dedicated host team"
+    ],
+    "images": [
+      "/clubs/The-Cuckoo-Club/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "The-London-Reign",
+    "name": "The London Reign",
+    "shortDescription": "A vibrant Mayfair establishment known for theatrical performances dynamic atmosphere and world-class entertainment.",
+    "longDescription": "A vibrant Mayfair establishment known for its theatrical performances, dynamic atmosphere, and world-class entertainment.",
+    "reviews": [
+      "Priya N.: Performance-led nights without feeling public."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Tue|Thu|Fri|Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.514,
+    "lng": -0.1405,
+    "accessTier": "Tier I – Principal",
+    "minSpend": "£2800 / Table",
+    "amenities": [
+      "Stage-adjacent tables",
+      "Talent bookings",
+      "After-hours lounge",
+      "Side entry"
+    ],
+    "images": [
+      "/clubs/The-London-Reign/01-cover.jpg"
+    ]
+  },
+  {
+    "slug": "The-Rex-Rooms",
+    "name": "The Rex Rooms",
+    "shortDescription": "Chelsea's most exclusive private members' club known for discretion and exceptional service.",
+    "longDescription": "Chelsea's most exclusive private members' club, known for discretion and exceptional service.",
+    "reviews": [
+      "Oliver S.: The Chelsea room our principals ask for by name."
+    ],
+    "locationTag": "LONDON • CHELSEA",
+    "address": "Chelsea London SW3",
+    "daysOpen": "Mon|Wed|Thu|Fri|Sat",
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.488,
+    "lng": -0.169,
+    "accessTier": "Tier I – Executive",
+    "minSpend": "£2400 / Table",
+    "amenities": [
+      "Discreet townhouse entry",
+      "Private smoking terrace",
+      "Dedicated house manager",
+      "Car pull-up"
+    ],
+    "images": [
+      "/clubs/The-Rex-Rooms/01-cover.jpg",
+      "/clubs/The-Rex-Rooms/02-interior.jpg"
+    ]
+  }
+]
