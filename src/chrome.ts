@@ -1,9 +1,11 @@
 import { inject } from "@vercel/analytics";
+import { injectSpeedInsights } from '@vercel/speed-insights';
 import { getSocialLinkItems, whatsappHref } from "./site-config";
 import "./styles/global.css";
 
 /** Vite/static sites use `inject()` — not `@vercel/analytics/next` (Next.js only). */
 inject();
+injectSpeedInsights();
 
 export type ActivePage =
   | "home"
