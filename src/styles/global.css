@@ -32,6 +32,8 @@
 
 html {
   scroll-behavior: smooth;
+  background-color: var(--cc-bg-deep);
+  overflow-x: clip;
 }
 
 body {
@@ -41,8 +43,13 @@ body {
   font-size: 16px;
   line-height: 1.6;
   color: var(--cc-text);
-  background: var(--cc-bg-deep);
+  background-color: var(--cc-bg-deep);
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+main {
+  background-color: var(--cc-bg-deep);
 }
 
 img {
@@ -590,6 +597,13 @@ p {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.hero--tall .hero__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
 .hero__mark {

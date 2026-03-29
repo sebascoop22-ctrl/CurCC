@@ -4,6 +4,10 @@
   border-bottom: 1px solid var(--cc-border);
 }
 
+.enquiry-hero .cc-container {
+  position: relative;
+}
+
 .enquiry-hero h1 {
   color: var(--cc-cream);
 }
