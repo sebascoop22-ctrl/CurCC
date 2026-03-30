@@ -62,6 +62,13 @@ export async function initNightlifeMap(): Promise<void> {
     const spend = document.getElementById("sidebar-spend");
     const amenitiesEl = document.getElementById("sidebar-amenities");
     const thumbs = document.getElementById("sidebar-thumbs");
+    const directions = document.getElementById(
+      "sidebar-directions",
+    ) as HTMLAnchorElement | null;
+    const chauffeur = document.getElementById(
+      "sidebar-chauffeur",
+    ) as HTMLAnchorElement | null;
+    const travel = document.getElementById("sidebar-travel");
     if (quote) quote.textContent = c.longDescription;
     if (bestNights)
       bestNights.textContent = c.bestVisitDays.length
@@ -88,6 +95,23 @@ export async function initNightlifeMap(): Promise<void> {
           : "";
       thumbs.innerHTML = imgs + more;
     }
+    if (directions && travel) {
+      if (c.lat && c.lng) {
+        directions.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${c.lat},${c.lng}`)}`;
+        directions.removeAttribute("aria-disabled");
+        travel.classList.remove("map-sidebar__travel--disabled");
+      } else {
+        directions.href = "#";
+        directions.setAttribute("aria-disabled", "true");
+        travel.classList.add("map-sidebar__travel--disabled");
+      }
+    }
+    if (chauffeur) {
+      const ctx = c.address
+        ? `Chauffeur pickup — ${c.name} (${c.address})`
+        : `Chauffeur pickup — ${c.name}`;
+      chauffeur.href = `enquiry.html?context=${encodeURIComponent(ctx)}`;
+    }
   }
 
   function focusSidebarPanel(): void {
@@ -96,17 +120,22 @@ export async function initNightlifeMap(): Promise<void> {
     sidebar?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  let selectedClub: Club | null = null;
+
   function selectClub(c: Club): void {
+    selectedClub = c;
     fillSidebar(c);
     const url = new URL(window.location.href);
     url.searchParams.set("venue", c.slug);
     window.history.replaceState({}, "", url);
     if (window.innerWidth < 900) sidebar?.classList.add("is-expanded");
-    map.easeTo({
-      center: [c.lng, c.lat],
-      zoom: Math.max(map.getZoom(), 13),
-      duration: 550,
-    });
+    if (c.lat && c.lng) {
+      map.easeTo({
+        center: [c.lng, c.lat],
+        zoom: Math.max(map.getZoom(), 14),
+        duration: 550,
+      });
+    }
     requestAnimationFrame(() => {
       focusSidebarPanel();
     });
@@ -140,11 +169,17 @@ export async function initNightlifeMap(): Promise<void> {
   }
 
   const paramSlug = getQueryVenue();
-  const initial =
+  selectedClub =
     clubs.find((c) => c.slug === paramSlug) || clubs[0] || null;
-  if (initial) {
-    fillSidebar(initial);
-    map.jumpTo({ center: [initial.lng, initial.lat], zoom: 13 });
+
+  if (selectedClub) {
+    fillSidebar(selectedClub);
+    if (selectedClub.lat && selectedClub.lng) {
+      map.jumpTo({
+        center: [selectedClub.lng, selectedClub.lat],
+        zoom: 14,
+      });
+    }
     if (window.innerWidth < 900) {
       sidebar?.classList.add("is-expanded");
       requestAnimationFrame(() => focusSidebarPanel());
@@ -158,12 +193,20 @@ export async function initNightlifeMap(): Promise<void> {
     map.zoomOut({ duration: 300 });
   });
   document.getElementById("map-recenter")?.addEventListener("click", () => {
-    if (initial) map.flyTo({ center: [initial.lng, initial.lat], zoom: 13 });
-    else map.flyTo({ center: [-0.12, 51.51], zoom: 11.5 });
+    if (selectedClub?.lat && selectedClub?.lng) {
+      map.flyTo({
+        center: [selectedClub.lng, selectedClub.lat],
+        zoom: 14,
+      });
+    } else map.flyTo({ center: [-0.12, 51.51], zoom: 11.5 });
   });
 
   document.getElementById("sidebar-book")?.addEventListener("click", () => {
-    window.location.href = `enquiry.html?context=${encodeURIComponent("Private table")}`;
+    const c = selectedClub;
+    const ctx = c
+      ? `Private table — ${c.name}`
+      : "Private table";
+    window.location.href = `enquiry.html?context=${encodeURIComponent(ctx)}`;
   });
 }
 

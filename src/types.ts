@@ -17,6 +17,8 @@ export interface Club {
   lat: number;
   lng: number;
   minSpend: string;
+  /** Full URL from CSV (build normalizes scheme) */
+  website: string;
   amenities: string[];
   images: string[];
 }

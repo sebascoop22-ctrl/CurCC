@@ -211,22 +211,54 @@
   flex: 1;
 }
 
-.club-card__inquire {
+.club-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+.club-card__link {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--cc-gold);
   text-decoration: none;
-  margin-top: auto;
+  color: var(--cc-muted);
+  border-bottom: 1px solid transparent;
+  padding-bottom: 0.1rem;
 }
 
-.club-card__inquire:hover {
-  text-decoration: none;
-  opacity: 0.92;
+.club-card__link:hover {
+  color: var(--cc-cream);
+  border-bottom-color: rgba(212, 196, 168, 0.35);
+}
+
+.club-card__link--ghost {
+  color: var(--cc-muted);
+}
+
+.club-card__link--primary {
+  color: var(--cc-gold);
+  margin-left: auto;
+}
+
+.club-card__link--primary:hover {
+  border-bottom-color: rgba(212, 196, 168, 0.55);
+  color: var(--cc-gold);
+}
+
+@media (max-width: 480px) {
+  .club-card__link--primary {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .club-card__gem {

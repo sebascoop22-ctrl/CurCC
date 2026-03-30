@@ -53,14 +53,28 @@ function renderClubTags(c: Club, today: Date): string {
   return `${tagsRow}<div class="club-card__best-nights"><span class="club-card__best-label">Best nights</span><div class="club-card__tags-row club-card__tags-row--best">${best}</div></div>`;
 }
 
+function renderClubActions(c: Club): string {
+  const mapHref = `nightlife-map.html?venue=${encodeURIComponent(c.slug)}`;
+  const inquireHref = `enquiry.html?context=${encodeURIComponent(`Private table — ${c.name}`)}`;
+  const website =
+    c.website.trim() !== ""
+      ? `<a class="club-card__link club-card__link--ghost" href="${escapeHtml(c.website)}" target="_blank" rel="noopener noreferrer">Club website <span aria-hidden="true">↗</span></a>`
+      : "";
+  return `<div class="club-card__actions">
+      ${website}
+      <a class="club-card__link club-card__link--ghost" href="${mapHref}">View on map</a>
+      <a class="club-card__link club-card__link--primary" href="${inquireHref}">Inquire <span aria-hidden="true">→</span></a>
+    </div>`;
+}
+
 export async function initNightlife(): Promise<void> {
   const clubs = await fetchClubs();
-  const grid = document.getElementById("clubs-grid");
-  if (!grid) return;
+  const clubsGrid = document.getElementById("clubs-grid");
+  if (!clubsGrid) return;
 
   const today = startOfDay(new Date());
 
-  function renderGrid(): void {
+  function renderGrid(target: HTMLElement): void {
     const cards = clubs
       .map((c) => {
         const img =
@@ -75,20 +89,20 @@ export async function initNightlife(): Promise<void> {
             <p class="club-card__meta">${escapeHtml(c.locationTag)}</p>
             ${renderClubTags(c, today)}
             <p class="club-card__desc">${escapeHtml(c.shortDescription)}</p>
-            <a class="club-card__inquire" href="nightlife-map.html?venue=${encodeURIComponent(c.slug)}">Inquire <span aria-hidden="true">→</span></a>
+            ${renderClubActions(c)}
           </div>
         </article>`;
       })
       .join("");
-    grid.innerHTML = cards;
+    target.innerHTML = cards;
   }
 
-  renderGrid();
+  renderGrid(clubsGrid);
 
   const venueParam = getQueryVenue();
   if (venueParam) {
     requestAnimationFrame(() => {
-      const card = grid.querySelector(
+      const card = clubsGrid.querySelector(
         `article[data-slug="${CSS.escape(venueParam)}"]`,
       );
       card?.scrollIntoView({ behavior: "smooth", block: "center" });

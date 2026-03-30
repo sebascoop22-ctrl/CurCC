@@ -192,6 +192,28 @@
   color: var(--cc-muted);
 }
 
+.map-sidebar__travel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: var(--cc-space-md);
+}
+
+.map-sidebar__travel-btn {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-align: center;
+  justify-content: center;
+  padding-inline: 0.65rem;
+  min-height: 44px;
+}
+
+.map-sidebar__travel--disabled #sidebar-directions[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .map-overlay-footer {
   flex-shrink: 0;
   border-top: 1px solid var(--cc-border);

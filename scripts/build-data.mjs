@@ -4,6 +4,7 @@
  *
  * featured_day: YYYY-MM-DD — home "venue of the day" matches this exact date.
  * best_visit_days: pipe-separated short labels (Thu|Fri|Sat) — recommended nights; shown on nightlife + map.
+ * website: optional club site URL (https://… or domain only); shown on nightlife cards.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -83,6 +84,13 @@ function bool(s) {
   return v === "true" || v === "1" || v === "yes";
 }
 
+function normalizeWebsite(s) {
+  const t = String(s ?? "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
+}
+
 function buildClubs() {
   const clubsRoot = path.join(publicDir, "clubs");
   if (!fs.existsSync(clubsRoot)) {
@@ -126,6 +134,7 @@ function buildClubs() {
       lat: Number(String(row.lat ?? "").replace(/\s/g, "")) || 0,
       lng: Number(String(row.lng ?? "").replace(/\s/g, "")) || 0,
       minSpend: row.min_spend || "",
+      website: normalizeWebsite(row.website || ""),
       amenities: splitPipe(row.amenities || ""),
       images: imgs,
     });
