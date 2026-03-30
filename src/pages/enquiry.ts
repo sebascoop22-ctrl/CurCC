@@ -32,6 +32,7 @@ export function initEnquiry(): void {
   renderEnquirySocials();
   const ctx = new URLSearchParams(window.location.search).get("context");
   const service = document.getElementById("enquiry-service") as HTMLSelectElement | null;
+  const detailsEl = document.getElementById("eq-details") as HTMLTextAreaElement | null;
   if (service && ctx) {
     const c = ctx.toLowerCase();
     if (c.includes("table") || c.includes("venue") || c.includes("night"))
@@ -41,6 +42,9 @@ export function initEnquiry(): void {
     else if (c.includes("security") || c.includes("protection"))
       service.value = "security";
     else if (c.includes("dining")) service.value = "dining";
+  }
+  if (detailsEl && ctx?.trim()) {
+    detailsEl.value = ctx.trim();
   }
 
   const form = document.getElementById("enquiry-form") as HTMLFormElement | null;
