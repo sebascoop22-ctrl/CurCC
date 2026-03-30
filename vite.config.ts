@@ -3,6 +3,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   build: {
+    /** maplibre-gl is ~780 kB minified; it is already split via dynamic import on the map page only. */
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),

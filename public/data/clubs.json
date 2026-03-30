@@ -48,13 +48,8 @@
     "lat": 51.50797,
     "lng": -0.13786,
     "minSpend": "£2500 / Table",
-    "website": "https://deardarling.london/",
-    "amenities": [
-      "Rosewood interiors",
-      "Invitation-only salon",
-      "Private lift",
-      "House DJ roster"
-    ],
+    "website": "https://dear-darling.co.uk/",
+    "amenities": [],
     "images": [
       "/clubs/Dear-Darling/01-cover.jpg",
       "/clubs/Dear-Darling/02-interior.png"
@@ -82,7 +77,7 @@
     "lat": 51.50095,
     "lng": -0.19135,
     "minSpend": "£2500 / Table",
-    "website": "https://www.galleryclub.co.uk/",
+    "website": "https://www.galleryclublondon.com/",
     "amenities": [],
     "images": [
       "/clubs/Gallery-Club/01-cover.jpg"
@@ -137,13 +132,8 @@
     "lat": 51.4962,
     "lng": -0.1728,
     "minSpend": "£2200 / Table",
-    "website": "https://www.palomalondon.com/",
-    "amenities": [
-      "Intimate booths",
-      "Reservation-only bar",
-      "Private arrival lane",
-      "Sommelier partnerships"
-    ],
+    "website": "https://palomachelsea.com/about",
+    "amenities": [],
     "images": [
       "/clubs/Paloma-Chelsea/01-cover.jpg"
     ]
@@ -170,13 +160,8 @@
     "lat": 51.51035,
     "lng": -0.14785,
     "minSpend": "£2400 / Table",
-    "website": "",
-    "amenities": [
-      "Low-lit lounge",
-      "Champagne cellar access",
-      "Private member lift",
-      "Mosaic bar"
-    ],
+    "website": "https://selene-club.com/",
+    "amenities": [],
     "images": [
       "/clubs/Selene-Club/01-cover.jpg"
     ]
@@ -204,12 +189,7 @@
     "lng": -0.14233,
     "minSpend": "£2700 / Table",
     "website": "https://www.tabulondon.com/",
-    "amenities": [
-      "Speakeasy entry",
-      "Omakase bar",
-      "Private tatami room",
-      "Security escort"
-    ],
+    "amenities": [],
     "images": [
       "/clubs/Tabu-London/01-cover.jpg"
     ]
@@ -238,10 +218,8 @@
     "minSpend": "£2600 / Table",
     "website": "https://www.tapelondon.com/",
     "amenities": [
-      "Artist green room",
       "Bespoke sound",
-      "Bottle showcase",
-      "Secure holding lounge"
+      "Bottle showcase"
     ],
     "images": [
       "/clubs/Tape-London/01-cover.jpg"
@@ -269,12 +247,7 @@
     "lng": -0.13589,
     "minSpend": "£2600 / Table",
     "website": "https://www.thecuckooclub.com/",
-    "amenities": [
-      "Rooftop terrace",
-      "Vintage cocktail salon",
-      "Private dining",
-      "Dedicated host team"
-    ],
+    "amenities": [],
     "images": [
       "/clubs/The-Cuckoo-Club/01-cover.jpg"
     ]
@@ -300,13 +273,8 @@
     "lat": 51.51405,
     "lng": -0.13545,
     "minSpend": "£2800 / Table",
-    "website": "https://www.londonreign.show/",
-    "amenities": [
-      "Stage-adjacent tables",
-      "Talent bookings",
-      "After-hours lounge",
-      "Side entry"
-    ],
+    "website": "https://www.thelondonreign.com/",
+    "amenities": [],
     "images": [
       "/clubs/The-London-Reign/01-cover.jpg"
     ]
@@ -333,11 +301,8 @@
     "lat": 51.4879,
     "lng": -0.1686,
     "minSpend": "£2400 / Table",
-    "website": "https://www.therexclub.com/",
+    "website": "https://www.therexrooms.com/",
     "amenities": [
-      "Discreet townhouse entry",
-      "Private smoking terrace",
-      "Dedicated house manager",
       "Car pull-up"
     ],
     "images": [
