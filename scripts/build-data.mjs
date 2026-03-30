@@ -3,6 +3,7 @@
  * Writes public/data/clubs.json and public/data/cars.json
  *
  * featured_day: YYYY-MM-DD — home "venue of the day" matches this exact date.
+ * best_visit_days: pipe-separated short labels (Thu|Fri|Sat) — recommended nights; shown on nightlife + map.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -118,12 +119,12 @@ function buildClubs() {
       locationTag: row.location_tag || "",
       address: row.address || "",
       daysOpen: row.days_open || "",
+      bestVisitDays: splitPipe(row.best_visit_days || ""),
       featured: bool(row.featured),
       featuredDay: row.featured_day || "",
       venueType,
-      lat: Number(row.lat) || 0,
-      lng: Number(row.lng) || 0,
-      accessTier: row.access_tier || "",
+      lat: Number(String(row.lat ?? "").replace(/\s/g, "")) || 0,
+      lng: Number(String(row.lng ?? "").replace(/\s/g, "")) || 0,
       minSpend: row.min_spend || "",
       amenities: splitPipe(row.amenities || ""),
       images: imgs,

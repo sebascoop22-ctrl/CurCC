@@ -10,12 +10,15 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "15-21 Ganton Street Soho London GB W1F 9BN",
     "daysOpen": "Mon|Wed|Fri|Sat",
-    "featured": true,
-    "featuredDay": "Mon",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.51289552575513,
     "lng": -0.1391195165544926,
-    "accessTier": "",
     "minSpend": "£1000-2500 / Normal Table - Best Table",
     "amenities": [],
     "images": [
@@ -33,12 +36,16 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "91 Jermyn St London SW1Y 6JB England",
     "daysOpen": "Thu|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.51,
     "lng": -0.1425,
-    "accessTier": "Tier I – Executive",
     "minSpend": "£2500 / Table",
     "amenities": [
       "Rosewood interiors",
@@ -62,12 +69,16 @@
     "locationTag": "LONDON • KNIGHTSBRIDGE",
     "address": "2 Kensington High Street London GB W8 4RE",
     "daysOpen": "Wed-Sat",
+    "bestVisitDays": [
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
     "featured": true,
     "featuredDay": "2026-03-29",
     "venueType": "lounge",
     "lat": 51.50823890975732,
     "lng": -0.13708483474701091,
-    "accessTier": "",
     "minSpend": "£2500 / Table",
     "amenities": [],
     "images": [
@@ -85,12 +96,15 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "3-5 Mill St London W1S 2AU England",
     "daysOpen": "Thu-Sat",
-    "featured": true,
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.511,
     "lng": -0.144,
-    "accessTier": "",
     "minSpend": "£2800 / Table",
     "amenities": [],
     "images": [
@@ -109,12 +123,15 @@
     "locationTag": "LONDON • SOUTH KENSINGTON",
     "address": "South Kensington London SW7",
     "daysOpen": "Thu-Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.4945,
     "lng": -0.1745,
-    "accessTier": "Tier I – Principal",
     "minSpend": "£2200 / Table",
     "amenities": [
       "Intimate booths",
@@ -137,12 +154,16 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Thu|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.5095,
     "lng": -0.146,
-    "accessTier": "Tier I – Executive",
     "minSpend": "£2400 / Table",
     "amenities": [
       "Low-lit lounge",
@@ -165,12 +186,16 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Wed-Sat",
+    "bestVisitDays": [
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.513,
     "lng": -0.141,
-    "accessTier": "Tier I – Principal",
     "minSpend": "£2700 / Table",
     "amenities": [
       "Speakeasy entry",
@@ -193,12 +218,16 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Tue|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.5112,
     "lng": -0.1438,
-    "accessTier": "Tier I – Principal",
     "minSpend": "£2600 / Table",
     "amenities": [
       "Artist green room",
@@ -221,12 +250,15 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Wed|Fri|Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.5105,
     "lng": -0.1455,
-    "accessTier": "Tier I – Principal",
     "minSpend": "£2600 / Table",
     "amenities": [
       "Rooftop terrace",
@@ -249,12 +281,15 @@
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Tue|Thu|Fri|Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.514,
     "lng": -0.1405,
-    "accessTier": "Tier I – Principal",
     "minSpend": "£2800 / Table",
     "amenities": [
       "Stage-adjacent tables",
@@ -277,12 +312,16 @@
     "locationTag": "LONDON • CHELSEA",
     "address": "Chelsea London SW3",
     "daysOpen": "Mon|Wed|Thu|Fri|Sat",
+    "bestVisitDays": [
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
     "featured": false,
     "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.488,
     "lng": -0.169,
-    "accessTier": "Tier I – Executive",
     "minSpend": "£2400 / Table",
     "amenities": [
       "Discreet townhouse entry",

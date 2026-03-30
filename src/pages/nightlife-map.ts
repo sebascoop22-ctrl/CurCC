@@ -58,12 +58,15 @@ export async function initNightlifeMap(): Promise<void> {
 
   function fillSidebar(c: Club): void {
     const quote = document.getElementById("sidebar-experience");
-    const tier = document.getElementById("sidebar-tier");
+    const bestNights = document.getElementById("sidebar-best-nights");
     const spend = document.getElementById("sidebar-spend");
     const amenitiesEl = document.getElementById("sidebar-amenities");
     const thumbs = document.getElementById("sidebar-thumbs");
     if (quote) quote.textContent = c.longDescription;
-    if (tier) tier.textContent = c.accessTier;
+    if (bestNights)
+      bestNights.textContent = c.bestVisitDays.length
+        ? c.bestVisitDays.join(" · ")
+        : "—";
     if (spend) spend.textContent = c.minSpend;
     if (amenitiesEl) {
       amenitiesEl.innerHTML = c.amenities

@@ -9,12 +9,13 @@ export interface Club {
   locationTag: string;
   address: string;
   daysOpen: string;
+  /** Short labels from CSV (e.g. Thu, Fri) — pipe-separated in club.csv */
+  bestVisitDays: string[];
   featured: boolean;
   featuredDay: string;
   venueType: VenueType;
   lat: number;
   lng: number;
-  accessTier: string;
   minSpend: string;
   amenities: string[];
   images: string[];

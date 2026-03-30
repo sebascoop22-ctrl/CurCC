@@ -9,9 +9,20 @@ import {
 } from "../forms";
 import "../styles/pages/nightlife.css";
 
-function pillFor(c: Club): string {
-  if (c.featured) return "Signature selection";
-  return c.venueType === "dining" ? "Chef’s table" : "Private lounge";
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/** Whether the venue lists `d`'s weekday in `days_open` (Thu-Sat, Wed|Fri, daily, etc.). */
+function clubOpenOnDate(club: Club, d: Date): boolean {
+  const open = club.daysOpen.toLowerCase();
+  if (!open || open.includes("daily")) return true;
+  const abbr = DOW[d.getDay()].toLowerCase().slice(0, 3);
+  return open.includes(abbr);
 }
 
 function getQueryVenue(): string | null {
@@ -19,10 +30,35 @@ function getQueryVenue(): string | null {
   return q ? decodeURIComponent(q) : null;
 }
 
+function renderClubTags(c: Club, today: Date): string {
+  const open = clubOpenOnDate(c, today);
+  const status = open ? "open" : "closed";
+  const statusLabel = open ? "Open today" : "Closed today";
+  const parts: string[] = [
+    `<span class="club-card__tag club-card__tag--status club-card__tag--${status}">${statusLabel}</span>`,
+  ];
+  if (c.featured) {
+    parts.push(
+      `<span class="club-card__tag club-card__tag--featured">Featured</span>`,
+    );
+  }
+  const tagsRow = `<div class="club-card__tags-row">${parts.join("")}</div>`;
+  if (!c.bestVisitDays.length) return tagsRow;
+  const best = c.bestVisitDays
+    .map(
+      (d) =>
+        `<span class="club-card__tag club-card__tag--best">${escapeHtml(d)}</span>`,
+    )
+    .join("");
+  return `${tagsRow}<div class="club-card__best-nights"><span class="club-card__best-label">Best nights</span><div class="club-card__tags-row club-card__tags-row--best">${best}</div></div>`;
+}
+
 export async function initNightlife(): Promise<void> {
   const clubs = await fetchClubs();
   const grid = document.getElementById("clubs-grid");
   if (!grid) return;
+
+  const today = startOfDay(new Date());
 
   function renderGrid(): void {
     const cards = clubs
@@ -32,12 +68,12 @@ export async function initNightlife(): Promise<void> {
         return `
         <article class="club-card lux-card" data-slug="${c.slug}">
           <div class="club-card__media">
-            <span class="club-card__pill">${escapeHtml(pillFor(c))}</span>
             <img class="club-card__img" src="${img}" alt="" width="640" height="400" loading="lazy" />
           </div>
           <div class="club-card__body">
             <h3>${escapeHtml(c.name)}</h3>
             <p class="club-card__meta">${escapeHtml(c.locationTag)}</p>
+            ${renderClubTags(c, today)}
             <p class="club-card__desc">${escapeHtml(c.shortDescription)}</p>
             <a class="club-card__inquire" href="nightlife-map.html?venue=${encodeURIComponent(c.slug)}">Inquire <span aria-hidden="true">→</span></a>
           </div>
