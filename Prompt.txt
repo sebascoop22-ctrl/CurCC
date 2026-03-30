@@ -1,7 +1,7 @@
 I'm making a new website for my business. My previous website: cooperconcierge.co.uk works slightly but there are a few things with the style I don't like. Please create a new website for me. Also have it optimised for a mobile app as I believe most of my clients will view it from mobile.
 The file structure for the media should be as follows:
     There should be a seperate folder for each page, with each image named in an appropriate manner indicating there position on the page so that I can replace them easily.
-    There should be a folder for the clubs. Each club will consist of a folder, the name of the folder is the name of the club and inside contains all media named in order of appearance. There should also be a .csv file containing a short description, a longer one, reviews, its location, the days its open, if its featured and which day if it is. This will then populate each club on the nightlife page and the featured section on the homepage. Please provide an example club.
+    There should be a folder for the clubs. Each club has a folder (slug name) with media files in order of appearance. All venue rows live in a single public/clubs/clubs.csv (short/long description, reviews, location, days open, featured day, etc.). Build outputs public/data/clubs.json. Please provide an example club folder + row.
     A similar folder structure should exist for the cars on the chauffeuring page.
 The map on the nightlife section should be populated from the club directory.
 The site should have 5 pages:

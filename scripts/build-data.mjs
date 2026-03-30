@@ -1,10 +1,13 @@
 /**
- * Reads each public/clubs/{folder}/club.csv and public/cars/{folder}/vehicle.csv
+ * Reads public/clubs/clubs.csv (all venues) and public/cars/{folder}/vehicle.csv
  * Writes public/data/clubs.json and public/data/cars.json
+ *
+ * Images still live under public/clubs/{slug}/ (or image_folder if set and different from slug).
  *
  * featured_day: YYYY-MM-DD — home "venue of the day" matches this exact date.
  * best_visit_days: pipe-separated short labels (Thu|Fri|Sat) — recommended nights; shown on nightlife + map.
  * website: optional club site URL (https://… or domain only); shown on nightlife cards.
+ * image_folder: optional — asset subdirectory name under public/clubs/; defaults to slug.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -93,24 +96,23 @@ function normalizeWebsite(s) {
 
 function buildClubs() {
   const clubsRoot = path.join(publicDir, "clubs");
+  const masterCsv = path.join(clubsRoot, "clubs.csv");
   if (!fs.existsSync(clubsRoot)) {
     fs.mkdirSync(clubsRoot, { recursive: true });
     return [];
   }
-  const dirs = fs
-    .readdirSync(clubsRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
-
+  if (!fs.existsSync(masterCsv)) {
+    console.warn("build-data: public/clubs/clubs.csv not found — 0 clubs");
+    return [];
+  }
+  const rows = parseCsv(fs.readFileSync(masterCsv, "utf8"));
   const clubs = [];
-  for (const folder of dirs) {
+  for (const row of rows) {
+    const slug = String(row.slug || "").trim();
+    if (!slug) continue;
+    const folder =
+      String(row.image_folder || "").trim() || slug;
     const dir = path.join(clubsRoot, folder);
-    const csvPath = path.join(dir, "club.csv");
-    if (!fs.existsSync(csvPath)) continue;
-    const raw = fs.readFileSync(csvPath, "utf8");
-    const rows = parseCsv(raw);
-    if (!rows.length) continue;
-    const row = rows[0];
     const imgs = listImagesOrdered(dir).map((f) => `/clubs/${folder}/${f}`);
 
     const venueType =
@@ -119,8 +121,8 @@ function buildClubs() {
         : "lounge";
 
     clubs.push({
-      slug: row.slug || folder,
-      name: row.name || folder,
+      slug,
+      name: row.name || slug,
       shortDescription: row.short_description || "",
       longDescription: row.long_description || "",
       reviews: splitReviews(row.reviews || ""),
