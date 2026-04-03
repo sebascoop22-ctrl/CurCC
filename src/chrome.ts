@@ -73,12 +73,19 @@ export function initChrome(active: ActivePage): void {
         <span>© ${new Date().getFullYear()} Cooper Concierge</span>
       </div>
       <div class="site-footer__cluster">
+        <nav class="site-footer__pages" aria-label="Site pages">
+          <a href="${homeHref}">Home</a>
+          <a href="nightlife.html">Nightlife</a>
+          <a href="nightlife-map.html">Map</a>
+          <a href="chauffeuring.html">Chauffeur</a>
+          <a href="security.html">Security</a>
+          <a href="enquiry.html">Enquiry</a>
+        </nav>
         ${socialHtml ? `<nav class="site-footer__social" aria-label="Social">${socialHtml}</nav>` : ""}
         <nav class="site-footer__links" aria-label="Legal">
-          <a href="privacy.html">Privacy policy</a>
-          <a href="terms.html">Terms of service</a>
-          <a href="enquiry.html">Contact</a>
-          <a href="enquiry.html">Enquiry form</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="/sitemap.xml">Sitemap</a>
         </nav>
       </div>
     </div>`;

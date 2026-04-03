@@ -370,6 +370,33 @@ p {
   }
 }
 
+.site-footer__pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  justify-content: center;
+}
+
+@media (min-width: 640px) {
+  .site-footer__pages {
+    justify-content: flex-end;
+  }
+}
+
+.site-footer__pages a {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-cream);
+  text-decoration: none;
+}
+
+.site-footer__pages a:hover {
+  color: var(--cc-gold);
+  text-decoration: none;
+}
+
 .site-footer__social {
   display: flex;
   flex-wrap: wrap;

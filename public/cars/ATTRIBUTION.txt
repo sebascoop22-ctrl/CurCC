@@ -1,0 +1,38 @@
+Fleet hero photos (01-hero.jpg) are from Wikimedia Commons, used under Creative Commons
+Attribution-ShareAlike (CC BY-SA 3.0 or 4.0 — see each file page).
+
+Re-download: node scripts/download-fleet-images.mjs
+
+mercedes-maybach-s-class
+  File: 2023 Mercedes Maybach S580 in Obsidian Black and High-Tech Silver, front left side.jpg
+  https://commons.wikimedia.org/wiki/File:2023_Mercedes_Maybach_S580_in_Obsidian_Black_and_High-Tech_Silver,_front_left_side.jpg
+  Author: Mr.choppers · CC BY-SA 3.0
+
+mercedes-s-class
+  File: Mercedes-Benz S-Klasse (W223) S 580 e (2021) (53322695161).jpg
+  https://commons.wikimedia.org/wiki/File:Mercedes-Benz_S-Klasse_(W223)_S_580_e_(2021)_(53322695161).jpg
+  Author: Alexander Migl · CC BY-SA 4.0
+
+bmw-i7
+  File: BMW G70E i7 xDrive60 Design Pure Excellence Black Sapphire Metallic (4).jpg
+  https://commons.wikimedia.org/wiki/File:BMW_G70E_i7_xDrive60_Design_Pure_Excellence_Black_Sapphire_Metallic_(4).jpg
+  Author: 80-watt · CC BY-SA 4.0
+
+range-rover-26
+  File: 2022 Land Rover Range Rover SV Autobiography.jpg
+  https://commons.wikimedia.org/wiki/File:2022_Land_Rover_Range_Rover_SV_Autobiography.jpg
+  (Current-generation Range Rover; “26 Model” is your product label.)
+  Author: MrWalkr · CC BY-SA 4.0
+
+range-rover-autobiography
+  File: Land Rover Range Rover Autobiography L460 Lantau Bronze (2).jpg
+  https://commons.wikimedia.org/wiki/File:Land_Rover_Range_Rover_Autobiography_L460_Lantau_Bronze_(2).jpg
+  Author: Alexander Migl · CC BY-SA 4.0
+
+rolls-royce-ghost
+  File: Rolls-Royce Ghost II IAA 2021 1X7A0005.jpg
+  https://commons.wikimedia.org/wiki/File:Rolls-Royce_Ghost_II_IAA_2021_1X7A0005.jpg
+  Author: Alexander Migl · CC BY-SA 4.0
+
+When publishing, keep attribution visible (e.g. an “Image credits” page or footer link) and the same
+license on any adapted images per CC BY-SA.

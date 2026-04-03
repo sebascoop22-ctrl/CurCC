@@ -13,7 +13,7 @@
     "gridSize": "medium",
     "order": 1,
     "images": [
-      "/cars/mercedes-maybach-s-class/01-hero.svg"
+      "/cars/mercedes-maybach-s-class/01-hero.jpg"
     ]
   },
   {
@@ -30,7 +30,7 @@
     "gridSize": "medium",
     "order": 2,
     "images": [
-      "/cars/mercedes-s-class/01-hero.svg"
+      "/cars/mercedes-s-class/01-hero.jpg"
     ]
   },
   {
@@ -47,7 +47,7 @@
     "gridSize": "medium",
     "order": 3,
     "images": [
-      "/cars/bmw-i7/01-hero.svg"
+      "/cars/bmw-i7/01-hero.jpg"
     ]
   },
   {
@@ -64,7 +64,7 @@
     "gridSize": "medium",
     "order": 4,
     "images": [
-      "/cars/range-rover-26/01-hero.svg"
+      "/cars/range-rover-26/01-hero.jpg"
     ]
   },
   {
@@ -81,7 +81,7 @@
     "gridSize": "medium",
     "order": 5,
     "images": [
-      "/cars/range-rover-autobiography/01-hero.svg",
+      "/cars/range-rover-autobiography/01-hero.jpg",
       "/cars/range-rover-autobiography/02-detail.svg"
     ]
   },
@@ -99,7 +99,7 @@
     "gridSize": "medium",
     "order": 6,
     "images": [
-      "/cars/rolls-royce-ghost/01-hero.svg"
+      "/cars/rolls-royce-ghost/01-hero.jpg"
     ]
   }
 ]
