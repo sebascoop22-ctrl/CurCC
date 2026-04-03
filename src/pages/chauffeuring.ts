@@ -15,14 +15,15 @@ export async function initChauffeuring(): Promise<void> {
   const cars = await fetchCars().catch(() => [] as Car[]);
   mount.innerHTML = cars
     .map((car) => {
-      const bgImage =
+      /** Single-quoted `style` so `url("…")` from JSON.stringify does not break the attribute. */
+      const bgStyle =
         car.images[0] != null
           ? `background-image: url(${JSON.stringify(car.images[0])})`
           : "";
       const specs = car.specsHover
         .map((s) => `• ${escapeHtml(s)}`)
         .join("<br/>");
-      return `<article class="fleet-tile" style="${bgImage}" tabindex="0">
+      return `<article class="fleet-tile"${bgStyle ? ` style='${bgStyle}'` : ""} tabindex="0">
         <div class="fleet-tile__body">
           <span class="role">${escapeHtml(car.roleLabel)}</span>
           <h3>${escapeHtml(car.name)}</h3>
