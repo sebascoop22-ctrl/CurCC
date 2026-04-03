@@ -51,7 +51,6 @@ export function initChrome(active: ActivePage): void {
     <div class="site-header__inner">
       <a href="${homeHref}" class="site-header__brand">
         <img src="/media/home/brand-logo.jpeg" alt="Cooper Concierge" width="160" height="48" class="site-header__logo-img" />
-        <span class="site-header__wordmark">Cooper Concierge</span>
       </a>
       ${desktopNav()}
       <div class="site-header__actions">

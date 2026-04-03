@@ -175,21 +175,6 @@ p {
   border-radius: 0;
 }
 
-.site-header__wordmark {
-  font-family: var(--cc-font-serif);
-  font-size: 0.78rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--cc-cream);
-}
-
-@media (max-width: 1050px) {
-  .site-header__wordmark {
-    display: none;
-  }
-}
-
 .site-nav {
   display: none;
   align-items: center;

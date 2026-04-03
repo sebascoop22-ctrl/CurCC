@@ -69,12 +69,38 @@ export async function initNightlifeMap(): Promise<void> {
       "sidebar-chauffeur",
     ) as HTMLAnchorElement | null;
     const travel = document.getElementById("sidebar-travel");
+    const guideRoot = document.getElementById("sidebar-guide");
+    const knownForEl = document.getElementById("sidebar-known-for");
+    const knownForBlock = document.getElementById("sidebar-known-for-block");
+    const entryEl = document.getElementById("sidebar-entry");
+    const entryBlock = document.getElementById("sidebar-entry-block");
+    const tablesEl = document.getElementById("sidebar-tables");
+    const tablesBlock = document.getElementById("sidebar-tables-block");
     if (quote) quote.textContent = c.longDescription;
     if (bestNights)
       bestNights.textContent = c.bestVisitDays.length
         ? c.bestVisitDays.join(" · ")
         : "—";
     if (spend) spend.textContent = c.minSpend;
+    const kf = c.knownFor?.trim() ?? "";
+    const en = c.entryPricing?.trim() ?? "";
+    const tb = c.tablesPricing?.trim() ?? "";
+    const hasGuide = !!(kf || en || tb);
+    if (guideRoot) {
+      guideRoot.hidden = !hasGuide;
+    }
+    if (knownForEl && knownForBlock) {
+      knownForEl.textContent = kf;
+      knownForBlock.hidden = !kf;
+    }
+    if (entryEl && entryBlock) {
+      entryEl.textContent = en;
+      entryBlock.hidden = !en;
+    }
+    if (tablesEl && tablesBlock) {
+      tablesEl.textContent = tb;
+      tablesBlock.hidden = !tb;
+    }
     if (amenitiesEl) {
       amenitiesEl.innerHTML = c.amenities
         .map((a) => `<li>${escapeHtml(a)}</li>`)

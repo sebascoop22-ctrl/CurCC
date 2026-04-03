@@ -1,5 +1,33 @@
 [
   {
+    "slug": "77-London",
+    "name": "77 London",
+    "shortDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
+    "longDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
+    "reviews": [
+      "Concierge note: Central London table routing."
+    ],
+    "locationTag": "LONDON • CENTRAL",
+    "address": "Central London",
+    "daysOpen": "Thu-Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.511,
+    "lng": -0.137,
+    "minSpend": "£1000+ / tables",
+    "website": "https://www.77london.com/",
+    "entryPricing": "Girls typically £10–£20; Guys typically £20–£30; higher on headline nights",
+    "tablesPricing": "Lounge from £1000; Premium/VIP from £1500–£2000+",
+    "knownFor": "Upscale central London nightlife with DJs; special events; and bottle service",
+    "amenities": [],
+    "images": []
+  },
+  {
     "slug": "Cirque-Le-Soir",
     "name": "Cirque Le Soir",
     "shortDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
@@ -11,16 +39,19 @@
     "address": "15-21 Ganton Street Soho London GB W1F 9BN",
     "daysOpen": "Mon|Wed|Fri|Sat",
     "bestVisitDays": [
-      "Fri",
-      "Sat"
+      "Mon",
+      "Wed"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Mon | Wed",
     "venueType": "lounge",
     "lat": 51.51302,
     "lng": -0.13678,
     "minSpend": "£1000-2500 / Normal Table - Best Table",
     "website": "https://www.cirquelesoir.com/",
+    "entryPricing": "Guestlist: Free or £10; pricing varies by night—same guide as Dear Darling",
+    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
+    "knownFor": "Mondays and Wednesdays; theatrical spectacle and show energy",
     "amenities": [],
     "images": [
       "/clubs/Cirque-Le-Soir/01-cover.jpg"
@@ -38,8 +69,6 @@
     "address": "91 Jermyn St London SW1Y 6JB England",
     "daysOpen": "Thu|Fri|Sat|Sun",
     "bestVisitDays": [
-      "Fri",
-      "Sat",
       "Sun"
     ],
     "featured": false,
@@ -49,6 +78,9 @@
     "lng": -0.13786,
     "minSpend": "£2500 / Table",
     "website": "https://dear-darling.co.uk/",
+    "entryPricing": "Guestlist: Free or £10; ask concierge for door policy on the night",
+    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
+    "knownFor": "Exclusive Sundays and elegant members' nights; strong Sunday scene",
     "amenities": [],
     "images": [
       "/clubs/Dear-Darling/01-cover.jpg",
@@ -72,12 +104,15 @@
       "Sat"
     ],
     "featured": true,
-    "featuredDay": "2026-03-29",
+    "featuredDay": "Wednesday Thursday Friday Saturday",
     "venueType": "lounge",
     "lat": 51.50095,
     "lng": -0.19135,
     "minSpend": "£2500 / Table",
     "website": "https://www.galleryclublondon.com/",
+    "entryPricing": "Girls: Free or £10; Guys: £30–£40",
+    "tablesPricing": "Cubanista from £500; Main Room from £1000; VIP from £2000",
+    "knownFor": "DJs; big-room energy; premium dancefloor tables",
     "amenities": [],
     "images": [
       "/clubs/Gallery-Club/01-cover.jpg"
@@ -105,6 +140,9 @@
     "lng": -0.14495,
     "minSpend": "£2800 / Table",
     "website": "https://www.maddoxclub.com/",
+    "entryPricing": "Girls: Free or £20; Guys: £40",
+    "tablesPricing": "Green Room from £1000; Main Floor from £1000; VIP from £2000",
+    "knownFor": "Exclusive Mayfair crowd; premium table service",
     "amenities": [],
     "images": [
       "/clubs/Maddox-Club/01-cover.jpg",
@@ -133,6 +171,9 @@
     "lng": -0.1728,
     "minSpend": "£2200 / Table",
     "website": "https://palomachelsea.com/about",
+    "entryPricing": "Girls: Free or £10 early; often £20 standard; Guys: £20–£30",
+    "tablesPricing": "Cubanista from £500; Main Room from £1000; VIP from £1500–£2000",
+    "knownFor": "Chic Chelsea nights; stylish crowd; two-room format",
     "amenities": [],
     "images": [
       "/clubs/Paloma-Chelsea/01-cover.jpg"
@@ -154,13 +195,16 @@
       "Sat",
       "Sun"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Sun",
     "venueType": "lounge",
     "lat": 51.51035,
     "lng": -0.14785,
     "minSpend": "£2400 / Table",
     "website": "https://selene-club.com/",
+    "entryPricing": "Girls: Free or £10 or £20 late; Guys: £40–£50",
+    "tablesPricing": "Standard from £1000–£1500; VIP from £2000",
+    "knownFor": "Exclusive Sundays; Greek-led party crowd",
     "amenities": [],
     "images": [
       "/clubs/Selene-Club/01-cover.jpg"
@@ -189,6 +233,9 @@
     "lng": -0.14233,
     "minSpend": "£2700 / Table",
     "website": "https://www.tabulondon.com/",
+    "entryPricing": "Girls: Free or £10 or £20; Guys: £30–£40",
+    "tablesPricing": "Standard from £1000–£1500; VIP from £2000+",
+    "knownFor": "Japanese-inspired luxury; late-night Mayfair crowd",
     "amenities": [],
     "images": [
       "/clubs/Tabu-London/01-cover.jpg"
@@ -217,10 +264,10 @@
     "lng": -0.14405,
     "minSpend": "£2600 / Table",
     "website": "https://www.tapelondon.com/",
-    "amenities": [
-      "Bespoke sound",
-      "Bottle showcase"
-    ],
+    "entryPricing": "Guestlist: Free or £10; pricing varies by night—same guide as Dear Darling",
+    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
+    "knownFor": "Celebrity nights; high-profile music-led evenings",
+    "amenities": [],
     "images": [
       "/clubs/Tape-London/01-cover.jpg"
     ]
@@ -240,13 +287,16 @@
       "Fri",
       "Sat"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Wed",
     "venueType": "lounge",
     "lat": 51.51087,
     "lng": -0.13589,
     "minSpend": "£2600 / Table",
     "website": "https://www.thecuckooclub.com/",
+    "entryPricing": "Girls: £20; sometimes free or reduced early; Guys: £20 Wednesdays / £50–£60 weekends",
+    "tablesPricing": "Downstairs from £1000; Upstairs from £1500; VIP from £1500–£2000",
+    "knownFor": "Student Wednesdays; reggaeton weekends across two floors",
     "amenities": [],
     "images": [
       "/clubs/The-Cuckoo-Club/01-cover.jpg"
@@ -274,6 +324,9 @@
     "lng": -0.13545,
     "minSpend": "£2800 / Table",
     "website": "https://www.thelondonreign.com/",
+    "entryPricing": "Girls: Free or £10; Guys: £30–£40",
+    "tablesPricing": "Standard from £1000; VIP from £2000",
+    "knownFor": "Luxury show club; performances and champagne shows",
     "amenities": [],
     "images": [
       "/clubs/The-London-Reign/01-cover.jpg"
@@ -295,16 +348,17 @@
       "Fri",
       "Sat"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Fri | Mon",
     "venueType": "lounge",
     "lat": 51.4879,
     "lng": -0.1686,
     "minSpend": "£2400 / Table",
     "website": "https://www.therexrooms.com/",
-    "amenities": [
-      "Car pull-up"
-    ],
+    "entryPricing": "Girls: Free or £10 late; Guys: £20–£30",
+    "tablesPricing": "Standard from £1000; King's Room from £1000+",
+    "knownFor": "Scandi Fridays; celebrity Mondays",
+    "amenities": [],
     "images": [
       "/clubs/The-Rex-Rooms/01-cover.jpg",
       "/clubs/The-Rex-Rooms/02-interior.jpg"

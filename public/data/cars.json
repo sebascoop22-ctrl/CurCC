@@ -1,30 +1,31 @@
 [
   {
-    "slug": "range-rover-autobiography",
-    "name": "Range Rover Autobiography",
-    "roleLabel": "The Workhorse",
+    "slug": "mercedes-maybach-s-class",
+    "name": "Mercedes-Maybach S-Class",
+    "roleLabel": "Flagship rear suite",
     "specsHover": [
-      "4.4L V8",
-      "P405 HP",
-      "Air suspension",
-      "Rear executive seats"
+      "Extended wheelbase",
+      "Executive rear seats with leg rest",
+      "Burmester 4D surround",
+      "Active ambient lighting",
+      "AIR BALANCE fragrance"
     ],
-    "gridSize": "large",
+    "gridSize": "medium",
     "order": 1,
     "images": [
-      "/cars/range-rover-autobiography/01-hero.svg",
-      "/cars/range-rover-autobiography/02-detail.svg"
+      "/cars/mercedes-maybach-s-class/01-hero.svg"
     ]
   },
   {
     "slug": "mercedes-s-class",
-    "name": "Mercedes S-Class",
-    "roleLabel": "Team Logistics",
+    "name": "Mercedes-Benz S-Class",
+    "roleLabel": "Chauffeur specification",
     "specsHover": [
-      "Chauffeur partition",
-      "Executive recline",
-      "Wi-Fi",
-      "Ice well"
+      "Long-wheelbase rear comfort",
+      "MBUX executive rear screens",
+      "ENERGIZING comfort programs",
+      "Optional acoustic partition",
+      "Magic Body Control ride"
     ],
     "gridSize": "medium",
     "order": 2,
@@ -33,31 +34,70 @@
     ]
   },
   {
-    "slug": "mercedes-v-class",
-    "name": "Mercedes V-Class",
-    "roleLabel": "Group movements",
+    "slug": "bmw-i7",
+    "name": "BMW i7",
+    "roleLabel": "Silent electric flagship",
     "specsHover": [
-      "Captains chairs",
-      "Privacy glass",
-      "Luggage bay for 8"
+      "Executive lounge rear seating",
+      "Bowers & Wilkins Diamond surround",
+      "Panoramic Sky Lounge LED roof",
+      "Dual 5.5 inch rear touchscreens",
+      "Instant EV torque with air suspension"
     ],
     "gridSize": "medium",
     "order": 3,
     "images": [
-      "/cars/mercedes-v-class/01-hero.svg"
+      "/cars/bmw-i7/01-hero.svg"
+    ]
+  },
+  {
+    "slug": "range-rover-26",
+    "name": "Range Rover 26 Model",
+    "roleLabel": "Latest-generation SUV",
+    "specsHover": [
+      "All-wheel steering",
+      "Pixel LED headlamps with signature DRL",
+      "Terrain Response 2 and wade mode",
+      "Executive Class rear seating",
+      "Over-the-air updates and Pivi Pro"
+    ],
+    "gridSize": "medium",
+    "order": 4,
+    "images": [
+      "/cars/range-rover-26/01-hero.svg"
+    ]
+  },
+  {
+    "slug": "range-rover-autobiography",
+    "name": "Range Rover Autobiography",
+    "roleLabel": "Ultimate Range Rover",
+    "specsHover": [
+      "V8 twin-turbo mild hybrid",
+      "Electronic air suspension",
+      "Executive rear with hot-stone massage",
+      "Meridian Signature 3D audio",
+      "SV Bespoke trim and privacy glass"
+    ],
+    "gridSize": "medium",
+    "order": 5,
+    "images": [
+      "/cars/range-rover-autobiography/01-hero.svg",
+      "/cars/range-rover-autobiography/02-detail.svg"
     ]
   },
   {
     "slug": "rolls-royce-ghost",
     "name": "Rolls-Royce Ghost",
-    "roleLabel": "Bespoke appointments",
+    "roleLabel": "Uncompromising discretion",
     "specsHover": [
-      "Starlight headliner",
-      "Bespoke audio",
-      "Discreet plate options"
+      "Planar suspension system",
+      "Illuminated Starlight headliner",
+      "18-speaker bespoke audio",
+      "Effortless V12 with satellite-aided transmission",
+      "Coach doors and lambswool footmats"
     ],
-    "gridSize": "feature",
-    "order": 4,
+    "gridSize": "medium",
+    "order": 6,
     "images": [
       "/cars/rolls-royce-ghost/01-hero.svg"
     ]

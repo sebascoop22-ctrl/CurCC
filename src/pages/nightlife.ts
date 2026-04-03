@@ -53,6 +53,30 @@ function renderClubTags(c: Club, today: Date): string {
   return `${tagsRow}<div class="club-card__best-nights"><span class="club-card__best-label">Best nights</span><div class="club-card__tags-row club-card__tags-row--best">${best}</div></div>`;
 }
 
+function renderClubGuide(c: Club): string {
+  const kf = c.knownFor?.trim() ?? "";
+  const en = c.entryPricing?.trim() ?? "";
+  const tb = c.tablesPricing?.trim() ?? "";
+  if (!kf && !en && !tb) return "";
+  const rows: string[] = [];
+  if (kf) {
+    rows.push(
+      `<div class="club-card__guide-row"><span class="club-card__guide-label">Known for</span><span class="club-card__guide-value">${escapeHtml(kf)}</span></div>`,
+    );
+  }
+  if (en) {
+    rows.push(
+      `<div class="club-card__guide-row"><span class="club-card__guide-label">Guestlist &amp; entry</span><span class="club-card__guide-value">${escapeHtml(en)}</span></div>`,
+    );
+  }
+  if (tb) {
+    rows.push(
+      `<div class="club-card__guide-row"><span class="club-card__guide-label">Tables</span><span class="club-card__guide-value">${escapeHtml(tb)}</span></div>`,
+    );
+  }
+  return `<div class="club-card__guide">${rows.join("")}</div>`;
+}
+
 function renderClubActions(c: Club): string {
   const mapHref = `nightlife-map.html?venue=${encodeURIComponent(c.slug)}`;
   const inquireHref = `enquiry.html?context=${encodeURIComponent(`Private table — ${c.name}`)}`;
@@ -89,6 +113,7 @@ export async function initNightlife(): Promise<void> {
             <p class="club-card__meta">${escapeHtml(c.locationTag)}</p>
             ${renderClubTags(c, today)}
             <p class="club-card__desc">${escapeHtml(c.shortDescription)}</p>
+            ${renderClubGuide(c)}
             ${renderClubActions(c)}
           </div>
         </article>`;

@@ -32,6 +32,83 @@ function toYMD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const FEATURED_DAY_ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+const FEATURED_DAY_DMY = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/** Map normalized day token → JS getDay() (0 = Sunday … 6 = Saturday). */
+const WEEKDAY_TOKEN_TO_DOW: Record<string, number> = {
+  sun: 0,
+  sunday: 0,
+  mon: 1,
+  monday: 1,
+  tue: 2,
+  tues: 2,
+  tuesday: 2,
+  wed: 3,
+  wednesday: 3,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
+  thursday: 4,
+  fri: 5,
+  friday: 5,
+  sat: 6,
+  saturday: 6,
+};
+
+function featuredDayToYMD(raw: string): string | null {
+  const t = raw.trim();
+  const iso = t.match(FEATURED_DAY_ISO);
+  if (iso) return t;
+  const dmy = t.match(FEATURED_DAY_DMY);
+  if (dmy) {
+    const dd = String(dmy[1]).padStart(2, "0");
+    const mm = String(dmy[2]).padStart(2, "0");
+    const yyyy = dmy[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+const FEATURED_DAY_STOPWORDS = new Set([
+  "and",
+  "&",
+  "to",
+  "thru",
+  "through",
+  "on",
+]);
+
+function parseFeaturedWeekdays(raw: string): number[] | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (FEATURED_DAY_ISO.test(t) || FEATURED_DAY_DMY.test(t)) return null;
+  const parts = t
+    .split(/[\s,|;/]+/)
+    .map((p) => p.replace(/\.$/, "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!parts.length) return null;
+  const days: number[] = [];
+  for (const p of parts) {
+    if (FEATURED_DAY_STOPWORDS.has(p)) continue;
+    const dow = WEEKDAY_TOKEN_TO_DOW[p];
+    if (dow === undefined) continue;
+    if (!days.includes(dow)) days.push(dow);
+  }
+  return days.length ? days : null;
+}
+
+function clubMatchesFeaturedDate(club: Club, d: Date): boolean {
+  if (!club.featured) return false;
+  const raw = club.featuredDay.trim();
+  if (!raw) return false;
+  const ymd = toYMD(d);
+  const asYmd = featuredDayToYMD(raw);
+  if (asYmd !== null) return asYmd === ymd;
+  const weekdays = parseFeaturedWeekdays(raw);
+  return weekdays !== null && weekdays.includes(d.getDay());
+}
+
 function formatBannerDate(d: Date): string {
   return `${DOW_SHORT[d.getDay()]}, ${MO_SHORT[d.getMonth()]} ${d.getDate()}`;
 }
@@ -42,9 +119,9 @@ function startOfToday(): Date {
   return t;
 }
 
-function selectClubForDate(clubs: Club[], ymd: string): Club | null {
-  const exact = clubs.find((c) => c.featured && c.featuredDay === ymd);
-  if (exact) return exact;
+function selectClubForDate(clubs: Club[], d: Date): Club | null {
+  const match = clubs.find((c) => clubMatchesFeaturedDate(c, d));
+  if (match) return match;
   const anyFeatured = clubs.find((c) => c.featured);
   if (anyFeatured) return anyFeatured;
   return clubs[0] ?? null;
@@ -99,8 +176,7 @@ export async function initHome(): Promise<void> {
 
   function refreshFeatured(): void {
     dateLabelEl.textContent = formatBannerDate(featuredDate);
-    const ymd = toYMD(featuredDate);
-    const club = selectClubForDate(clubs, ymd);
+    const club = selectClubForDate(clubs, featuredDate);
     applyClub(club);
   }
 

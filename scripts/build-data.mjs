@@ -4,10 +4,12 @@
  *
  * Images still live under public/clubs/{slug}/ (or image_folder if set and different from slug).
  *
- * featured_day: YYYY-MM-DD — home "venue of the day" matches this exact date.
+ * featured_day: optional. Exact calendar date as YYYY-MM-DD or DD/MM/YYYY; and/or weekday names
+ *   (e.g. "Monday Wednesday", "Mon | Fri", "Sun") — home featured banner matches the viewer's selected date.
  * best_visit_days: pipe-separated short labels (Thu|Fri|Sat) — recommended nights; shown on nightlife + map.
  * website: optional club site URL (https://… or domain only); shown on nightlife cards.
  * image_folder: optional — asset subdirectory name under public/clubs/; defaults to slug.
+ * known_for, entry_pricing, tables_pricing: optional venue guide copy (avoid commas in CSV or quote fields).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -137,6 +139,9 @@ function buildClubs() {
       lng: Number(String(row.lng ?? "").replace(/\s/g, "")) || 0,
       minSpend: row.min_spend || "",
       website: normalizeWebsite(row.website || ""),
+      entryPricing: row.entry_pricing || "",
+      tablesPricing: row.tables_pricing || "",
+      knownFor: row.known_for || "",
       amenities: splitPipe(row.amenities || ""),
       images: imgs,
     });

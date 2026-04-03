@@ -211,6 +211,40 @@
   flex: 1;
 }
 
+.club-card__guide {
+  margin: 0 0 1rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--cc-muted);
+}
+
+.club-card__guide-row {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.65rem;
+}
+
+.club-card__guide-row:last-child {
+  margin-bottom: 0;
+}
+
+.club-card__guide-label {
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+}
+
+.club-card__guide-value {
+  color: rgba(232, 228, 218, 0.92);
+}
+
 .club-card__actions {
   display: flex;
   flex-wrap: wrap;

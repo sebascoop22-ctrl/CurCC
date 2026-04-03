@@ -155,6 +155,36 @@
   color: var(--cc-cream);
 }
 
+.map-sidebar__guide {
+  margin-bottom: var(--cc-space-md);
+  padding-bottom: var(--cc-space-sm);
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.map-sidebar__guide-block {
+  margin-bottom: var(--cc-space-sm);
+}
+
+.map-sidebar__guide-block:last-child {
+  margin-bottom: 0;
+}
+
+.map-sidebar__guide-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+}
+
+.map-sidebar__guide-text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--cc-muted);
+}
+
 .amenities-list {
   margin: 0 0 var(--cc-space-md);
   padding-left: 1.1rem;

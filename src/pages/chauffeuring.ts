@@ -9,21 +9,12 @@ import {
 } from "../forms";
 import "../styles/pages/chauffeuring.css";
 
-function layoutClass(car: Car, mediumCount: { n: number }): string {
-  if (car.gridSize === "large") return "fleet-tile--large";
-  if (car.gridSize === "feature") return "fleet-tile--feature";
-  const idx = mediumCount.n++;
-  return idx === 0 ? "fleet-tile--medium-a" : "fleet-tile--medium-b";
-}
-
 export async function initChauffeuring(): Promise<void> {
   const mount = document.getElementById("fleet-bento");
   if (!mount) return;
   const cars = await fetchCars().catch(() => [] as Car[]);
-  const mediumCount = { n: 0 };
   mount.innerHTML = cars
     .map((car) => {
-      const extra = layoutClass(car, mediumCount);
       const bgImage =
         car.images[0] != null
           ? `background-image: url(${JSON.stringify(car.images[0])})`
@@ -31,7 +22,7 @@ export async function initChauffeuring(): Promise<void> {
       const specs = car.specsHover
         .map((s) => `• ${escapeHtml(s)}`)
         .join("<br/>");
-      return `<article class="fleet-tile ${extra}" style="${bgImage}" tabindex="0">
+      return `<article class="fleet-tile" style="${bgImage}" tabindex="0">
         <div class="fleet-tile__body">
           <span class="role">${escapeHtml(car.roleLabel)}</span>
           <h3>${escapeHtml(car.name)}</h3>
