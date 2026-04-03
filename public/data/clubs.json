@@ -43,7 +43,7 @@
       "Wed"
     ],
     "featured": true,
-    "featuredDay": "Mon | Wed",
+    "featuredDay": "Wednesday",
     "venueType": "lounge",
     "lat": 51.51302,
     "lng": -0.13678,
@@ -104,7 +104,7 @@
       "Sat"
     ],
     "featured": true,
-    "featuredDay": "Wednesday Thursday Friday Saturday",
+    "featuredDay": "Friday",
     "venueType": "lounge",
     "lat": 51.50095,
     "lng": -0.19135,
@@ -133,8 +133,8 @@
       "Fri",
       "Sat"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Thursday",
     "venueType": "lounge",
     "lat": 51.51155,
     "lng": -0.14495,
@@ -164,8 +164,8 @@
       "Fri",
       "Sat"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Saturday",
     "venueType": "lounge",
     "lat": 51.4962,
     "lng": -0.1728,
@@ -196,7 +196,7 @@
       "Sun"
     ],
     "featured": true,
-    "featuredDay": "Sun",
+    "featuredDay": "Sunday",
     "venueType": "lounge",
     "lat": 51.51035,
     "lng": -0.14785,
@@ -257,8 +257,8 @@
       "Sat",
       "Sun"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Tuesday",
     "venueType": "lounge",
     "lat": 51.51376,
     "lng": -0.14405,
@@ -287,8 +287,8 @@
       "Fri",
       "Sat"
     ],
-    "featured": true,
-    "featuredDay": "Wed",
+    "featured": false,
+    "featuredDay": "",
     "venueType": "lounge",
     "lat": 51.51087,
     "lng": -0.13589,
@@ -349,7 +349,7 @@
       "Sat"
     ],
     "featured": true,
-    "featuredDay": "Fri | Mon",
+    "featuredDay": "Monday",
     "venueType": "lounge",
     "lat": 51.4879,
     "lng": -0.1686,
