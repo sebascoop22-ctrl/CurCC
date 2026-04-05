@@ -1,5 +1,9 @@
 import { fetchClubs } from "../data/fetch-data";
 import type { Club } from "../types";
+import {
+  openVenueRequestModal,
+  type VenueRequestKind,
+} from "../components/venue-request-modal";
 import "../styles/pages/map.css";
 
 function iconForVenue(t: Club["venueType"]): string {
@@ -28,6 +32,10 @@ export async function initNightlifeMap(): Promise<void> {
   });
   if (window.innerWidth >= 900) sidebar?.classList.add("is-expanded");
 
+  /** Default London overview when no venue is selected — keep in sync with recenter fallback */
+  const defaultMapCenter: [number, number] = [-0.165, 51.505];
+  const defaultMapZoom = 13.0;
+
   const map = new maplibregl.Map({
     container: mapEl,
     style: {
@@ -46,15 +54,46 @@ export async function initNightlifeMap(): Promise<void> {
       },
       layers: [{ id: "carto", type: "raster", source: "carto" }],
     },
-    center: [-0.12, 51.51],
-    zoom: 11.5,
-    attributionControl: true,
+    center: defaultMapCenter,
+    zoom: defaultMapZoom,
+    attributionControl: false,
   });
 
   map.addControl(
     new maplibregl.NavigationControl({ showCompass: false }),
     "top-right",
   );
+
+  /** Screen-size markers when zoomed out (less overlap); floor so pins stay visible. */
+  const MARKER_SCALE_MIN = 0.3;
+  const MARKER_SCALE_ZOOM_LOW = 9.25;
+  const MARKER_SCALE_ZOOM_HIGH = 14.25;
+
+  function markerScaleFromZoom(zoom: number): number {
+    const t =
+      (zoom - MARKER_SCALE_ZOOM_LOW) /
+      (MARKER_SCALE_ZOOM_HIGH - MARKER_SCALE_ZOOM_LOW);
+    const s = MARKER_SCALE_MIN + (1 - MARKER_SCALE_MIN) * t;
+    return Math.min(1, Math.max(MARKER_SCALE_MIN, s));
+  }
+
+  const markerScaleTargets: HTMLElement[] = [];
+  let markerScaleRaf = 0;
+  function applyMarkerScales(): void {
+    const z = map.getZoom();
+    const s = markerScaleFromZoom(z);
+    for (const el of markerScaleTargets) {
+      el.style.transformOrigin = "bottom center";
+      el.style.transform = `scale(${s})`;
+    }
+  }
+  function scheduleMarkerScales(): void {
+    if (markerScaleRaf) return;
+    markerScaleRaf = requestAnimationFrame(() => {
+      markerScaleRaf = 0;
+      applyMarkerScales();
+    });
+  }
 
   function fillSidebar(c: Club): void {
     const quote = document.getElementById("sidebar-experience");
@@ -70,36 +109,81 @@ export async function initNightlifeMap(): Promise<void> {
     ) as HTMLAnchorElement | null;
     const travel = document.getElementById("sidebar-travel");
     const guideRoot = document.getElementById("sidebar-guide");
-    const knownForEl = document.getElementById("sidebar-known-for");
+    const pricingDetails = document.getElementById(
+      "sidebar-pricing-details",
+    ) as HTMLDetailsElement | null;
+    const knownForList = document.getElementById("sidebar-known-for-list");
     const knownForBlock = document.getElementById("sidebar-known-for-block");
-    const entryEl = document.getElementById("sidebar-entry");
     const entryBlock = document.getElementById("sidebar-entry-block");
-    const tablesEl = document.getElementById("sidebar-tables");
+    const entryWomen = document.getElementById("sidebar-entry-women");
+    const entryMen = document.getElementById("sidebar-entry-men");
+    const entryWomenWrap = document.getElementById("sidebar-entry-women-wrap");
+    const entryMenWrap = document.getElementById("sidebar-entry-men-wrap");
     const tablesBlock = document.getElementById("sidebar-tables-block");
+    const tsStd = document.getElementById("sidebar-tables-standard");
+    const tsLux = document.getElementById("sidebar-tables-luxury");
+    const tsVip = document.getElementById("sidebar-tables-vip");
+    const tsStdWrap = document.getElementById("sidebar-tables-standard-wrap");
+    const tsLuxWrap = document.getElementById("sidebar-tables-luxury-wrap");
+    const tsVipWrap = document.getElementById("sidebar-tables-vip-wrap");
     if (quote) quote.textContent = c.longDescription;
     if (bestNights)
       bestNights.textContent = c.bestVisitDays.length
         ? c.bestVisitDays.join(" · ")
         : "—";
     if (spend) spend.textContent = c.minSpend;
-    const kf = c.knownFor?.trim() ?? "";
-    const en = c.entryPricing?.trim() ?? "";
-    const tb = c.tablesPricing?.trim() ?? "";
-    const hasGuide = !!(kf || en || tb);
+    const kfItems = c.knownFor?.filter((x) => x.trim()) ?? [];
+    const ew = c.entryPricingWomen?.trim() ?? "";
+    const em = c.entryPricingMen?.trim() ?? "";
+    const tst = c.tablesStandard?.trim() ?? "";
+    const tlx = c.tablesLuxury?.trim() ?? "";
+    const tv = c.tablesVip?.trim() ?? "";
+    const hasKnown = kfItems.length > 0;
+    const hasEntry = !!(ew || em);
+    const hasTables = !!(tst || tlx || tv);
+    const hasPricing = hasEntry || hasTables;
+    const hasGuide = hasKnown || hasPricing;
     if (guideRoot) {
       guideRoot.hidden = !hasGuide;
     }
-    if (knownForEl && knownForBlock) {
-      knownForEl.textContent = kf;
-      knownForBlock.hidden = !kf;
+    if (pricingDetails) {
+      pricingDetails.hidden = !hasPricing;
+      pricingDetails.open = false;
     }
-    if (entryEl && entryBlock) {
-      entryEl.textContent = en;
-      entryBlock.hidden = !en;
+    if (knownForList && knownForBlock) {
+      if (hasKnown) {
+        knownForList.innerHTML = kfItems
+          .map((item) => `<li>${escapeHtml(item)}</li>`)
+          .join("");
+        knownForBlock.hidden = false;
+      } else {
+        knownForList.innerHTML = "";
+        knownForBlock.hidden = true;
+      }
     }
-    if (tablesEl && tablesBlock) {
-      tablesEl.textContent = tb;
-      tablesBlock.hidden = !tb;
+    if (entryBlock && entryWomen && entryMen && entryWomenWrap && entryMenWrap) {
+      entryWomen.textContent = ew;
+      entryMen.textContent = em;
+      entryWomenWrap.hidden = !ew;
+      entryMenWrap.hidden = !em;
+      entryBlock.hidden = !hasEntry;
+    }
+    if (
+      tablesBlock &&
+      tsStd &&
+      tsLux &&
+      tsVip &&
+      tsStdWrap &&
+      tsLuxWrap &&
+      tsVipWrap
+    ) {
+      tsStd.textContent = tst;
+      tsLux.textContent = tlx;
+      tsVip.textContent = tv;
+      tsStdWrap.hidden = !tst;
+      tsLuxWrap.hidden = !tlx;
+      tsVipWrap.hidden = !tv;
+      tablesBlock.hidden = !hasTables;
     }
     if (amenitiesEl) {
       amenitiesEl.innerHTML = c.amenities
@@ -138,6 +222,24 @@ export async function initNightlifeMap(): Promise<void> {
         : `Chauffeur pickup — ${c.name}`;
       chauffeur.href = `enquiry.html?context=${encodeURIComponent(ctx)}`;
     }
+    const guestBlock = document.getElementById("sidebar-guestlist-block");
+    const guestLines = document.getElementById("sidebar-guestlist-lines");
+    if (guestBlock && guestLines) {
+      if (c.guestlists?.length) {
+        guestBlock.hidden = false;
+        guestLines.innerHTML = c.guestlists
+          .map((g) => {
+            const days = g.days.length ? g.days.join(" · ") : "—";
+            const rec = g.recurrence === "one_off" ? "One-off" : "Weekly";
+            const note = g.notes ? ` — ${escapeHtml(g.notes)}` : "";
+            return `<li>${escapeHtml(days)} · ${rec}${note}</li>`;
+          })
+          .join("");
+      } else {
+        guestBlock.hidden = true;
+        guestLines.innerHTML = "";
+      }
+    }
   }
 
   function focusSidebarPanel(): void {
@@ -148,9 +250,22 @@ export async function initNightlifeMap(): Promise<void> {
 
   let selectedClub: Club | null = null;
 
+  function updateSidebarCtas(): void {
+    const book = document.getElementById(
+      "sidebar-book",
+    ) as HTMLButtonElement | null;
+    const gl = document.getElementById(
+      "sidebar-guestlist",
+    ) as HTMLButtonElement | null;
+    const ok = !!selectedClub;
+    if (book) book.disabled = !ok;
+    if (gl) gl.disabled = !ok;
+  }
+
   function selectClub(c: Club): void {
     selectedClub = c;
     fillSidebar(c);
+    updateSidebarCtas();
     const url = new URL(window.location.href);
     url.searchParams.set("venue", c.slug);
     window.history.replaceState({}, "", url);
@@ -169,6 +284,8 @@ export async function initNightlifeMap(): Promise<void> {
 
   for (const c of clubs) {
     if (!c.lat || !c.lng) continue;
+    const root = document.createElement("div");
+    root.className = "map-marker-root";
     const wrap = document.createElement("div");
     wrap.className = "marker-wrap";
     const label = document.createElement("div");
@@ -182,7 +299,9 @@ export async function initNightlifeMap(): Promise<void> {
     el.title = c.name;
     wrap.appendChild(label);
     wrap.appendChild(el);
-    new maplibregl.Marker({ element: wrap, anchor: "bottom" })
+    root.appendChild(wrap);
+    markerScaleTargets.push(wrap);
+    new maplibregl.Marker({ element: root, anchor: "bottom" })
       .setLngLat([c.lng, c.lat])
       .addTo(map);
     el.addEventListener("click", () => selectClub(c));
@@ -195,11 +314,21 @@ export async function initNightlifeMap(): Promise<void> {
   }
 
   const paramSlug = getQueryVenue();
-  selectedClub =
-    clubs.find((c) => c.slug === paramSlug) || clubs[0] || null;
+  selectedClub = paramSlug
+    ? clubs.find((c) => c.slug === paramSlug) ?? null
+    : null;
+
+  function syncMarkerSizesOnMapReady(): void {
+    applyMarkerScales();
+  }
+  if (map.loaded()) syncMarkerSizesOnMapReady();
+  else map.once("load", syncMarkerSizesOnMapReady);
+  map.on("zoom", scheduleMarkerScales);
+  map.on("zoomend", applyMarkerScales);
 
   if (selectedClub) {
     fillSidebar(selectedClub);
+    updateSidebarCtas();
     if (selectedClub.lat && selectedClub.lng) {
       map.jumpTo({
         center: [selectedClub.lng, selectedClub.lat],
@@ -210,6 +339,8 @@ export async function initNightlifeMap(): Promise<void> {
       sidebar?.classList.add("is-expanded");
       requestAnimationFrame(() => focusSidebarPanel());
     }
+  } else {
+    updateSidebarCtas();
   }
 
   document.getElementById("map-zoom-in")?.addEventListener("click", () => {
@@ -224,16 +355,28 @@ export async function initNightlifeMap(): Promise<void> {
         center: [selectedClub.lng, selectedClub.lat],
         zoom: 14,
       });
-    } else map.flyTo({ center: [-0.12, 51.51], zoom: 11.5 });
+    } else {
+      map.flyTo({ center: defaultMapCenter, zoom: defaultMapZoom });
+    }
   });
 
-  document.getElementById("sidebar-book")?.addEventListener("click", () => {
-    const c = selectedClub;
-    const ctx = c
-      ? `Private table — ${c.name}`
-      : "Private table";
-    window.location.href = `enquiry.html?context=${encodeURIComponent(ctx)}`;
-  });
+  const requestHost = document.getElementById("cc-venue-request-root");
+
+  function wireVenueRequest(
+    id: string,
+    kind: VenueRequestKind,
+  ): void {
+    document.getElementById(id)?.addEventListener("click", () => {
+      if (!selectedClub) return;
+      openVenueRequestModal({
+        host: requestHost,
+        kind,
+        club: selectedClub,
+      });
+    });
+  }
+  wireVenueRequest("sidebar-book", "private_table");
+  wireVenueRequest("sidebar-guestlist", "guestlist");
 }
 
 function escapeHtml(s: string): string {

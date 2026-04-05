@@ -6,6 +6,8 @@ const FORM_LABELS: Record<string, string> = {
   home_lead: "Home — lead invite",
   general_enquiry: "General enquiry",
   nightlife_lead: "Nightlife lead",
+  nightlife_private_table: "Nightlife — private table",
+  nightlife_guestlist: "Nightlife — guestlist",
   fleet_request: "Chauffeuring — fleet request",
   security_consult: "Security — consultation",
 };
@@ -126,4 +128,10 @@ export function showFormError(el: HTMLElement | null, message: string): void {
 
 export function validateEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+/** Loose phone check: enough digits for a reachable number */
+export function validatePhone(v: string): boolean {
+  const digits = v.replace(/\D/g, "");
+  return digits.length >= 8;
 }

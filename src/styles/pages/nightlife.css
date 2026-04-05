@@ -192,8 +192,11 @@
 .club-card__body h3 {
   color: var(--cc-cream);
   font-size: 1.45rem;
+  font-weight: 500;
+  font-style: normal;
   margin-bottom: 0.35rem;
   font-family: var(--cc-font-serif);
+  line-height: 1.2;
 }
 
 .club-card__meta {
@@ -208,50 +211,278 @@
 .club-card__desc {
   margin: 0 0 1rem;
   line-height: 1.65;
-  flex: 1;
 }
 
-.club-card__guide {
-  margin: 0 0 1rem;
-  padding: 0.85rem 0.9rem;
-  border-radius: var(--cc-radius);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.2);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  color: var(--cc-muted);
+.club-card__tail {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding-top: 0.35rem;
 }
 
-.club-card__guide-row {
-  display: grid;
-  gap: 0.2rem;
-  margin-bottom: 0.65rem;
+.club-card__section-title {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin: 0 0 0.55rem;
 }
 
-.club-card__guide-row:last-child {
+.club-card__known-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: rgba(232, 228, 218, 0.9);
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+
+.club-card__known-list li {
+  margin-bottom: 0.4rem;
+}
+
+.club-card__known-list li:last-child {
   margin-bottom: 0;
 }
 
-.club-card__guide-label {
-  display: block;
-  font-size: 0.58rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--cc-gold);
+.club-card__pricing-details {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.65rem;
 }
 
-.club-card__guide-value {
-  color: rgba(232, 228, 218, 0.92);
+.club-card__pricing-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0 0.25rem;
+  user-select: none;
+}
+
+.club-card__pricing-summary::-webkit-details-marker {
+  display: none;
+}
+
+.club-card__pricing-summary::marker {
+  content: "";
+}
+
+/* Match .club-card__body h3 (venue name) */
+.club-card__pricing-title {
+  margin: 0;
+  font-family: var(--cc-font-serif);
+  font-size: 1.45rem;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--cc-cream);
+  line-height: 1.2;
+}
+
+.club-card__pricing-chevron {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--cc-muted);
+  border-bottom: 2px solid var(--cc-muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-right: 0.2rem;
+  margin-bottom: 0.15rem;
+}
+
+.club-card__pricing-details[open] .club-card__pricing-chevron {
+  transform: rotate(-135deg);
+  margin-bottom: 0;
+}
+
+.club-card__pricing-body {
+  padding: 0.45rem 0 0.1rem;
+}
+
+.club-card__pricing-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.club-card__pricing-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1rem;
+}
+
+.club-card__pricing-line-label {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  padding-top: 0.15rem;
+}
+
+.club-card__pricing-inline {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1.15rem;
+}
+
+.club-card__price-item {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.club-card__price-item-label {
+  font-size: 0.52rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+}
+
+.club-card__price-item-value {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--cc-cream);
+}
+
+.club-card__pricing-line--min {
+  align-items: center;
+}
+
+.club-card__pricing-line--min .club-card__pricing-line-label {
+  padding-top: 0;
+}
+
+.club-card__pricing-min-value {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--cc-cream);
 }
 
 .club-card__actions {
+  padding-top: 0.35rem;
+}
+
+.club-card__actions-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.club-card__web-link {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--cc-muted);
+  border-bottom: 1px solid transparent;
+  padding: 0.4rem 0;
+  white-space: nowrap;
+}
+
+.club-card__web-link:hover {
+  color: var(--cc-cream);
+  border-bottom-color: rgba(212, 196, 168, 0.35);
+}
+
+.club-card__map-pin {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
   align-items: center;
-  margin-top: auto;
-  padding-top: 0.25rem;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: var(--cc-muted);
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: rgba(0, 0, 0, 0.22);
+  text-decoration: none;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.club-card__map-pin:hover {
+  color: var(--cc-gold);
+  border-color: rgba(212, 196, 168, 0.45);
+}
+
+.club-card__pin-icon {
+  display: block;
+}
+
+.club-card__split-book {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--cc-radius);
+  overflow: hidden;
+  border: 1px solid rgba(212, 196, 168, 0.42);
+}
+
+.club-card__split-book-top,
+.club-card__split-book-bottom {
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.4rem 0.5rem;
+  text-align: center;
+  border: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.club-card__split-book-top {
+  background: rgba(212, 196, 168, 0.09);
+  color: var(--cc-cream);
+  border-bottom: 1px solid rgba(212, 196, 168, 0.38);
+}
+
+.club-card__split-book-bottom {
+  background: rgba(212, 196, 168, 0.22);
+  color: var(--cc-bg-deep);
+}
+
+.club-card__split-book-top:hover {
+  background: rgba(212, 196, 168, 0.14);
+}
+
+.club-card__split-book-bottom:hover {
+  background: var(--cc-gold);
+  color: var(--cc-bg-deep);
+}
+
+.club-card__split-book-label {
+  display: block;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.25;
 }
 
 .club-card__link {
@@ -279,7 +510,6 @@
 
 .club-card__link--primary {
   color: var(--cc-gold);
-  margin-left: auto;
 }
 
 .club-card__link--primary:hover {
@@ -287,11 +517,23 @@
   color: var(--cc-gold);
 }
 
-@media (max-width: 480px) {
-  .club-card__link--primary {
-    margin-left: 0;
-    width: 100%;
-    justify-content: flex-start;
+@media (max-width: 520px) {
+  .club-card__actions-bar {
+    flex-wrap: wrap;
+  }
+
+  .club-card__split-book {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .club-card__web-link {
+    order: 1;
+  }
+
+  .club-card__map-pin {
+    order: 2;
+    margin-left: auto;
   }
 }
 

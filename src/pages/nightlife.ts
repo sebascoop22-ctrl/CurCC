@@ -1,6 +1,10 @@
 import { fetchClubs } from "../data/fetch-data";
 import type { Club } from "../types";
 import {
+  openVenueRequestModal,
+  type VenueRequestKind,
+} from "../components/venue-request-modal";
+import {
   hideFormError,
   showFormError,
   showFormSuccess,
@@ -8,6 +12,8 @@ import {
   validateEmail,
 } from "../forms";
 import "../styles/pages/nightlife.css";
+
+const MAP_PIN_SVG = `<svg class="club-card__pin-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5z"/></svg>`;
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -53,41 +59,92 @@ function renderClubTags(c: Club, today: Date): string {
   return `${tagsRow}<div class="club-card__best-nights"><span class="club-card__best-label">Best nights</span><div class="club-card__tags-row club-card__tags-row--best">${best}</div></div>`;
 }
 
-function renderClubGuide(c: Club): string {
-  const kf = c.knownFor?.trim() ?? "";
-  const en = c.entryPricing?.trim() ?? "";
-  const tb = c.tablesPricing?.trim() ?? "";
-  if (!kf && !en && !tb) return "";
-  const rows: string[] = [];
-  if (kf) {
-    rows.push(
-      `<div class="club-card__guide-row"><span class="club-card__guide-label">Known for</span><span class="club-card__guide-value">${escapeHtml(kf)}</span></div>`,
-    );
-  }
-  if (en) {
-    rows.push(
-      `<div class="club-card__guide-row"><span class="club-card__guide-label">Guestlist &amp; entry</span><span class="club-card__guide-value">${escapeHtml(en)}</span></div>`,
-    );
-  }
-  if (tb) {
-    rows.push(
-      `<div class="club-card__guide-row"><span class="club-card__guide-label">Tables</span><span class="club-card__guide-value">${escapeHtml(tb)}</span></div>`,
-    );
-  }
-  return `<div class="club-card__guide">${rows.join("")}</div>`;
+function renderClubKnownFor(c: Club): string {
+  const items = (c.knownFor ?? []).map((x) => x.trim()).filter(Boolean);
+  if (!items.length) return "";
+  return `<div class="club-card__known">
+      <h4 class="club-card__section-title">Known for</h4>
+      <ul class="club-card__known-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>`;
+}
+
+function renderPriceItem(label: string, value: string): string {
+  return `<span class="club-card__price-item"><span class="club-card__price-item-label">${escapeHtml(label)}</span><span class="club-card__price-item-value">${escapeHtml(value)}</span></span>`;
+}
+
+function renderClubPricing(c: Club): string {
+  const w = c.entryPricingWomen?.trim();
+  const m = c.entryPricingMen?.trim();
+  const s = c.tablesStandard?.trim();
+  const l = c.tablesLuxury?.trim();
+  const v = c.tablesVip?.trim();
+  const entryItems = [
+    w ? renderPriceItem("Women", w) : "",
+    m ? renderPriceItem("Men", m) : "",
+  ].filter(Boolean);
+  const tableItems = [
+    s ? renderPriceItem("Standard", s) : "",
+    l ? renderPriceItem("Luxury", l) : "",
+    v ? renderPriceItem("VIP", v) : "",
+  ].filter(Boolean);
+  const min = c.minSpend?.trim();
+  const hasEntry = entryItems.length > 0;
+  const hasTables = tableItems.length > 0;
+  const hasMin = Boolean(min);
+  if (!hasEntry && !hasTables && !hasMin) return "";
+  const entryLine = hasEntry
+    ? `<div class="club-card__pricing-line">
+        <span class="club-card__pricing-line-label">Entry</span>
+        <div class="club-card__pricing-inline">${entryItems.join("")}</div>
+      </div>`
+    : "";
+  const tablesLine = hasTables
+    ? `<div class="club-card__pricing-line">
+        <span class="club-card__pricing-line-label">Tables</span>
+        <div class="club-card__pricing-inline">${tableItems.join("")}</div>
+      </div>`
+    : "";
+  const minLine = hasMin
+    ? `<div class="club-card__pricing-line club-card__pricing-line--min">
+        <span class="club-card__pricing-line-label">Min. spend</span>
+        <p class="club-card__pricing-min-value">${escapeHtml(min!)}</p>
+      </div>`
+    : "";
+  return `<details class="club-card__pricing-details">
+      <summary class="club-card__pricing-summary">
+        <span class="club-card__pricing-title">Pricing</span>
+        <span class="club-card__pricing-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="club-card__pricing-body">
+        <div class="club-card__pricing-lines">
+          ${entryLine}
+          ${tablesLine}
+          ${minLine}
+        </div>
+      </div>
+    </details>`;
 }
 
 function renderClubActions(c: Club): string {
   const mapHref = `nightlife-map.html?venue=${encodeURIComponent(c.slug)}`;
-  const inquireHref = `enquiry.html?context=${encodeURIComponent(`Private table — ${c.name}`)}`;
+  const slugAttr = escapeHtml(c.slug);
   const website =
     c.website.trim() !== ""
-      ? `<a class="club-card__link club-card__link--ghost" href="${escapeHtml(c.website)}" target="_blank" rel="noopener noreferrer">Club website <span aria-hidden="true">↗</span></a>`
+      ? `<a class="club-card__web-link" href="${escapeHtml(c.website)}" target="_blank" rel="noopener noreferrer" aria-label="Club website (opens in new tab)">Website <span aria-hidden="true">↗</span></a>`
       : "";
   return `<div class="club-card__actions">
-      ${website}
-      <a class="club-card__link club-card__link--ghost" href="${mapHref}">View on map</a>
-      <a class="club-card__link club-card__link--primary" href="${inquireHref}">Inquire <span aria-hidden="true">→</span></a>
+      <div class="club-card__actions-bar">
+        ${website}
+        <a class="club-card__map-pin" href="${mapHref}" aria-label="View on map">${MAP_PIN_SVG}</a>
+        <div class="club-card__split-book" role="group" aria-label="Guestlist and private table">
+          <button type="button" class="club-card__split-book-top" data-vr-kind="guestlist" data-club-slug="${slugAttr}">
+            <span class="club-card__split-book-label">Join guestlist</span>
+          </button>
+          <button type="button" class="club-card__split-book-bottom" data-vr-kind="private_table" data-club-slug="${slugAttr}">
+            <span class="club-card__split-book-label">Book private table</span>
+          </button>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -113,8 +170,11 @@ export async function initNightlife(): Promise<void> {
             <p class="club-card__meta">${escapeHtml(c.locationTag)}</p>
             ${renderClubTags(c, today)}
             <p class="club-card__desc">${escapeHtml(c.shortDescription)}</p>
-            ${renderClubGuide(c)}
-            ${renderClubActions(c)}
+            <div class="club-card__tail">
+              ${renderClubKnownFor(c)}
+              ${renderClubPricing(c)}
+              ${renderClubActions(c)}
+            </div>
           </div>
         </article>`;
       })
@@ -123,6 +183,20 @@ export async function initNightlife(): Promise<void> {
   }
 
   renderGrid(clubsGrid);
+
+  const requestHost = document.getElementById("cc-venue-request-root");
+  clubsGrid.addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement).closest(
+      "[data-vr-kind]",
+    ) as HTMLElement | null;
+    if (!t || !requestHost) return;
+    const slug = t.dataset.clubSlug;
+    const kind = t.dataset.vrKind as VenueRequestKind | undefined;
+    if (!slug || (kind !== "private_table" && kind !== "guestlist")) return;
+    const club = clubs.find((c) => c.slug === slug);
+    if (!club) return;
+    openVenueRequestModal({ host: requestHost, kind, club });
+  });
 
   const venueParam = getQueryVenue();
   if (venueParam) {

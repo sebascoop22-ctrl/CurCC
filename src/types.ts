@@ -1,5 +1,14 @@
 export type VenueType = "lounge" | "dining";
 
+/** From `public/clubs/guestlists.csv` — merged at build time */
+export type GuestlistRecurrence = "one_off" | "weekly";
+
+export interface GuestlistOffer {
+  days: string[];
+  recurrence: GuestlistRecurrence;
+  notes: string;
+}
+
 export interface Club {
   slug: string;
   name: string;
@@ -20,14 +29,20 @@ export interface Club {
   minSpend: string;
   /** Full URL from CSV (build normalizes scheme) */
   website: string;
-  /** Guestlist / door pricing (plain text from CSV) */
-  entryPricing: string;
-  /** Table packages and minimums (plain text from CSV) */
-  tablesPricing: string;
-  /** Scene and standout nights (plain text from CSV) */
-  knownFor: string;
+  /** Door / guestlist — women (CSV `entry_pricing_women`) */
+  entryPricingWomen: string;
+  /** Door / guestlist — men (CSV `entry_pricing_men`) */
+  entryPricingMen: string;
+  /** Table tier copy from CSV */
+  tablesStandard: string;
+  tablesLuxury: string;
+  tablesVip: string;
+  /** Standout points; semicolon-separated in CSV → array */
+  knownFor: string[];
   amenities: string[];
   images: string[];
+  /** Guestlist rows for this venue (empty if none in guestlists.csv) */
+  guestlists: GuestlistOffer[];
 }
 
 export type FleetGridSize = "large" | "medium" | "feature";

@@ -1,93 +1,5 @@
 [
   {
-    "slug": "77-London",
-    "name": "77 London",
-    "shortDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
-    "longDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
-    "reviews": [
-      "Concierge note: Central London table routing."
-    ],
-    "locationTag": "LONDON • CENTRAL",
-    "address": "Central London",
-    "daysOpen": "Thu-Sat",
-    "bestVisitDays": [
-      "Fri",
-      "Sat"
-    ],
-    "featured": false,
-    "featuredDay": "",
-    "venueType": "lounge",
-    "lat": 51.511,
-    "lng": -0.137,
-    "minSpend": "£1000+ / tables",
-    "website": "https://www.77london.com/",
-    "entryPricing": "Girls typically £10–£20; Guys typically £20–£30; higher on headline nights",
-    "tablesPricing": "Lounge from £1000; Premium/VIP from £1500–£2000+",
-    "knownFor": "Upscale central London nightlife with DJs; special events; and bottle service",
-    "amenities": [],
-    "images": []
-  },
-  {
-    "slug": "Cirque-Le-Soir",
-    "name": "Cirque Le Soir",
-    "shortDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
-    "longDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
-    "reviews": [
-      "Leo P.: Pure theatre—handled with discretion."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "15-21 Ganton Street Soho London GB W1F 9BN",
-    "daysOpen": "Mon|Wed|Fri|Sat",
-    "bestVisitDays": [
-      "Mon",
-      "Wed"
-    ],
-    "featured": true,
-    "featuredDay": "Wednesday",
-    "venueType": "lounge",
-    "lat": 51.51302,
-    "lng": -0.13678,
-    "minSpend": "£1000-2500 / Normal Table - Best Table",
-    "website": "https://www.cirquelesoir.com/",
-    "entryPricing": "Guestlist: Free or £10; pricing varies by night—same guide as Dear Darling",
-    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
-    "knownFor": "Mondays and Wednesdays; theatrical spectacle and show energy",
-    "amenities": [],
-    "images": [
-      "/clubs/Cirque-Le-Soir/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "Dear-Darling",
-    "name": "Dear Darling",
-    "shortDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
-    "longDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
-    "reviews": [
-      "Amelia C.: Effortlessly chic—from door to car."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "91 Jermyn St London SW1Y 6JB England",
-    "daysOpen": "Thu|Fri|Sat|Sun",
-    "bestVisitDays": [
-      "Sun"
-    ],
-    "featured": false,
-    "featuredDay": "",
-    "venueType": "lounge",
-    "lat": 51.50797,
-    "lng": -0.13786,
-    "minSpend": "£2500 / Table",
-    "website": "https://dear-darling.co.uk/",
-    "entryPricing": "Guestlist: Free or £10; ask concierge for door policy on the night",
-    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
-    "knownFor": "Exclusive Sundays and elegant members' nights; strong Sunday scene",
-    "amenities": [],
-    "images": [
-      "/clubs/Dear-Darling/01-cover.jpg",
-      "/clubs/Dear-Darling/02-interior.png"
-    ]
-  },
-  {
     "slug": "Gallery-Club",
     "name": "Gallery Club",
     "shortDescription": "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
@@ -106,48 +18,25 @@
     "featured": true,
     "featuredDay": "Friday",
     "venueType": "lounge",
-    "lat": 51.50095,
-    "lng": -0.19135,
+    "lat": 51.502589,
+    "lng": -0.18796,
     "minSpend": "£2500 / Table",
     "website": "https://www.galleryclublondon.com/",
-    "entryPricing": "Girls: Free or £10; Guys: £30–£40",
-    "tablesPricing": "Cubanista from £500; Main Room from £1000; VIP from £2000",
-    "knownFor": "DJs; big-room energy; premium dancefloor tables",
+    "entryPricingWomen": "Free or £10",
+    "entryPricingMen": "£30–£40",
+    "tablesStandard": "Cubanista from £500",
+    "tablesLuxury": "Main Room from £1000",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "DJs",
+      "Premium dancefloor tables",
+      "Big-room energy"
+    ],
     "amenities": [],
     "images": [
       "/clubs/Gallery-Club/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "Maddox-Club",
-    "name": "Maddox Club",
-    "shortDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
-    "longDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
-    "reviews": [
-      "T. H.: The Mayfair room we return to for closing deals."
     ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "3-5 Mill St London W1S 2AU England",
-    "daysOpen": "Thu-Sat",
-    "bestVisitDays": [
-      "Fri",
-      "Sat"
-    ],
-    "featured": true,
-    "featuredDay": "Thursday",
-    "venueType": "lounge",
-    "lat": 51.51155,
-    "lng": -0.14495,
-    "minSpend": "£2800 / Table",
-    "website": "https://www.maddoxclub.com/",
-    "entryPricing": "Girls: Free or £20; Guys: £40",
-    "tablesPricing": "Green Room from £1000; Main Floor from £1000; VIP from £2000",
-    "knownFor": "Exclusive Mayfair crowd; premium table service",
-    "amenities": [],
-    "images": [
-      "/clubs/Maddox-Club/01-cover.jpg",
-      "/clubs/Maddox-Club/02-interior.png"
-    ]
+    "guestlists": []
   },
   {
     "slug": "Paloma-Chelsea",
@@ -167,170 +56,63 @@
     "featured": true,
     "featuredDay": "Saturday",
     "venueType": "lounge",
-    "lat": 51.4962,
-    "lng": -0.1728,
+    "lat": 51.492362,
+    "lng": -0.178002,
     "minSpend": "£2200 / Table",
     "website": "https://palomachelsea.com/about",
-    "entryPricing": "Girls: Free or £10 early; often £20 standard; Guys: £20–£30",
-    "tablesPricing": "Cubanista from £500; Main Room from £1000; VIP from £1500–£2000",
-    "knownFor": "Chic Chelsea nights; stylish crowd; two-room format",
+    "entryPricingWomen": "Free or £10 early; £20 standard",
+    "entryPricingMen": "£20–£30",
+    "tablesStandard": "Cubanista from £500",
+    "tablesLuxury": "Main Room from £1000",
+    "tablesVip": "VIP from £1500–£2000",
+    "knownFor": [
+      "Chic Chelsea nights",
+      "Stylish crowd",
+      "Two-room format"
+    ],
     "amenities": [],
     "images": [
       "/clubs/Paloma-Chelsea/01-cover.jpg"
-    ]
+    ],
+    "guestlists": []
   },
   {
-    "slug": "Selene-Club",
-    "name": "Selene Club",
-    "shortDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
-    "longDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    "slug": "Maddox-Club",
+    "name": "Maddox Club",
+    "shortDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
+    "longDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
     "reviews": [
-      "Elena V.: Quiet luxury—the room feels bespoke."
+      "T. H.: The Mayfair room we return to for closing deals."
     ],
     "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
-    "daysOpen": "Thu|Fri|Sat|Sun",
+    "address": "3-5 Mill St London W1S 2AU England",
+    "daysOpen": "Thu-Sat",
     "bestVisitDays": [
       "Fri",
-      "Sat",
-      "Sun"
+      "Sat"
     ],
     "featured": true,
-    "featuredDay": "Sunday",
+    "featuredDay": "Thursday",
     "venueType": "lounge",
-    "lat": 51.51035,
-    "lng": -0.14785,
-    "minSpend": "£2400 / Table",
-    "website": "https://selene-club.com/",
-    "entryPricing": "Girls: Free or £10 or £20 late; Guys: £40–£50",
-    "tablesPricing": "Standard from £1000–£1500; VIP from £2000",
-    "knownFor": "Exclusive Sundays; Greek-led party crowd",
-    "amenities": [],
-    "images": [
-      "/clubs/Selene-Club/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "Tabu-London",
-    "name": "Tabu London",
-    "shortDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience combining underground energy with refined sophistication.",
-    "longDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience, combining underground energy with refined sophistication.",
-    "reviews": [
-      "James L.: Tokyo energy in W1—perfectly controlled."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
-    "daysOpen": "Wed-Sat",
-    "bestVisitDays": [
-      "Thu",
-      "Fri",
-      "Sat"
-    ],
-    "featured": false,
-    "featuredDay": "",
-    "venueType": "lounge",
-    "lat": 51.50772,
-    "lng": -0.14233,
-    "minSpend": "£2700 / Table",
-    "website": "https://www.tabulondon.com/",
-    "entryPricing": "Girls: Free or £10 or £20; Guys: £30–£40",
-    "tablesPricing": "Standard from £1000–£1500; VIP from £2000+",
-    "knownFor": "Japanese-inspired luxury; late-night Mayfair crowd",
-    "amenities": [],
-    "images": [
-      "/clubs/Tabu-London/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "Tape-London",
-    "name": "Tape London",
-    "shortDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
-    "longDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
-    "reviews": [
-      "Marcus D.: Music-forward without losing polish."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
-    "daysOpen": "Tue|Fri|Sat|Sun",
-    "bestVisitDays": [
-      "Fri",
-      "Sat",
-      "Sun"
-    ],
-    "featured": true,
-    "featuredDay": "Tuesday",
-    "venueType": "lounge",
-    "lat": 51.51376,
-    "lng": -0.14405,
-    "minSpend": "£2600 / Table",
-    "website": "https://www.tapelondon.com/",
-    "entryPricing": "Guestlist: Free or £10; pricing varies by night—same guide as Dear Darling",
-    "tablesPricing": "From £1000 min spend; £1500; VIP from £2000",
-    "knownFor": "Celebrity nights; high-profile music-led evenings",
-    "amenities": [],
-    "images": [
-      "/clubs/Tape-London/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "The-Cuckoo-Club",
-    "name": "The Cuckoo Club",
-    "shortDescription": "A legendary venue combining vintage glamour with contemporary luxury frequented by London's elite.",
-    "longDescription": "A legendary venue combining vintage glamour with contemporary luxury, frequented by London's elite.",
-    "reviews": [
-      "Sofia R.: Timeless glamour without the crowds."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
-    "daysOpen": "Wed|Fri|Sat",
-    "bestVisitDays": [
-      "Fri",
-      "Sat"
-    ],
-    "featured": false,
-    "featuredDay": "",
-    "venueType": "lounge",
-    "lat": 51.51087,
-    "lng": -0.13589,
-    "minSpend": "£2600 / Table",
-    "website": "https://www.thecuckooclub.com/",
-    "entryPricing": "Girls: £20; sometimes free or reduced early; Guys: £20 Wednesdays / £50–£60 weekends",
-    "tablesPricing": "Downstairs from £1000; Upstairs from £1500; VIP from £1500–£2000",
-    "knownFor": "Student Wednesdays; reggaeton weekends across two floors",
-    "amenities": [],
-    "images": [
-      "/clubs/The-Cuckoo-Club/01-cover.jpg"
-    ]
-  },
-  {
-    "slug": "The-London-Reign",
-    "name": "The London Reign",
-    "shortDescription": "A vibrant Mayfair establishment known for theatrical performances dynamic atmosphere and world-class entertainment.",
-    "longDescription": "A vibrant Mayfair establishment known for its theatrical performances, dynamic atmosphere, and world-class entertainment.",
-    "reviews": [
-      "Priya N.: Performance-led nights without feeling public."
-    ],
-    "locationTag": "LONDON • MAYFAIR",
-    "address": "Mayfair London W1",
-    "daysOpen": "Tue|Thu|Fri|Sat",
-    "bestVisitDays": [
-      "Fri",
-      "Sat"
-    ],
-    "featured": false,
-    "featuredDay": "",
-    "venueType": "lounge",
-    "lat": 51.51405,
-    "lng": -0.13545,
+    "lat": 51.512579,
+    "lng": -0.142251,
     "minSpend": "£2800 / Table",
-    "website": "https://www.thelondonreign.com/",
-    "entryPricing": "Girls: Free or £10; Guys: £30–£40",
-    "tablesPricing": "Standard from £1000; VIP from £2000",
-    "knownFor": "Luxury show club; performances and champagne shows",
+    "website": "https://www.maddoxclub.com/",
+    "entryPricingWomen": "Free or £20",
+    "entryPricingMen": "£40",
+    "tablesStandard": "Green Room from £1000",
+    "tablesLuxury": "Main Floor from £1000",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Exclusive Mayfair crowd",
+      "Premium table service"
+    ],
     "amenities": [],
     "images": [
-      "/clubs/The-London-Reign/01-cover.jpg"
-    ]
+      "/clubs/Maddox-Club/01-cover.jpg",
+      "/clubs/Maddox-Club/02-interior.png"
+    ],
+    "guestlists": []
   },
   {
     "slug": "The-Rex-Rooms",
@@ -351,17 +133,323 @@
     "featured": true,
     "featuredDay": "Monday",
     "venueType": "lounge",
-    "lat": 51.4879,
-    "lng": -0.1686,
+    "lat": 51.48793,
+    "lng": -0.167239,
     "minSpend": "£2400 / Table",
     "website": "https://www.therexrooms.com/",
-    "entryPricing": "Girls: Free or £10 late; Guys: £20–£30",
-    "tablesPricing": "Standard from £1000; King's Room from £1000+",
-    "knownFor": "Scandi Fridays; celebrity Mondays",
+    "entryPricingWomen": "Free or £10 late entry",
+    "entryPricingMen": "£20–£30",
+    "tablesStandard": "Standard from £1000",
+    "tablesLuxury": "King's Room from £1000+",
+    "tablesVip": "",
+    "knownFor": [
+      "Scandi Fridays",
+      "Celebrity Mondays"
+    ],
     "amenities": [],
     "images": [
       "/clubs/The-Rex-Rooms/01-cover.jpg",
       "/clubs/The-Rex-Rooms/02-interior.jpg"
-    ]
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "Selene-Club",
+    "name": "Selene Club",
+    "shortDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    "longDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
+    "reviews": [
+      "Elena V.: Quiet luxury—the room feels bespoke."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Thu|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
+    "featured": true,
+    "featuredDay": "Sunday",
+    "venueType": "lounge",
+    "lat": 51.516144,
+    "lng": -0.138567,
+    "minSpend": "£2400 / Table",
+    "website": "https://selene-club.com/",
+    "entryPricingWomen": "Free or £10 or £20 late",
+    "entryPricingMen": "£40–£50",
+    "tablesStandard": "Standard from £1000–£1500",
+    "tablesLuxury": "",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Exclusive Sundays",
+      "Greek-led party crowd"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/Selene-Club/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "Cirque-Le-Soir",
+    "name": "Cirque Le Soir",
+    "shortDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
+    "longDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
+    "reviews": [
+      "Leo P.: Pure theatre—handled with discretion."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "15-21 Ganton Street Soho London GB W1F 9BN",
+    "daysOpen": "Mon|Wed|Fri|Sat",
+    "bestVisitDays": [
+      "Mon",
+      "Wed"
+    ],
+    "featured": true,
+    "featuredDay": "Wednesday",
+    "venueType": "lounge",
+    "lat": 51.512875,
+    "lng": -0.139184,
+    "minSpend": "£1000-2500 / Normal Table - Best Table",
+    "website": "https://www.cirquelesoir.com/",
+    "entryPricingWomen": "Guestlist: Free or £10; varies by night",
+    "entryPricingMen": "Guestlist: Free or £10; varies by night",
+    "tablesStandard": "From £1000 min spend",
+    "tablesLuxury": "£1500",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Theatrical spectacle",
+      "Show energy",
+      "Mondays and Wednesdays"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/Cirque-Le-Soir/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "Tape-London",
+    "name": "Tape London",
+    "shortDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
+    "longDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
+    "reviews": [
+      "Marcus D.: Music-forward without losing polish."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Tue|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
+    "featured": true,
+    "featuredDay": "Tuesday",
+    "venueType": "lounge",
+    "lat": 51.514324,
+    "lng": -0.14473,
+    "minSpend": "£2600 / Table",
+    "website": "https://www.tapelondon.com/",
+    "entryPricingWomen": "Guestlist: Free or £10; varies by night",
+    "entryPricingMen": "Guestlist: Free or £10; varies by night",
+    "tablesStandard": "From £1000 min spend",
+    "tablesLuxury": "£1500",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Celebrity nights",
+      "High-profile music-led evenings"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/Tape-London/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "Dear-Darling",
+    "name": "Dear Darling",
+    "shortDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
+    "longDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
+    "reviews": [
+      "Amelia C.: Effortlessly chic—from door to car."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "91 Jermyn St London SW1Y 6JB England",
+    "daysOpen": "Thu|Fri|Sat|Sun",
+    "bestVisitDays": [
+      "Sun"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.5082,
+    "lng": -0.13711,
+    "minSpend": "£2500 / Table",
+    "website": "https://dear-darling.co.uk/",
+    "entryPricingWomen": "Guestlist: Free or £10",
+    "entryPricingMen": "Guestlist: Free or £10; ask concierge on the night",
+    "tablesStandard": "From £1000 min spend",
+    "tablesLuxury": "£1500",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Exclusive Sundays",
+      "Elegant members' nights",
+      "Strong Sunday scene"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/Dear-Darling/01-cover.jpg",
+      "/clubs/Dear-Darling/02-interior.png"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "Tabu-London",
+    "name": "Tabu London",
+    "shortDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience combining underground energy with refined sophistication.",
+    "longDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience, combining underground energy with refined sophistication.",
+    "reviews": [
+      "James L.: Tokyo energy in W1—perfectly controlled."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Wed-Sat",
+    "bestVisitDays": [
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.507697,
+    "lng": -0.141327,
+    "minSpend": "£2000+ / Table",
+    "website": "https://www.tabulondon.com/",
+    "entryPricingWomen": "Free or £10 or £20",
+    "entryPricingMen": "£30–£40",
+    "tablesStandard": "Standard from £1000–£1500",
+    "tablesLuxury": "—",
+    "tablesVip": "VIP from £2000+",
+    "knownFor": [
+      "Japanese-inspired luxury",
+      "Late-night Mayfair crowd"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/Tabu-London/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "The-London-Reign",
+    "name": "The London Reign",
+    "shortDescription": "A vibrant Mayfair establishment known for theatrical performances dynamic atmosphere and world-class entertainment.",
+    "longDescription": "A vibrant Mayfair establishment known for its theatrical performances, dynamic atmosphere, and world-class entertainment.",
+    "reviews": [
+      "Priya N.: Performance-led nights without feeling public."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Tue|Thu|Fri|Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.509513,
+    "lng": -0.134958,
+    "minSpend": "£2800 / Table",
+    "website": "https://www.thelondonreign.com/",
+    "entryPricingWomen": "Free or £10",
+    "entryPricingMen": "£30–£40",
+    "tablesStandard": "Standard from £1000",
+    "tablesLuxury": "",
+    "tablesVip": "VIP from £2000",
+    "knownFor": [
+      "Luxury show club",
+      "Performances and champagne shows"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/The-London-Reign/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "The-Cuckoo-Club",
+    "name": "The Cuckoo Club",
+    "shortDescription": "A legendary venue combining vintage glamour with contemporary luxury frequented by London's elite.",
+    "longDescription": "A legendary venue combining vintage glamour with contemporary luxury, frequented by London's elite.",
+    "reviews": [
+      "Sofia R.: Timeless glamour without the crowds."
+    ],
+    "locationTag": "LONDON • MAYFAIR",
+    "address": "Mayfair London W1",
+    "daysOpen": "Wed|Fri|Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.509719,
+    "lng": -0.137903,
+    "minSpend": "£2600 / Table",
+    "website": "https://www.thecuckooclub.com/",
+    "entryPricingWomen": "£20; sometimes free or reduced early",
+    "entryPricingMen": "£20 Wednesdays / £50–£60 weekends",
+    "tablesStandard": "Downstairs from £1000",
+    "tablesLuxury": "Upstairs from £1500",
+    "tablesVip": "VIP from £1500–£2000",
+    "knownFor": [
+      "Student Wednesdays",
+      "Reggaeton weekends across two floors"
+    ],
+    "amenities": [],
+    "images": [
+      "/clubs/The-Cuckoo-Club/01-cover.jpg"
+    ],
+    "guestlists": []
+  },
+  {
+    "slug": "77-London",
+    "name": "77 London",
+    "shortDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
+    "longDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
+    "reviews": [
+      "Concierge note: Central London table routing."
+    ],
+    "locationTag": "LONDON • CENTRAL",
+    "address": "Central London",
+    "daysOpen": "Thu-Sat",
+    "bestVisitDays": [
+      "Fri",
+      "Sat"
+    ],
+    "featured": false,
+    "featuredDay": "",
+    "venueType": "lounge",
+    "lat": 51.51547,
+    "lng": -0.14852,
+    "minSpend": "£1000+ / tables",
+    "website": "https://www.77london.com/",
+    "entryPricingWomen": "Typically £10–£20",
+    "entryPricingMen": "Typically £20–£30; higher on headline nights",
+    "tablesStandard": "Lounge from £1000",
+    "tablesLuxury": "Premium from £1500",
+    "tablesVip": "VIP from £1500–£2000+",
+    "knownFor": [
+      "DJs and bottle service",
+      "Special headline nights"
+    ],
+    "amenities": [],
+    "images": [],
+    "guestlists": []
   }
 ]

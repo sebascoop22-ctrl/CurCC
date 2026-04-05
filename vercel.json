@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/go/instagram", "destination": "/go/instagram.html" },
+    { "source": "/go/tiktok", "destination": "/go/tiktok.html" },
+    { "source": "/go/facebook", "destination": "/go/facebook.html" },
+    { "source": "/go/youtube", "destination": "/go/youtube.html" },
+    { "source": "/go/linkedin", "destination": "/go/linkedin.html" }
+  ]
+}

@@ -9,7 +9,12 @@
  * best_visit_days: pipe-separated short labels (Thu|Fri|Sat) — recommended nights; shown on nightlife + map.
  * website: optional club site URL (https://… or domain only); shown on nightlife cards.
  * image_folder: optional — asset subdirectory name under public/clubs/; defaults to slug.
- * known_for, entry_pricing, tables_pricing: optional venue guide copy (avoid commas in CSV or quote fields).
+ * known_for: semicolon-separated bullet points (e.g. DJs; Big-room energy).
+ * entry_pricing_women, entry_pricing_men: door / guestlist copy per gender.
+ * tables_standard, tables_luxury, tables_vip: table tier copy (avoid unquoted commas in fields).
+ *
+ * Guestlists: public/clubs/guestlists.csv — club_slug, days (pipe-separated, e.g. Fri|Sat),
+ *   recurrence (one_off | weekly), optional notes. Merged into each club as guestlists[].
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -84,6 +89,11 @@ function splitReviews(s) {
     .filter(Boolean);
 }
 
+/** Known-for bullets in clubs.csv (semicolon-separated) */
+function splitKnownFor(s) {
+  return splitReviews(s);
+}
+
 function bool(s) {
   const v = String(s).toLowerCase();
   return v === "true" || v === "1" || v === "yes";
@@ -94,6 +104,30 @@ function normalizeWebsite(s) {
   if (!t) return "";
   if (/^https?:\/\//i.test(t)) return t;
   return `https://${t}`;
+}
+
+function buildGuestlistsBySlug() {
+  const csvPath = path.join(publicDir, "clubs", "guestlists.csv");
+  if (!fs.existsSync(csvPath)) return new Map();
+  const rows = parseCsv(fs.readFileSync(csvPath, "utf8"));
+  /** @type {Map<string, { days: string[]; recurrence: string; notes: string }[]>} */
+  const map = new Map();
+  for (const row of rows) {
+    const slug = String(row.club_slug || "").trim();
+    if (!slug) continue;
+    const rawRec = String(row.recurrence || "weekly")
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    const recurrence = rawRec === "one_off" ? "one_off" : "weekly";
+    const entry = {
+      days: splitPipe(row.days || ""),
+      recurrence,
+      notes: String(row.notes || "").trim(),
+    };
+    if (!map.has(slug)) map.set(slug, []);
+    map.get(slug).push(entry);
+  }
+  return map;
 }
 
 function buildClubs() {
@@ -107,6 +141,7 @@ function buildClubs() {
     console.warn("build-data: public/clubs/clubs.csv not found — 0 clubs");
     return [];
   }
+  const guestBySlug = buildGuestlistsBySlug();
   const rows = parseCsv(fs.readFileSync(masterCsv, "utf8"));
   const clubs = [];
   for (const row of rows) {
@@ -139,11 +174,15 @@ function buildClubs() {
       lng: Number(String(row.lng ?? "").replace(/\s/g, "")) || 0,
       minSpend: row.min_spend || "",
       website: normalizeWebsite(row.website || ""),
-      entryPricing: row.entry_pricing || "",
-      tablesPricing: row.tables_pricing || "",
-      knownFor: row.known_for || "",
+      entryPricingWomen: String(row.entry_pricing_women || "").trim(),
+      entryPricingMen: String(row.entry_pricing_men || "").trim(),
+      tablesStandard: String(row.tables_standard || "").trim(),
+      tablesLuxury: String(row.tables_luxury || "").trim(),
+      tablesVip: String(row.tables_vip || "").trim(),
+      knownFor: splitKnownFor(row.known_for || ""),
       amenities: splitPipe(row.amenities || ""),
       images: imgs,
+      guestlists: guestBySlug.get(slug) ?? [],
     });
   }
   return clubs;

@@ -1,0 +1,115 @@
+.venue-request-overlay {
+  z-index: 110;
+}
+
+.modal--venue-request {
+  width: min(100%, 480px);
+  max-height: min(90vh, 720px);
+  overflow-y: auto;
+}
+
+.venue-request-modal__lede {
+  font-size: 0.85rem;
+  color: var(--cc-muted);
+  margin: -0.35rem 0 var(--cc-space-md);
+  line-height: 1.5;
+}
+
+.venue-request-modal__schedule {
+  font-size: 0.78rem;
+  color: var(--cc-muted);
+  margin: 0 0 var(--cc-space-md);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+  line-height: 1.45;
+}
+
+.venue-request-modal__schedule ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.cc-notify-fieldset {
+  border: none;
+  margin: 0 0 var(--cc-space-md);
+  padding: 0;
+}
+
+.cc-notify-fieldset > legend {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.cc-notify-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cc-notify-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--cc-cream);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.cc-notify-options input[type="radio"] {
+  accent-color: var(--cc-gold);
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.venue-request-modal__conditional {
+  margin-bottom: var(--cc-space-md);
+}
+
+.venue-request-modal__conditional[hidden] {
+  display: none !important;
+}
+
+.venue-request-modal__hint {
+  font-size: 0.72rem;
+  color: var(--cc-muted);
+  margin: -0.25rem 0 var(--cc-space-sm);
+  line-height: 1.4;
+}
+
+.venue-request-modal__success {
+  display: none;
+  padding: var(--cc-space-md) 0 0;
+  border-top: 1px solid var(--cc-border);
+  margin-top: var(--cc-space-md);
+}
+
+.venue-request-modal__success.is-visible {
+  display: block;
+}
+
+.venue-request-modal__success p {
+  color: var(--cc-muted);
+  font-size: 0.85rem;
+  margin: 0 0 var(--cc-space-sm);
+}
+
+.venue-request-modal__social-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cc-space-sm);
+  margin-top: var(--cc-space-sm);
+}
+
+.venue-request-modal__form[hidden] {
+  display: none !important;
+}

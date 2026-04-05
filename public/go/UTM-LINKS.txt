@@ -1,0 +1,19 @@
+Cooper Concierge — UTM landing redirects (/go/)
+
+Use these in Instagram / TikTok / etc. bios and posts.
+
+Base pattern (production):
+  https://www.cooperconcierge.co.uk/go/<platform>.html
+  https://www.cooperconcierge.co.uk/go/<platform>     (on Vercel, extensionless)
+
+Per-person tracking (later):
+  .../go/instagram.html?ref=jane   → utm_content=jane
+  .../go/tiktok.html?ref=marcus
+
+Campaign variant (default campaign is "bio"):
+  .../go/instagram.html?c=stories
+
+GA4 reads: Session source = utm_source, medium = utm_medium, campaign = utm_campaign,
+and utm_content when ?ref= is used.
+
+Platforms: instagram, tiktok, facebook, youtube, linkedin

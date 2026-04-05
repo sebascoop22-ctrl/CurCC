@@ -1,3 +1,7 @@
+/**
+ * UTM redirect pages for social bios: `/go/<platform>.html` (see `public/go/UTM-LINKS.txt`).
+ * Optional: `?ref=name` → utm_content; `?c=stories` → utm_campaign.
+ */
 /** Replace with production contact details */
 export const siteConfig = {
   brandName: "Cooper Concierge",
@@ -7,6 +11,8 @@ export const siteConfig = {
   whatsappE164: "447485540379",
   social: {
     instagram: "https://www.instagram.com/cooperconcierge/",
+    /** Optional — leave empty to hide “Open TikTok” in request modal */
+    tiktok: "",
     /** Optional — leave empty string to hide */
     linkedin: "",
   },
@@ -17,6 +23,8 @@ export function getSocialLinkItems(): { label: string; href: string }[] {
   const items: { label: string; href: string }[] = [];
   if (siteConfig.social.instagram)
     items.push({ label: "Instagram", href: siteConfig.social.instagram });
+  if (siteConfig.social.tiktok?.trim())
+    items.push({ label: "TikTok", href: siteConfig.social.tiktok.trim() });
   if (siteConfig.social.linkedin?.trim())
     items.push({ label: "LinkedIn", href: siteConfig.social.linkedin.trim() });
   return items;

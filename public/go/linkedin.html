@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,follow" />
+    <title>Cooper Concierge</title>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var p = new URLSearchParams({
+          utm_source: "linkedin",
+          utm_medium: "social",
+          utm_campaign: q.get("c") || "bio",
+        });
+        var ref = q.get("ref");
+        if (ref) p.set("utm_content", ref);
+        var u = new URL("/", location.origin);
+        u.search = p.toString();
+        location.replace(u.href);
+      })();
+    </script>
+  </head>
+  <body>
+    <p><a href="/">Continue to Cooper Concierge</a></p>
+  </body>
+</html>

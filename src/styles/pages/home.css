@@ -451,6 +451,7 @@
   flex-direction: column;
   justify-content: flex-end;
   align-items: flex-start;
+  text-align: left;
   padding: var(--cc-space-lg);
   box-sizing: border-box;
   gap: 0.5rem;
@@ -481,17 +482,17 @@
   margin: 0;
   font-family: var(--cc-font-serif);
   font-weight: 500;
-  font-size: clamp(1.25rem, 2.4vw, 1.85rem);
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
   letter-spacing: 0.02em;
   text-transform: none;
   line-height: 1.2;
   color: var(--cc-cream);
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+  text-align: left;
 }
 
-.bento__tile--chauffeur .bento__title,
-.bento__tile--wide .bento__title {
-  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
+.bento__tile--featured .bento__title {
+  font-size: clamp(1.25rem, 2.4vw, 1.85rem);
 }
 
 .bento__kicker {
@@ -552,7 +553,8 @@
 }
 
 .bento__tile__inner--solid {
-  justify-content: center;
+  justify-content: flex-end;
+  align-items: flex-start;
   min-height: 200px;
   padding: 1.5rem 1.35rem;
   position: relative;
@@ -562,8 +564,9 @@
 .bento__circle-arrow {
   position: absolute;
   right: 1.25rem;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 1.25rem;
+  top: auto;
+  transform: none;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -592,10 +595,8 @@
   }
 
   .bento__circle-arrow {
-    top: auto;
     bottom: 1.15rem;
     right: 1.15rem;
-    transform: none;
   }
 }
 

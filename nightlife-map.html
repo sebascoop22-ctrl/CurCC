@@ -63,16 +63,46 @@
             <div class="map-sidebar__guide" id="sidebar-guide" hidden>
               <div class="map-sidebar__guide-block" id="sidebar-known-for-block" hidden>
                 <h4 class="map-sidebar__guide-title">Known for</h4>
-                <p class="map-sidebar__guide-text" id="sidebar-known-for"></p>
+                <ul class="map-sidebar__known-list" id="sidebar-known-for-list"></ul>
               </div>
-              <div class="map-sidebar__guide-block" id="sidebar-entry-block" hidden>
-                <h4 class="map-sidebar__guide-title">Guestlist &amp; entry</h4>
-                <p class="map-sidebar__guide-text" id="sidebar-entry"></p>
-              </div>
-              <div class="map-sidebar__guide-block" id="sidebar-tables-block" hidden>
-                <h4 class="map-sidebar__guide-title">Tables</h4>
-                <p class="map-sidebar__guide-text" id="sidebar-tables"></p>
-              </div>
+              <details class="map-sidebar__pricing-details" id="sidebar-pricing-details" hidden>
+                <summary class="map-sidebar__pricing-summary">
+                  <span class="map-sidebar__pricing-title">Pricing</span>
+                  <span class="map-sidebar__pricing-chevron" aria-hidden="true"></span>
+                </summary>
+                <div class="map-sidebar__pricing-panel">
+                  <div class="map-sidebar__guide-block map-sidebar__guide-block--nested" id="sidebar-entry-block" hidden>
+                    <h4 class="map-sidebar__guide-title">Guestlist &amp; entry</h4>
+                    <dl class="map-sidebar__price-dl">
+                      <div id="sidebar-entry-women-wrap" hidden>
+                        <dt>Women</dt>
+                        <dd id="sidebar-entry-women"></dd>
+                      </div>
+                      <div id="sidebar-entry-men-wrap" hidden>
+                        <dt>Men</dt>
+                        <dd id="sidebar-entry-men"></dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <div class="map-sidebar__guide-block map-sidebar__guide-block--nested" id="sidebar-tables-block" hidden>
+                    <h4 class="map-sidebar__guide-title">Tables</h4>
+                    <dl class="map-sidebar__price-dl">
+                      <div id="sidebar-tables-standard-wrap" hidden>
+                        <dt>Standard</dt>
+                        <dd id="sidebar-tables-standard"></dd>
+                      </div>
+                      <div id="sidebar-tables-luxury-wrap" hidden>
+                        <dt>Luxury</dt>
+                        <dd id="sidebar-tables-luxury"></dd>
+                      </div>
+                      <div id="sidebar-tables-vip-wrap" hidden>
+                        <dt>VIP</dt>
+                        <dd id="sidebar-tables-vip"></dd>
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+              </details>
             </div>
             <h4 style="font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cc-gold)">Amenities</h4>
             <ul class="amenities-list" id="sidebar-amenities"></ul>
@@ -92,16 +122,25 @@
                 href="enquiry.html"
                 >Chauffeur pickup</a>
             </div>
-            <button type="button" class="cc-btn cc-btn--gold" id="sidebar-book" style="width: 100%; margin-bottom: 0.35rem">
-              Book private table <span aria-hidden="true">→</span>
-            </button>
-            <p class="cc-form-hint" style="text-align: center; margin: 0">Estimated response · 15 minutes</p>
+            <div class="map-sidebar__guestlist" id="sidebar-guestlist-block" hidden>
+              <h4 class="map-sidebar__guide-title">Guestlist on file</h4>
+              <ul class="map-sidebar__guestlist-list" id="sidebar-guestlist-lines"></ul>
+            </div>
+            <div class="map-sidebar__split-book" id="sidebar-split-book" role="group" aria-label="Guestlist and private table">
+              <button type="button" class="map-sidebar__split-book-top" id="sidebar-guestlist" disabled>
+                <span class="map-sidebar__split-book-label">Join the guestlist</span>
+              </button>
+              <button type="button" class="map-sidebar__split-book-bottom" id="sidebar-book" disabled>
+                <span class="map-sidebar__split-book-label">Book private table</span>
+              </button>
+            </div>
+            <p class="cc-form-hint" style="text-align: center; margin: 0.35rem 0 0">Estimated response · 15 minutes</p>
           </div>
         </aside>
       </div>
 
       <footer class="map-overlay-footer">
-        <span>The Atelier</span>
+        <span>Cooper Concierge</span>
         <span style="display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center">
           <a href="nightlife.html">Nightlife</a>
           <a href="enquiry.html">Enquiry</a>
@@ -116,6 +155,7 @@
 
     <footer id="cc-footer" class="site-footer" style="display: none"></footer>
     <div id="cc-modal-root"></div>
+    <div id="cc-venue-request-root"></div>
     <script type="module" src="/src/main/nightlife-map.ts"></script>
   </body>
 </html>

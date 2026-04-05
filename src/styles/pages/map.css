@@ -185,6 +185,110 @@
   color: var(--cc-muted);
 }
 
+.map-sidebar__known-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--cc-muted);
+}
+
+.map-sidebar__known-list li {
+  margin-bottom: 0.35rem;
+}
+
+.map-sidebar__price-dl {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.map-sidebar__price-dl dt {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin-bottom: 0.15rem;
+}
+
+.map-sidebar__price-dl dd {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--cc-muted);
+}
+
+.map-sidebar__pricing-details {
+  margin-bottom: var(--cc-space-sm);
+}
+
+.map-sidebar__pricing-details[hidden] {
+  display: none !important;
+}
+
+.map-sidebar__pricing-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  user-select: none;
+}
+
+.map-sidebar__pricing-summary::-webkit-details-marker {
+  display: none;
+}
+
+.map-sidebar__pricing-summary::marker {
+  content: "";
+}
+
+/* Match nightlife club card venue name (.club-card__body h3) */
+.map-sidebar__pricing-title {
+  margin: 0;
+  font-family: var(--cc-font-serif);
+  font-size: 1.45rem;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--cc-cream);
+  line-height: 1.2;
+}
+
+.map-sidebar__pricing-chevron {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--cc-muted);
+  border-bottom: 2px solid var(--cc-muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-right: 0.2rem;
+  margin-bottom: 0.12rem;
+}
+
+.map-sidebar__pricing-details[open] .map-sidebar__pricing-chevron {
+  transform: rotate(-135deg);
+  margin-bottom: 0;
+}
+
+.map-sidebar__pricing-panel {
+  padding-top: 0.45rem;
+}
+
+.map-sidebar__guide-block--nested {
+  margin-bottom: var(--cc-space-md);
+}
+
+.map-sidebar__guide-block--nested:last-child {
+  margin-bottom: 0;
+}
+
 .amenities-list {
   margin: 0 0 var(--cc-space-md);
   padding-left: 1.1rem;
@@ -242,6 +346,79 @@
   pointer-events: none;
   opacity: 0.42;
   cursor: not-allowed;
+}
+
+.map-sidebar__guestlist {
+  margin-bottom: var(--cc-space-md);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+}
+
+.map-sidebar__guestlist-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--cc-muted);
+}
+
+.map-sidebar__split-book {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border-radius: var(--cc-radius);
+  overflow: hidden;
+  border: 1px solid rgba(212, 196, 168, 0.45);
+}
+
+.map-sidebar__split-book-top,
+.map-sidebar__split-book-bottom {
+  font: inherit;
+  cursor: pointer;
+  min-height: 48px;
+  padding: 0.5rem 0.85rem;
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  font-weight: 600;
+  border: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.map-sidebar__split-book-top {
+  background: rgba(212, 196, 168, 0.1);
+  color: var(--cc-cream);
+  border-bottom: 1px solid rgba(212, 196, 168, 0.35);
+}
+
+.map-sidebar__split-book-bottom {
+  background: rgba(212, 196, 168, 0.24);
+  color: var(--cc-bg-deep);
+}
+
+.map-sidebar__split-book-top:hover:not(:disabled) {
+  background: rgba(212, 196, 168, 0.16);
+}
+
+.map-sidebar__split-book-bottom:hover:not(:disabled) {
+  background: var(--cc-gold);
+  color: var(--cc-bg-deep);
+}
+
+.map-sidebar__split-book-top:disabled,
+.map-sidebar__split-book-bottom:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.map-sidebar__split-book-label {
+  display: block;
+  line-height: 1.3;
 }
 
 .map-overlay-footer {
@@ -305,6 +482,12 @@
   text-overflow: ellipsis;
 }
 
+.map-marker-root {
+  /* Outer node: MapLibre applies translate for geo position; no transform here. */
+  display: block;
+}
+
 .marker-wrap {
   position: relative;
+  will-change: transform;
 }
