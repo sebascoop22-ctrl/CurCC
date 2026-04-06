@@ -13,6 +13,7 @@ export default defineConfig({
         security: resolve(__dirname, "security.html"),
         chauffeuring: resolve(__dirname, "chauffeuring.html"),
         enquiry: resolve(__dirname, "enquiry.html"),
+        admin: resolve(__dirname, "admin.html"),
         privacy: resolve(__dirname, "privacy.html"),
         terms: resolve(__dirname, "terms.html"),
       },

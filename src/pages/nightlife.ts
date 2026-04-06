@@ -36,6 +36,48 @@ function getQueryVenue(): string | null {
   return q ? decodeURIComponent(q) : null;
 }
 
+/** Coerce API/JSON quirks so card rendering never throws and skips the lead form. */
+function normalizeClub(raw: Club): Club {
+  const kfUnknown = raw.knownFor as unknown;
+  let knownFor: string[] = [];
+  if (Array.isArray(kfUnknown)) {
+    knownFor = kfUnknown.map((x) => String(x).trim()).filter(Boolean);
+  } else if (typeof kfUnknown === "string") {
+    knownFor = kfUnknown
+      .split(/[;,\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  const bvd = raw.bestVisitDays as unknown;
+  const bestVisitDays = Array.isArray(bvd)
+    ? bvd.map((x) => String(x).trim()).filter(Boolean)
+    : typeof bvd === "string"
+      ? bvd
+          .split(/[|,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+  const img = raw.images as unknown;
+  const images = Array.isArray(img) ? img.map((x) => String(x)) : [];
+  const gl = raw.guestlists as unknown;
+  const guestlists = Array.isArray(gl) ? (gl as Club["guestlists"]) : [];
+  const rev = raw.reviews as unknown;
+  const reviews = Array.isArray(rev) ? rev.map(String) : [];
+  const am = raw.amenities as unknown;
+  const amenities = Array.isArray(am) ? am.map(String) : [];
+  return {
+    ...raw,
+    daysOpen: typeof raw.daysOpen === "string" ? raw.daysOpen : "",
+    website: typeof raw.website === "string" ? raw.website : "",
+    knownFor,
+    bestVisitDays,
+    images,
+    guestlists,
+    reviews,
+    amenities,
+  };
+}
+
 function renderClubTags(c: Club, today: Date): string {
   const open = clubOpenOnDate(c, today);
   const status = open ? "open" : "closed";
@@ -149,10 +191,8 @@ function renderClubActions(c: Club): string {
 }
 
 export async function initNightlife(): Promise<void> {
-  const clubs = await fetchClubs();
+  const clubs = (await fetchClubs()).map(normalizeClub);
   const clubsGrid = document.getElementById("clubs-grid");
-  if (!clubsGrid) return;
-
   const today = startOfDay(new Date());
 
   function renderGrid(target: HTMLElement): void {
@@ -182,30 +222,32 @@ export async function initNightlife(): Promise<void> {
     target.innerHTML = cards;
   }
 
-  renderGrid(clubsGrid);
+  if (clubsGrid) {
+    renderGrid(clubsGrid);
 
-  const requestHost = document.getElementById("cc-venue-request-root");
-  clubsGrid.addEventListener("click", (e) => {
-    const t = (e.target as HTMLElement).closest(
-      "[data-vr-kind]",
-    ) as HTMLElement | null;
-    if (!t || !requestHost) return;
-    const slug = t.dataset.clubSlug;
-    const kind = t.dataset.vrKind as VenueRequestKind | undefined;
-    if (!slug || (kind !== "private_table" && kind !== "guestlist")) return;
-    const club = clubs.find((c) => c.slug === slug);
-    if (!club) return;
-    openVenueRequestModal({ host: requestHost, kind, club });
-  });
-
-  const venueParam = getQueryVenue();
-  if (venueParam) {
-    requestAnimationFrame(() => {
-      const card = clubsGrid.querySelector(
-        `article[data-slug="${CSS.escape(venueParam)}"]`,
-      );
-      card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const requestHost = document.getElementById("cc-venue-request-root");
+    clubsGrid.addEventListener("click", (e) => {
+      const t = (e.target as HTMLElement).closest(
+        "[data-vr-kind]",
+      ) as HTMLElement | null;
+      if (!t || !requestHost) return;
+      const slug = t.dataset.clubSlug;
+      const kind = t.dataset.vrKind as VenueRequestKind | undefined;
+      if (!slug || (kind !== "private_table" && kind !== "guestlist")) return;
+      const club = clubs.find((c) => c.slug === slug);
+      if (!club) return;
+      openVenueRequestModal({ host: requestHost, kind, club });
     });
+
+    const venueParam = getQueryVenue();
+    if (venueParam) {
+      requestAnimationFrame(() => {
+        const card = clubsGrid.querySelector(
+          `article[data-slug="${CSS.escape(venueParam)}"]`,
+        );
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
   }
 
   const form = document.getElementById("nightlife-lead-form") as HTMLFormElement | null;
@@ -228,24 +270,28 @@ export async function initNightlife(): Promise<void> {
       if (!fullName) form.querySelector('[name="full_name"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       if (!validateEmail(email)) form.querySelector('[name="email"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       if (!whenWhere) form.querySelector('[name="when_where"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      showFormError(errorEl, "Please check the highlighted fields.");
       return;
     }
     const btn = form.querySelector(
       'button[type="submit"]',
     ) as HTMLButtonElement | null;
-    btn && (btn.disabled = true);
+    if (btn) btn.disabled = true;
     void (async () => {
-      const result = await submitInquiry(
-        { name: fullName, email, whenWhere },
-        "nightlife_lead",
-      );
-      btn && (btn.disabled = false);
-      if (!result.ok) {
-        showFormError(errorEl, result.error ?? "Something went wrong.");
-        return;
+      try {
+        const result = await submitInquiry(
+          { name: fullName, email, whenWhere },
+          "nightlife_lead",
+        );
+        if (!result.ok) {
+          showFormError(errorEl, result.error ?? "Something went wrong.");
+          return;
+        }
+        showFormSuccess(successEl);
+        form.reset();
+      } finally {
+        if (btn) btn.disabled = false;
       }
-      showFormSuccess(successEl);
-      form.reset();
     })();
   });
 }

@@ -449,7 +449,9 @@
       "Special headline nights"
     ],
     "amenities": [],
-    "images": [],
+    "images": [
+      "/clubs/77-London/01-cover.jpg"
+    ],
     "guestlists": []
   }
 ]

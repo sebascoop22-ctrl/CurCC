@@ -7,6 +7,8 @@ export const siteConfig = {
   brandName: "Cooper Concierge",
   email: "enquiries@cooperconcierge.co.uk",
   phoneDisplay: "+44 7485 540 379",
+  /** Lightweight front-end gate for admin.html (not secure against determined users). */
+  adminPasscode: "cooper-admin",
   /** E.164 without + for wa.me */
   whatsappE164: "447485540379",
   social: {

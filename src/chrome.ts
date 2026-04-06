@@ -14,6 +14,7 @@ export type ActivePage =
   | "security"
   | "chauffeuring"
   | "enquiry"
+  | "admin"
   | "privacy"
   | "terms";
 

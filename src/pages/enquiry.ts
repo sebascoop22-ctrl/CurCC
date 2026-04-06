@@ -4,6 +4,7 @@ import {
   showFormSuccess,
   submitInquiry,
   validateEmail,
+  validatePhone,
 } from "../forms";
 import { getSocialLinkItems } from "../site-config";
 import "../styles/pages/enquiry.css";
@@ -64,33 +65,37 @@ export function initEnquiry(): void {
     successEl?.classList.remove("is-visible");
     if (!name) ok = false;
     if (!validateEmail(email)) ok = false;
-    if (phone.length < 8) ok = false;
+    if (!validatePhone(phone)) ok = false;
     if (!interest) ok = false;
     if (!details) ok = false;
     if (!ok) {
       if (!name) form.querySelector('[name="name"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       if (!validateEmail(email)) form.querySelector('[name="email"]')?.closest(".cc-field")?.classList.add("cc-field--error");
-      if (phone.length < 8) form.querySelector('[name="phone"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      if (!validatePhone(phone)) form.querySelector('[name="phone"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       if (!interest) form.querySelector('[name="service"]')?.closest(".cc-field")?.classList.add("cc-field--error");
       if (!details) form.querySelector('[name="details"]')?.closest(".cc-field")?.classList.add("cc-field--error");
+      showFormError(errorEl, "Please check the highlighted fields.");
       return;
     }
     const btn = form.querySelector(
       'button[type="submit"]',
     ) as HTMLButtonElement | null;
-    btn && (btn.disabled = true);
+    if (btn) btn.disabled = true;
     void (async () => {
-      const result = await submitInquiry(
-        { name, email, phone, serviceOfInterest: interest, details },
-        "general_enquiry",
-      );
-      btn && (btn.disabled = false);
-      if (!result.ok) {
-        showFormError(errorEl, result.error ?? "Something went wrong.");
-        return;
+      try {
+        const result = await submitInquiry(
+          { name, email, phone, serviceOfInterest: interest, details },
+          "general_enquiry",
+        );
+        if (!result.ok) {
+          showFormError(errorEl, result.error ?? "Something went wrong.");
+          return;
+        }
+        showFormSuccess(successEl);
+        form.reset();
+      } finally {
+        if (btn) btn.disabled = false;
       }
-      showFormSuccess(successEl);
-      form.reset();
     })();
   });
 }

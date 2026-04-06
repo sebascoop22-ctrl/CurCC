@@ -1,0 +1,115 @@
+.admin-page h1 {
+  margin-top: 0.25rem;
+  color: var(--cc-cream);
+}
+
+.admin-note {
+  color: var(--cc-muted);
+  max-width: 72ch;
+}
+
+.admin-card {
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg-card);
+  padding: var(--cc-space-md);
+  margin-top: var(--cc-space-md);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--cc-space-md);
+}
+
+@media (max-width: 920px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 62vh;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.admin-list button {
+  width: 100%;
+  text-align: left;
+  background: var(--cc-bg-deep);
+  color: var(--cc-cream);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+
+.admin-list button.is-active {
+  border-color: rgba(212, 196, 168, 0.55);
+  color: var(--cc-gold);
+}
+
+.admin-toolbar,
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: var(--cc-space-sm);
+}
+
+.admin-tabs {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.admin-tabs button {
+  min-height: 38px;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+  color: var(--cc-muted);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
+
+.admin-tabs button.is-active {
+  color: var(--cc-gold);
+  border-color: rgba(212, 196, 168, 0.45);
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .admin-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-form .full {
+  grid-column: 1 / -1;
+}
+
+.admin-form textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.admin-hint {
+  color: var(--cc-muted);
+  font-size: 0.78rem;
+}
+
+.admin-flash {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--cc-gold);
+}
