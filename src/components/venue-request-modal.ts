@@ -76,6 +76,17 @@ export function openVenueRequestModal(opts: {
           )
           .join("")}</ul></div>`
       : "";
+  const guestRowsBlock =
+    kind === "guestlist"
+      ? `<section class="venue-request-modal__party" aria-label="Guestlist party details">
+      <div class="venue-request-modal__party-head">
+        <p class="venue-request-modal__party-title">Party list (up to 10)</p>
+        <button type="button" class="cc-btn cc-btn--ghost venue-request-modal__add-guest" id="vr-add-guest">Add another person</button>
+      </div>
+      <p class="venue-request-modal__hint">Add guest names and contact details for the door list.</p>
+      <div id="vr-guest-rows" class="venue-request-modal__guest-rows"></div>
+    </section>`
+      : "";
 
   modal.innerHTML = `
     <button type="button" class="modal__close" data-vr-close aria-label="Close">×</button>
@@ -88,6 +99,7 @@ export function openVenueRequestModal(opts: {
         <label for="vr-name">Your name</label>
         <input id="vr-name" name="name" type="text" autocomplete="name" required placeholder="Full name" />
       </div>
+      ${guestRowsBlock}
       <fieldset class="cc-notify-fieldset">
         <legend>How should we reach you?</legend>
         <div class="cc-notify-options" id="vr-notify-group">
@@ -145,10 +157,68 @@ export function openVenueRequestModal(opts: {
   const emailIn = modal.querySelector("#vr-email") as HTMLInputElement;
   const phoneIn = modal.querySelector("#vr-phone") as HTMLInputElement;
   const submitBtn = modal.querySelector("#vr-submit") as HTMLButtonElement;
+  const addGuestBtn = modal.querySelector("#vr-add-guest") as HTMLButtonElement | null;
+  const guestRowsHost = modal.querySelector("#vr-guest-rows") as HTMLElement | null;
+  const GUEST_MAX = 10;
+  let guestRowCount = 0;
 
   function showError(msg: string): void {
     errEl.textContent = msg;
     errEl.classList.toggle("is-visible", Boolean(msg));
+  }
+
+  function guestRowMarkup(index: number): string {
+    const n = index + 1;
+    return `<div class="venue-request-modal__guest-row" data-guest-row>
+      <div class="cc-field">
+        <label for="vr-guest-name-${n}">Guest ${n} name</label>
+        <input id="vr-guest-name-${n}" type="text" data-guest-name placeholder="Full name" />
+      </div>
+      <div class="cc-field">
+        <label for="vr-guest-contact-${n}">Guest ${n} contact</label>
+        <input id="vr-guest-contact-${n}" type="text" data-guest-contact placeholder="Email or phone" />
+      </div>
+      <button type="button" class="venue-request-modal__remove-guest" data-remove-guest aria-label="Remove guest ${n}">Remove</button>
+    </div>`;
+  }
+
+  function syncGuestControls(): void {
+    if (!addGuestBtn) return;
+    const atLimit = guestRowCount >= GUEST_MAX;
+    addGuestBtn.disabled = atLimit;
+    addGuestBtn.textContent = atLimit ? "Maximum reached" : "Add another person";
+  }
+
+  function addGuestRow(): void {
+    if (!guestRowsHost || guestRowCount >= GUEST_MAX) return;
+    guestRowsHost.insertAdjacentHTML("beforeend", guestRowMarkup(guestRowCount));
+    guestRowCount += 1;
+    syncGuestControls();
+  }
+
+  function refreshGuestLabels(): void {
+    if (!guestRowsHost) return;
+    guestRowsHost.querySelectorAll("[data-guest-row]").forEach((row, idx) => {
+      const n = idx + 1;
+      const nameInput = row.querySelector("[data-guest-name]") as HTMLInputElement | null;
+      const contactInput = row.querySelector("[data-guest-contact]") as HTMLInputElement | null;
+      const removeBtn = row.querySelector("[data-remove-guest]") as HTMLButtonElement | null;
+      const nameLabel = row.querySelector(`label[for^="vr-guest-name-"]`) as HTMLLabelElement | null;
+      const contactLabel = row.querySelector(`label[for^="vr-guest-contact-"]`) as HTMLLabelElement | null;
+      if (nameInput && nameLabel) {
+        nameInput.id = `vr-guest-name-${n}`;
+        nameLabel.htmlFor = nameInput.id;
+        nameLabel.textContent = `Guest ${n} name`;
+      }
+      if (contactInput && contactLabel) {
+        contactInput.id = `vr-guest-contact-${n}`;
+        contactLabel.htmlFor = contactInput.id;
+        contactLabel.textContent = `Guest ${n} contact`;
+      }
+      if (removeBtn) {
+        removeBtn.setAttribute("aria-label", `Remove guest ${n}`);
+      }
+    });
   }
 
   function setNotifyUI(method: NotifyMethod): void {
@@ -168,6 +238,18 @@ export function openVenueRequestModal(opts: {
       if (v) setNotifyUI(v);
     });
   });
+  if (addGuestBtn && guestRowsHost) {
+    addGuestBtn.addEventListener("click", () => addGuestRow());
+    guestRowsHost.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest("[data-remove-guest]") as HTMLButtonElement | null;
+      if (!btn) return;
+      btn.closest("[data-guest-row]")?.remove();
+      guestRowCount = guestRowsHost.querySelectorAll("[data-guest-row]").length;
+      refreshGuestLabels();
+      syncGuestControls();
+    });
+    addGuestRow();
+  }
 
   function close(): void {
     overlay.remove();
@@ -195,6 +277,17 @@ export function openVenueRequestModal(opts: {
     const phone = phoneIn.value.trim();
     const ig = (modal.querySelector("#vr-ig") as HTMLInputElement).value.trim();
     const tt = (modal.querySelector("#vr-tt") as HTMLInputElement).value.trim();
+    const guestRows = Array.from(
+      modal.querySelectorAll("[data-guest-row]"),
+    ).map((row) => {
+      const guestName = String(
+        (row.querySelector("[data-guest-name]") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      const guestContact = String(
+        (row.querySelector("[data-guest-contact]") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      return { guestName, guestContact };
+    });
 
     if (!name) {
       showError("Please enter your name.");
@@ -207,6 +300,16 @@ export function openVenueRequestModal(opts: {
     if (method === "phone" && !validatePhone(phone)) {
       showError("Please enter a valid phone number.");
       return;
+    }
+    if (kind === "guestlist") {
+      for (const row of guestRows) {
+        const hasName = row.guestName.length > 0;
+        const hasContact = row.guestContact.length > 0;
+        if (hasName !== hasContact) {
+          showError("Each added guest must include both name and contact.");
+          return;
+        }
+      }
     }
 
     const payload: Record<string, string> = {
@@ -221,6 +324,17 @@ export function openVenueRequestModal(opts: {
     if (method === "phone") payload.phone = phone;
     if (method === "instagram_dm" && ig) payload.instagram_handle = ig;
     if (method === "tiktok_dm" && tt) payload.tiktok_handle = tt;
+    if (kind === "guestlist") {
+      const guests = guestRows.filter(
+        (row) => row.guestName.length > 0 && row.guestContact.length > 0,
+      );
+      if (guests.length) {
+        payload.party_size = String(guests.length);
+        payload.guestlist_people = guests
+          .map((g, idx) => `${idx + 1}. ${g.guestName} (${g.guestContact})`)
+          .join(" | ");
+      }
+    }
 
     const inquiryPayload: Record<string, unknown> = { ...payload };
     if (method === "email") inquiryPayload.email = email;
