@@ -54,7 +54,22 @@
           <p class="cc-eyebrow">Elite venues</p>
           <h2>Signature destinations</h2>
         </div>
+        <div class="featured-banner__mode nightlife-content-toggle" role="tablist" aria-label="Nightlife content mode">
+          <button type="button" class="featured-banner__mode-btn is-active" id="nightlife-mode-featured" role="tab" aria-selected="true">Featured</button>
+          <button type="button" class="featured-banner__mode-btn" id="nightlife-mode-flyers" role="tab" aria-selected="false">Flyers</button>
+        </div>
         <div class="clubs-grid" id="clubs-grid"></div>
+        <section class="nightlife-flyers" id="nightlife-flyers-panel" hidden>
+          <div class="nightlife-flyers__head">
+            <h3 id="nightlife-flyers-title">Club flyers</h3>
+            <div class="nightlife-flyers__nav">
+              <button type="button" class="featured-banner__chev" id="nightlife-flyer-prev" aria-label="Previous flyer">‹</button>
+              <span id="nightlife-flyer-index" class="featured-banner__date-text">0 / 0</span>
+              <button type="button" class="featured-banner__chev" id="nightlife-flyer-next" aria-label="Next flyer">›</button>
+            </div>
+          </div>
+          <article class="nightlife-flyers__card" id="nightlife-flyer-card"></article>
+        </section>
       </section>
 
       <section class="nl-lead" id="nightlife-lead">

@@ -81,8 +81,26 @@ create table if not exists public.cars (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.club_weekly_flyers (
+  id uuid primary key default gen_random_uuid(),
+  club_slug text not null references public.clubs (slug) on delete cascade,
+  event_date date not null,
+  title text not null default '',
+  description text not null default '',
+  image_path text not null default '',
+  image_url text not null default '',
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists clubs_sort_idx on public.clubs (sort_order, name);
 create index if not exists cars_sort_idx on public.cars (sort_order, name);
+create index if not exists club_weekly_flyers_slug_date_idx
+on public.club_weekly_flyers (club_slug, event_date, sort_order);
+create index if not exists club_weekly_flyers_date_idx
+on public.club_weekly_flyers (event_date);
 
 -- RLS defaults.
 alter table public.profiles enable row level security;
@@ -91,6 +109,7 @@ alter table public.enquiries enable row level security;
 alter table public.enquiry_guests enable row level security;
 alter table public.clubs enable row level security;
 alter table public.cars enable row level security;
+alter table public.club_weekly_flyers enable row level security;
 
 -- Public website can insert enquiries only.
 drop policy if exists enquiries_public_insert on public.enquiries;
@@ -161,6 +180,13 @@ for select
 to anon, authenticated
 using (is_active = true);
 
+drop policy if exists flyers_public_read on public.club_weekly_flyers;
+create policy flyers_public_read
+on public.club_weekly_flyers
+for select
+to anon, authenticated
+using (is_active = true);
+
 -- Admin write access for catalog content.
 drop policy if exists clubs_admin_write on public.clubs;
 create policy clubs_admin_write
@@ -205,3 +231,31 @@ with check (
       and p.role = 'admin'
   )
 );
+
+drop policy if exists flyers_admin_write on public.club_weekly_flyers;
+create policy flyers_admin_write
+on public.club_weekly_flyers
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+-- Storage bucket for nightlife flyers.
+insert into storage.buckets (id, name, public)
+values ('club-flyers', 'club-flyers', true)
+on conflict (id) do update set public = excluded.public;
+
+drop policy if exists flyers_storage_public_read on storage.objects;
+create policy flyers_storage_public_read
+on storage.objects
+for select
+to anon, authenticated
+using (bucket_id = 'club-flyers');
+
+drop policy if exists flyers_storage_write on storage.objects;
+create policy flyers_storage_write
+on storage.objects
+for all
+to anon, authenticated
+using (bucket_id = 'club-flyers')
+with check (bucket_id = 'club-flyers');

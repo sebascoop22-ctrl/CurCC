@@ -1,5 +1,5 @@
-import { fetchClubs } from "../data/fetch-data";
-import type { Club } from "../types";
+import { fetchClubFlyers, fetchClubs, groupFlyersByClubSlug } from "../data/fetch-data";
+import type { Club, ClubFlyer } from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -85,11 +85,6 @@ function renderClubTags(c: Club, today: Date): string {
   const parts: string[] = [
     `<span class="club-card__tag club-card__tag--status club-card__tag--${status}">${statusLabel}</span>`,
   ];
-  if (c.featured) {
-    parts.push(
-      `<span class="club-card__tag club-card__tag--featured">Featured</span>`,
-    );
-  }
   const tagsRow = `<div class="club-card__tags-row">${parts.join("")}</div>`;
   if (!c.bestVisitDays.length) return tagsRow;
   const best = c.bestVisitDays
@@ -182,19 +177,79 @@ function renderClubActions(c: Club): string {
 }
 
 export async function initNightlife(): Promise<void> {
-  const clubs = (await fetchClubs()).map(normalizeClub);
+  const [clubRows, flyerRows] = await Promise.all([
+    fetchClubs().catch(() => [] as Club[]),
+    fetchClubFlyers().catch(() => [] as ClubFlyer[]),
+  ]);
+  const clubs = clubRows.map(normalizeClub);
+  const flyersByClub = groupFlyersByClubSlug(flyerRows);
   const clubsGrid = document.getElementById("clubs-grid");
   const today = startOfDay(new Date());
+  const modeFeaturedBtn = document.getElementById("nightlife-mode-featured");
+  const modeFlyersBtn = document.getElementById("nightlife-mode-flyers");
+  const flyersPanel = document.getElementById("nightlife-flyers-panel");
+  const flyerCard = document.getElementById("nightlife-flyer-card");
+  const flyerTitle = document.getElementById("nightlife-flyers-title");
+  const flyerPrev = document.getElementById("nightlife-flyer-prev");
+  const flyerNext = document.getElementById("nightlife-flyer-next");
+  const flyerIndex = document.getElementById("nightlife-flyer-index");
+  let selectedClubSlug = "";
+  let selectedFlyerIdx = 0;
+  let mode: "featured" | "flyers" = "featured";
+  const hasAnyFlyers = flyerRows.length > 0;
+
+  function updateFlyerPanel(): void {
+    if (!flyersPanel || !flyerCard || !flyerIndex || !flyerTitle) return;
+    const rows = flyersByClub[selectedClubSlug] ?? [];
+    const has = rows.length > 0;
+    if (mode !== "flyers") {
+      flyersPanel.hidden = true;
+      return;
+    }
+    flyersPanel.hidden = false;
+    if (!has) {
+      flyerTitle.textContent = "Club flyers";
+      flyerIndex.textContent = "0 / 0";
+      flyerCard.innerHTML = `<p class="club-card__desc">No flyers available for this club yet.</p>`;
+      return;
+    }
+    selectedFlyerIdx = ((selectedFlyerIdx % rows.length) + rows.length) % rows.length;
+    const flyer = rows[selectedFlyerIdx];
+    const club = clubs.find((c) => c.slug === selectedClubSlug);
+    flyerTitle.textContent = `${club?.name ?? "Club"} flyer`;
+    flyerIndex.textContent = `${selectedFlyerIdx + 1} / ${rows.length}`;
+    const img = flyer.imageUrl
+      ? `<img src="${escapeHtml(flyer.imageUrl)}" alt="${escapeHtml(flyer.title || "Club flyer")}" loading="lazy" />`
+      : "";
+    flyerCard.innerHTML = `
+      ${img}
+      <h4 style="margin:0.65rem 0 0.35rem;color:var(--cc-cream)">${escapeHtml(flyer.title || "Weekly flyer")}</h4>
+      <p class="club-card__meta" style="margin-bottom:0.45rem">${escapeHtml(flyer.eventDate)}</p>
+      <p class="club-card__desc" style="margin-bottom:0">${escapeHtml(flyer.description || "Club promotion")}</p>
+    `;
+  }
 
   function renderGrid(target: HTMLElement): void {
     const cards = clubs
       .map((c) => {
-        const img =
-          c.images[0] || "/media/nightlife/hero-atmosphere.svg";
+        const flyerImage = flyersByClub[c.slug]?.[0]?.imageUrl?.trim() ?? "";
+        const mediaImages = [
+          flyerImage,
+          ...(c.images ?? []),
+        ].filter((x, idx, arr) => Boolean(x) && arr.indexOf(x) === idx);
+        const img = mediaImages[0] || "/media/nightlife/hero-atmosphere.svg";
+        const imagesJson = escapeHtml(JSON.stringify(mediaImages));
+        const hasMany = mediaImages.length > 1;
         return `
         <article class="club-card lux-card" data-slug="${c.slug}">
-          <div class="club-card__media">
+          <div class="club-card__media" data-images='${imagesJson}' data-image-idx="0">
             <img class="club-card__img" src="${img}" alt="" width="640" height="400" loading="lazy" />
+            ${
+              hasMany
+                ? `<button type="button" class="club-card__img-nav club-card__img-nav--prev" data-img-nav="-1" aria-label="Previous image">‹</button>
+                   <button type="button" class="club-card__img-nav club-card__img-nav--next" data-img-nav="1" aria-label="Next image">›</button>`
+                : ""
+            }
           </div>
           <div class="club-card__body">
             <h3>${escapeHtml(c.name)}</h3>
@@ -215,9 +270,39 @@ export async function initNightlife(): Promise<void> {
 
   if (clubsGrid) {
     renderGrid(clubsGrid);
+    selectedClubSlug = clubs[0]?.slug ?? "";
+    updateFlyerPanel();
 
     const requestHost = document.getElementById("cc-venue-request-root");
     clubsGrid.addEventListener("click", (e) => {
+      const navBtn = (e.target as HTMLElement).closest("[data-img-nav]") as HTMLElement | null;
+      if (navBtn) {
+        const media = navBtn.closest(".club-card__media") as HTMLElement | null;
+        const img = media?.querySelector(".club-card__img") as HTMLImageElement | null;
+        if (!media || !img) return;
+        const raw = media.dataset.images || "[]";
+        let images: string[] = [];
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          images = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+        } catch {
+          images = [];
+        }
+        if (images.length < 2) return;
+        const delta = Number(navBtn.dataset.imgNav || "0") || 0;
+        const idx = Number(media.dataset.imageIdx || "0") || 0;
+        const next = ((idx + delta) % images.length + images.length) % images.length;
+        media.dataset.imageIdx = String(next);
+        img.src = images[next];
+        return;
+      }
+      const card = (e.target as HTMLElement).closest("article[data-slug]") as HTMLElement | null;
+      const clickedSlug = card?.dataset.slug;
+      if (clickedSlug) {
+        selectedClubSlug = clickedSlug;
+        selectedFlyerIdx = 0;
+        updateFlyerPanel();
+      }
       const t = (e.target as HTMLElement).closest(
         "[data-vr-kind]",
       ) as HTMLElement | null;
@@ -236,9 +321,43 @@ export async function initNightlife(): Promise<void> {
         const card = clubsGrid.querySelector(
           `article[data-slug="${CSS.escape(venueParam)}"]`,
         );
+        if (venueParam) {
+          selectedClubSlug = venueParam;
+          selectedFlyerIdx = 0;
+          updateFlyerPanel();
+        }
         card?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
     }
+  }
+  modeFeaturedBtn?.addEventListener("click", () => {
+    mode = "featured";
+    modeFeaturedBtn.classList.add("is-active");
+    modeFlyersBtn?.classList.remove("is-active");
+    modeFeaturedBtn.setAttribute("aria-selected", "true");
+    modeFlyersBtn?.setAttribute("aria-selected", "false");
+    updateFlyerPanel();
+  });
+  modeFlyersBtn?.addEventListener("click", () => {
+    if (!hasAnyFlyers) return;
+    mode = "flyers";
+    modeFlyersBtn.classList.add("is-active");
+    modeFeaturedBtn?.classList.remove("is-active");
+    modeFlyersBtn.setAttribute("aria-selected", "true");
+    modeFeaturedBtn?.setAttribute("aria-selected", "false");
+    updateFlyerPanel();
+  });
+  flyerPrev?.addEventListener("click", () => {
+    selectedFlyerIdx -= 1;
+    updateFlyerPanel();
+  });
+  flyerNext?.addEventListener("click", () => {
+    selectedFlyerIdx += 1;
+    updateFlyerPanel();
+  });
+  if (!hasAnyFlyers && modeFlyersBtn) {
+    modeFlyersBtn.setAttribute("disabled", "true");
+    modeFlyersBtn.setAttribute("aria-disabled", "true");
   }
 
   const form = document.getElementById("nightlife-lead-form") as HTMLFormElement | null;

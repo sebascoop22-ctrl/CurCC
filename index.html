@@ -68,7 +68,11 @@
               loading="lazy"
             />
             <div class="featured-banner__copy">
-              <p class="featured-banner__label">Tonight’s featured venue</p>
+              <div class="featured-banner__mode" role="tablist" aria-label="Featured content mode">
+                <button type="button" class="featured-banner__mode-btn is-active" id="featured-mode-clubs" role="tab" aria-selected="true">Featured clubs</button>
+                <button type="button" class="featured-banner__mode-btn" id="featured-mode-flyers" role="tab" aria-selected="false">Club flyers</button>
+              </div>
+              <p class="featured-banner__label" id="featured-mode-label">Tonight’s featured venue</p>
               <h2 id="featured-title" class="featured-banner__title">Loading…</h2>
               <p id="featured-blurb" class="featured-banner__desc">Featured destinations as chosen by our team.</p>
             </div>
@@ -78,6 +82,11 @@
               <button type="button" class="featured-banner__chev" id="featured-date-prev" aria-label="Previous day">‹</button>
               <span id="featured-date-label" class="featured-banner__date-text">—</span>
               <button type="button" class="featured-banner__chev" id="featured-date-next" aria-label="Next day">›</button>
+            </div>
+            <div class="featured-banner__date-nav" aria-label="Change club or flyer">
+              <button type="button" class="featured-banner__chev" id="featured-item-prev" aria-label="Previous item">‹</button>
+              <span id="featured-item-label" class="featured-banner__date-text">1 / 1</span>
+              <button type="button" class="featured-banner__chev" id="featured-item-next" aria-label="Next item">›</button>
             </div>
             <a href="nightlife.html" class="featured-banner__details" id="featured-details">Details</a>
           </div>

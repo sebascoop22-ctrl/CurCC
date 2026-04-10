@@ -45,6 +45,23 @@ export interface Club {
   guestlists: GuestlistOffer[];
 }
 
+export interface ClubFlyer {
+  id: string;
+  clubSlug: string;
+  eventDate: string;
+  title: string;
+  description: string;
+  imagePath: string;
+  imageUrl: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface FeaturedRecommendation {
+  date: Date;
+  clubs: Club[];
+}
+
 export type FleetGridSize = "large" | "medium" | "feature";
 
 export interface Car {

@@ -1,5 +1,5 @@
-import type { Club } from "../types";
-import { fetchClubs } from "../data/fetch-data";
+import type { Club, ClubFlyer } from "../types";
+import { fetchClubFlyers, fetchClubs } from "../data/fetch-data";
 import {
   hideFormError,
   showFormError,
@@ -119,12 +119,23 @@ function startOfToday(): Date {
   return t;
 }
 
-function selectClubForDate(clubs: Club[], d: Date): Club | null {
-  const match = clubs.find((c) => clubMatchesFeaturedDate(c, d));
-  if (match) return match;
-  const anyFeatured = clubs.find((c) => c.featured);
-  if (anyFeatured) return anyFeatured;
-  return clubs[0] ?? null;
+function selectClubsForDate(clubs: Club[], d: Date): Club[] {
+  const matches = clubs.filter((c) => clubMatchesFeaturedDate(c, d));
+  if (matches.length) return matches;
+  const anyFeatured = clubs.filter((c) => c.featured);
+  if (anyFeatured.length) return anyFeatured;
+  return clubs.slice(0, 1);
+}
+
+function selectFlyersForDate(flyers: ClubFlyer[], d: Date): ClubFlyer[] {
+  const ymd = toYMD(d);
+  const exact = flyers.filter((f) => f.eventDate === ymd);
+  if (exact.length) return exact;
+  const upcoming = flyers
+    .filter((f) => f.eventDate >= ymd)
+    .sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : 0));
+  if (upcoming.length) return upcoming.slice(0, 5);
+  return flyers.slice(0, 5);
 }
 
 function parseTestimonial(raw: string): { name: string; text: string } {
@@ -139,45 +150,122 @@ function parseTestimonial(raw: string): { name: string; text: string } {
 }
 
 export async function initHome(): Promise<void> {
-  const clubs = await fetchClubs();
+  const [clubs, flyers] = await Promise.all([
+    fetchClubs().catch(() => [] as Club[]),
+    fetchClubFlyers().catch(() => [] as ClubFlyer[]),
+  ]);
   const thumbEl = document.getElementById("featured-thumb") as HTMLImageElement | null;
   const dateLabelEl = document.getElementById("featured-date-label");
   const prevDateBtn = document.getElementById("featured-date-prev");
   const nextDateBtn = document.getElementById("featured-date-next");
+  const prevItemBtn = document.getElementById("featured-item-prev");
+  const nextItemBtn = document.getElementById("featured-item-next");
+  const itemLabelEl = document.getElementById("featured-item-label");
+  const modeLabelEl = document.getElementById("featured-mode-label");
+  const modeClubsBtn = document.getElementById("featured-mode-clubs");
+  const modeFlyersBtn = document.getElementById("featured-mode-flyers");
   const detailsLnk = document.getElementById("featured-details") as HTMLAnchorElement | null;
   const promoTitle = document.getElementById("featured-title");
   const promoBlurb = document.getElementById("featured-blurb");
   const testimonialsEl = document.getElementById("testimonials-grid");
 
-  if (!thumbEl || !dateLabelEl || !promoTitle || !promoBlurb) return;
+  if (
+    !thumbEl ||
+    !dateLabelEl ||
+    !promoTitle ||
+    !promoBlurb ||
+    !itemLabelEl ||
+    !modeClubsBtn ||
+    !modeFlyersBtn ||
+    !modeLabelEl
+  )
+    return;
+  const thumb = thumbEl;
+  const dateLabel = dateLabelEl;
+  const promoTitleEl = promoTitle;
+  const promoBlurbEl = promoBlurb;
+  const itemLabel = itemLabelEl;
+  const modeLabel = modeLabelEl;
+  const modeClubs = modeClubsBtn;
+  const modeFlyers = modeFlyersBtn;
 
   const today = startOfToday();
   let featuredDate = new Date(today);
+  let itemIndex = 0;
+  let mode: "clubs" | "flyers" = "clubs";
+  const hasAnyFlyers = flyers.length > 0;
 
-  function applyClub(club: Club | null): void {
+  function applyClub(club: Club | null, total: number): void {
     if (!club) {
-      promoTitle.textContent = "Featured venue";
-      promoBlurb.textContent =
+      promoTitleEl.textContent = "Featured venue";
+      promoBlurbEl.textContent =
         "Featured destinations appear when configured in each club’s CSV.";
-      thumbEl.removeAttribute("src");
+      thumb.removeAttribute("src");
       if (detailsLnk) detailsLnk.href = "nightlife.html";
+      itemLabel.textContent = "0 / 0";
       return;
     }
-    promoTitle.textContent = club.name;
-    promoBlurb.textContent = club.shortDescription;
+    promoTitleEl.textContent = club.name;
+    promoBlurbEl.textContent = club.shortDescription;
     const img =
       club.images[0] || "/media/home/bento-nightlife-bg.svg";
-    thumbEl.src = img;
-    thumbEl.alt = club.name;
+    thumb.src = img;
+    thumb.alt = club.name;
+    itemLabel.textContent = `${itemIndex + 1} / ${total}`;
     if (detailsLnk) {
       detailsLnk.href = `nightlife.html?venue=${encodeURIComponent(club.slug)}`;
     }
   }
 
+  function applyFlyer(flyer: ClubFlyer | null, total: number): void {
+    if (!flyer) {
+      promoTitleEl.textContent = "Weekly flyers";
+      promoBlurbEl.textContent =
+        "Flyers will appear here once nightlife promotions are uploaded.";
+      thumb.removeAttribute("src");
+      if (detailsLnk) detailsLnk.href = "nightlife.html";
+      itemLabel.textContent = "0 / 0";
+      return;
+    }
+    const clubName =
+      clubs.find((c) => c.slug === flyer.clubSlug)?.name ?? flyer.clubSlug;
+    promoTitleEl.textContent = flyer.title || clubName;
+    promoBlurbEl.textContent = flyer.description || `${clubName} · ${flyer.eventDate}`;
+    if (flyer.imageUrl) {
+      thumb.src = flyer.imageUrl;
+      thumb.alt = flyer.title || `Flyer for ${clubName}`;
+    } else {
+      thumb.removeAttribute("src");
+    }
+    itemLabel.textContent = `${itemIndex + 1} / ${total}`;
+    if (detailsLnk) {
+      detailsLnk.href = `nightlife.html?venue=${encodeURIComponent(flyer.clubSlug)}`;
+    }
+  }
+
   function refreshFeatured(): void {
-    dateLabelEl.textContent = formatBannerDate(featuredDate);
-    const club = selectClubForDate(clubs, featuredDate);
-    applyClub(club);
+    dateLabel.textContent = formatBannerDate(featuredDate);
+    modeClubs.classList.toggle("is-active", mode === "clubs");
+    modeFlyers.classList.toggle("is-active", mode === "flyers");
+    modeClubs.setAttribute("aria-selected", String(mode === "clubs"));
+    modeFlyers.setAttribute("aria-selected", String(mode === "flyers"));
+    if (mode === "clubs") {
+      modeLabel.textContent = "Tonight’s featured venue";
+      const items = selectClubsForDate(clubs, featuredDate);
+      const total = items.length;
+      itemIndex = total ? ((itemIndex % total) + total) % total : 0;
+      applyClub(items[itemIndex] ?? null, total);
+      prevItemBtn?.removeAttribute("disabled");
+      nextItemBtn?.removeAttribute("disabled");
+      return;
+    }
+    modeLabel.textContent = "Tonight’s club flyer";
+    const items = selectFlyersForDate(flyers, featuredDate);
+    const total = items.length;
+    itemIndex = total ? ((itemIndex % total) + total) % total : 0;
+    applyFlyer(items[itemIndex] ?? null, total);
+    prevItemBtn?.removeAttribute("disabled");
+    nextItemBtn?.removeAttribute("disabled");
   }
 
   function setFeaturedDate(d: Date): void {
@@ -197,6 +285,30 @@ export async function initHome(): Promise<void> {
     d.setDate(d.getDate() + 1);
     setFeaturedDate(d);
   });
+
+  prevItemBtn?.addEventListener("click", () => {
+    itemIndex -= 1;
+    refreshFeatured();
+  });
+  nextItemBtn?.addEventListener("click", () => {
+    itemIndex += 1;
+    refreshFeatured();
+  });
+  modeClubs.addEventListener("click", () => {
+    mode = "clubs";
+    itemIndex = 0;
+    refreshFeatured();
+  });
+  modeFlyers.addEventListener("click", () => {
+    if (!hasAnyFlyers) return;
+    mode = "flyers";
+    itemIndex = 0;
+    refreshFeatured();
+  });
+  if (!hasAnyFlyers) {
+    modeFlyers.setAttribute("disabled", "true");
+    modeFlyers.setAttribute("aria-disabled", "true");
+  }
 
   refreshFeatured();
 

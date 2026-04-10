@@ -1,5 +1,9 @@
-import { fetchClubs } from "../data/fetch-data";
-import type { Club } from "../types";
+import {
+  fetchClubFlyers,
+  fetchClubs,
+  groupFlyersByClubSlug,
+} from "../data/fetch-data";
+import type { Club, ClubFlyer } from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -19,7 +23,12 @@ export async function initNightlifeMap(): Promise<void> {
   const { default: maplibregl } = await import("maplibre-gl");
   await import("maplibre-gl/dist/maplibre-gl.css");
 
-  const clubs = await fetchClubs().catch(() => [] as Club[]);
+  const [clubs, flyers] = await Promise.all([
+    fetchClubs().catch(() => [] as Club[]),
+    fetchClubFlyers().catch(() => [] as ClubFlyer[]),
+  ]);
+  const hasAnyFlyers = flyers.length > 0;
+  const flyersByClub = groupFlyersByClubSlug(flyers);
   const mapEl = document.getElementById("venue-map");
   if (!mapEl) return;
 
@@ -79,6 +88,8 @@ export async function initNightlifeMap(): Promise<void> {
 
   const markerScaleTargets: HTMLElement[] = [];
   let markerScaleRaf = 0;
+  let sidebarMode: "featured" | "flyers" = "featured";
+  let selectedFlyerIndex = 0;
   function applyMarkerScales(): void {
     const z = map.getZoom();
     const s = markerScaleFromZoom(z);
@@ -125,6 +136,9 @@ export async function initNightlifeMap(): Promise<void> {
     const tsStdWrap = document.getElementById("sidebar-tables-standard-wrap");
     const tsLuxWrap = document.getElementById("sidebar-tables-luxury-wrap");
     const tsVipWrap = document.getElementById("sidebar-tables-vip-wrap");
+    const flyerBlock = document.getElementById("sidebar-flyers-block");
+    const flyerCard = document.getElementById("sidebar-flyer-card");
+    const flyerIndex = document.getElementById("sidebar-flyer-index");
     if (quote) quote.textContent = c.longDescription;
     if (bestNights)
       bestNights.textContent = c.bestVisitDays.length
@@ -238,6 +252,29 @@ export async function initNightlifeMap(): Promise<void> {
         guestLines.innerHTML = "";
       }
     }
+    if (flyerBlock && flyerCard && flyerIndex) {
+      const rows = flyersByClub[c.slug] ?? [];
+      if (sidebarMode !== "flyers") {
+        flyerBlock.hidden = true;
+      } else if (!rows.length) {
+        flyerBlock.hidden = false;
+        flyerIndex.textContent = "0 / 0";
+        flyerCard.innerHTML = `<p class="map-sidebar__guide-text">No flyers uploaded for this venue yet.</p>`;
+      } else {
+        flyerBlock.hidden = false;
+        selectedFlyerIndex =
+          ((selectedFlyerIndex % rows.length) + rows.length) % rows.length;
+        const flyer = rows[selectedFlyerIndex];
+        flyerIndex.textContent = `${selectedFlyerIndex + 1} / ${rows.length}`;
+        const img = flyer.imageUrl
+          ? `<img src="${escapeHtml(flyer.imageUrl)}" alt="${escapeHtml(flyer.title || "Club flyer")}" loading="lazy" />`
+          : "";
+        flyerCard.innerHTML = `${img}
+          <p class="map-sidebar__guide-text" style="margin:0 0 0.35rem;color:var(--cc-cream)">${escapeHtml(flyer.title || "Weekly flyer")}</p>
+          <p class="map-sidebar__guide-text" style="margin:0 0 0.35rem">${escapeHtml(flyer.eventDate)}</p>
+          <p class="map-sidebar__guide-text" style="margin:0">${escapeHtml(flyer.description || "Club promotion")}</p>`;
+      }
+    }
   }
 
   function focusSidebarPanel(): void {
@@ -247,6 +284,38 @@ export async function initNightlifeMap(): Promise<void> {
   }
 
   let selectedClub: Club | null = null;
+  const modeFeaturedBtn = document.getElementById("map-mode-featured");
+  const modeFlyersBtn = document.getElementById("map-mode-flyers");
+  modeFeaturedBtn?.addEventListener("click", () => {
+    sidebarMode = "featured";
+    modeFeaturedBtn.classList.add("is-active");
+    modeFlyersBtn?.classList.remove("is-active");
+    modeFeaturedBtn.setAttribute("aria-selected", "true");
+    modeFlyersBtn?.setAttribute("aria-selected", "false");
+    if (selectedClub) fillSidebar(selectedClub);
+  });
+  modeFlyersBtn?.addEventListener("click", () => {
+    if (!hasAnyFlyers) return;
+    sidebarMode = "flyers";
+    modeFlyersBtn.classList.add("is-active");
+    modeFeaturedBtn?.classList.remove("is-active");
+    modeFlyersBtn.setAttribute("aria-selected", "true");
+    modeFeaturedBtn?.setAttribute("aria-selected", "false");
+    selectedFlyerIndex = 0;
+    if (selectedClub) fillSidebar(selectedClub);
+  });
+  document.getElementById("sidebar-flyer-prev")?.addEventListener("click", () => {
+    selectedFlyerIndex -= 1;
+    if (selectedClub) fillSidebar(selectedClub);
+  });
+  document.getElementById("sidebar-flyer-next")?.addEventListener("click", () => {
+    selectedFlyerIndex += 1;
+    if (selectedClub) fillSidebar(selectedClub);
+  });
+  if (!hasAnyFlyers && modeFlyersBtn) {
+    modeFlyersBtn.setAttribute("disabled", "true");
+    modeFlyersBtn.setAttribute("aria-disabled", "true");
+  }
 
   function updateSidebarCtas(): void {
     const book = document.getElementById(
@@ -262,6 +331,7 @@ export async function initNightlifeMap(): Promise<void> {
 
   function selectClub(c: Club): void {
     selectedClub = c;
+    selectedFlyerIndex = 0;
     fillSidebar(c);
     updateSidebarCtas();
     const url = new URL(window.location.href);

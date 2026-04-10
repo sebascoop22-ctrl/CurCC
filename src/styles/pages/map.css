@@ -197,6 +197,33 @@
   margin-bottom: 0.35rem;
 }
 
+.nightlife-content-toggle {
+  margin: 0 0 0.65rem;
+}
+
+.featured-banner__mode-btn {
+  min-height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--cc-border);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--cc-muted);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.featured-banner__mode-btn.is-active {
+  color: var(--cc-gold);
+  border-color: rgba(212, 196, 168, 0.45);
+}
+
+.featured-banner__mode-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .map-sidebar__price-dl {
   margin: 0.35rem 0 0;
   display: flex;
@@ -362,6 +389,52 @@
   font-size: 0.8rem;
   line-height: 1.45;
   color: var(--cc-muted);
+}
+
+.map-sidebar__flyers {
+  margin-bottom: var(--cc-space-md);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+}
+
+.map-sidebar__flyers-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.nightlife-flyers__nav {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.featured-banner__date-text {
+  font-size: 0.64rem;
+  min-width: 4.2rem;
+  text-align: center;
+  color: var(--cc-cream);
+}
+
+.featured-banner__chev {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--cc-border);
+  background: rgba(18, 18, 18, 0.9);
+  color: var(--cc-cream);
+  cursor: pointer;
+}
+
+.map-sidebar__flyers img {
+  width: 100%;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  margin-bottom: 0.5rem;
 }
 
 .map-sidebar__split-book {

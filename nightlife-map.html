@@ -49,6 +49,10 @@
           <button type="button" class="map-sidebar__toggle" id="map-sidebar-toggle" aria-expanded="true">Venue details <span aria-hidden="true">▼</span></button>
           <div class="map-sidebar__inner">
             <h4 style="font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cc-gold); margin-top: 0">The experience</h4>
+            <div class="featured-banner__mode nightlife-content-toggle" role="tablist" aria-label="Map content mode">
+              <button type="button" class="featured-banner__mode-btn is-active" id="map-mode-featured" role="tab" aria-selected="true">Featured</button>
+              <button type="button" class="featured-banner__mode-btn" id="map-mode-flyers" role="tab" aria-selected="false">Flyers</button>
+            </div>
             <blockquote id="sidebar-experience">Select a venue on the map.</blockquote>
             <dl class="stats-grid">
               <div class="stat-card">
@@ -121,6 +125,17 @@
             <div class="map-sidebar__guestlist" id="sidebar-guestlist-block" hidden>
               <h4 class="map-sidebar__guide-title">Guestlist on file</h4>
               <ul class="map-sidebar__guestlist-list" id="sidebar-guestlist-lines"></ul>
+            </div>
+            <div class="map-sidebar__flyers" id="sidebar-flyers-block" hidden>
+              <div class="map-sidebar__flyers-head">
+                <h4 class="map-sidebar__guide-title" style="margin:0">Club flyers</h4>
+                <div class="nightlife-flyers__nav">
+                  <button type="button" class="featured-banner__chev" id="sidebar-flyer-prev" aria-label="Previous flyer">‹</button>
+                  <span id="sidebar-flyer-index" class="featured-banner__date-text">0 / 0</span>
+                  <button type="button" class="featured-banner__chev" id="sidebar-flyer-next" aria-label="Next flyer">›</button>
+                </div>
+              </div>
+              <article id="sidebar-flyer-card"></article>
             </div>
             <div class="map-sidebar__split-book" id="sidebar-split-book" role="group" aria-label="Guestlist and private table">
               <button type="button" class="map-sidebar__split-book-top" id="sidebar-guestlist" disabled>
