@@ -20,7 +20,9 @@ function formatMessage(
   const lines: string[] = [`Form: ${FORM_LABELS[formName] ?? formName}`, ""];
   for (const [k, v] of Object.entries(payload)) {
     if (v === undefined || v === null || v === "") continue;
-    lines.push(`${k}: ${String(v)}`);
+    const value =
+      typeof v === "object" ? JSON.stringify(v) : String(v);
+    lines.push(`${k}: ${value}`);
   }
   lines.push("", `— cooperconcierge.co.uk · ${formName}`);
   return lines.join("\n");
@@ -50,6 +52,8 @@ type InquiryChannelResult = {
   ok: boolean;
   error?: string;
 };
+
+type GuestRowPayload = { guestName: string; guestContact: string };
 
 function compactString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -85,25 +89,58 @@ async function submitToSupabase(
   const email = compactString(payload.email).toLowerCase();
   const phone = compactString(payload.phone);
   const clientKey = resolveClientKey(payload);
-  const { error } = await supabase.from("enquiries").insert({
-    form_name: formName,
-    form_label: FORM_LABELS[formName] ?? formName,
-    service: resolveService(payload, formName),
-    status: "new",
-    client_key: clientKey || null,
-    name: name || null,
-    email: email || null,
-    phone: phone || null,
-    payload,
-    source: "website",
-    submitted_at: new Date().toISOString(),
-  });
-  if (error) {
+  const { data: inserted, error } = await supabase
+    .from("enquiries")
+    .insert({
+      form_name: formName,
+      form_label: FORM_LABELS[formName] ?? formName,
+      service: resolveService(payload, formName),
+      status: "new",
+      client_key: clientKey || null,
+      name: name || null,
+      email: email || null,
+      phone: phone || null,
+      payload,
+      source: "website",
+      submitted_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (error || !inserted?.id) {
     return {
       attempted: true,
       ok: false,
-      error: error.message || "Could not save your enquiry right now.",
+      error: error?.message || "Could not save your enquiry right now.",
     };
+  }
+  if (formName === "nightlife_guestlist") {
+    const rawGuests = payload.guestlistGuests;
+    const guests = Array.isArray(rawGuests)
+      ? rawGuests
+          .map((g) => {
+            const row = g as Partial<GuestRowPayload>;
+            return {
+              guest_name: compactString(row.guestName),
+              guest_contact: compactString(row.guestContact),
+            };
+          })
+          .filter((g) => g.guest_name && g.guest_contact)
+      : [];
+    if (guests.length) {
+      const rows = guests.map((g) => ({ ...g, enquiry_id: inserted.id }));
+      const { error: guestsError } = await supabase
+        .from("enquiry_guests")
+        .insert(rows);
+      if (guestsError) {
+        return {
+          attempted: true,
+          ok: false,
+          error:
+            guestsError.message ||
+            "Could not save guest list details right now.",
+        };
+      }
+    }
   }
   return { attempted: true, ok: true };
 }

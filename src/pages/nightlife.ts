@@ -129,11 +129,9 @@ function renderClubPricing(c: Club): string {
     l ? renderPriceItem("Luxury", l) : "",
     v ? renderPriceItem("VIP", v) : "",
   ].filter(Boolean);
-  const min = c.minSpend?.trim();
   const hasEntry = entryItems.length > 0;
   const hasTables = tableItems.length > 0;
-  const hasMin = Boolean(min);
-  if (!hasEntry && !hasTables && !hasMin) return "";
+  if (!hasEntry && !hasTables) return "";
   const entryLine = hasEntry
     ? `<div class="club-card__pricing-line">
         <span class="club-card__pricing-line-label">Entry</span>
@@ -146,12 +144,6 @@ function renderClubPricing(c: Club): string {
         <div class="club-card__pricing-inline">${tableItems.join("")}</div>
       </div>`
     : "";
-  const minLine = hasMin
-    ? `<div class="club-card__pricing-line club-card__pricing-line--min">
-        <span class="club-card__pricing-line-label">Min. spend</span>
-        <p class="club-card__pricing-min-value">${escapeHtml(min!)}</p>
-      </div>`
-    : "";
   return `<details class="club-card__pricing-details">
       <summary class="club-card__pricing-summary">
         <span class="club-card__pricing-title">Pricing</span>
@@ -161,7 +153,6 @@ function renderClubPricing(c: Club): string {
         <div class="club-card__pricing-lines">
           ${entryLine}
           ${tablesLine}
-          ${minLine}
         </div>
       </div>
     </details>`;

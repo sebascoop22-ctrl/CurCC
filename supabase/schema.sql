@@ -58,11 +58,39 @@ create table if not exists public.enquiry_guests (
 
 create index if not exists enquiry_guests_enquiry_id_idx on public.enquiry_guests (enquiry_id);
 
+-- Content tables to move clubs/cars into database.
+create table if not exists public.clubs (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.cars (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists clubs_sort_idx on public.clubs (sort_order, name);
+create index if not exists cars_sort_idx on public.cars (sort_order, name);
+
 -- RLS defaults.
 alter table public.profiles enable row level security;
 alter table public.clients enable row level security;
 alter table public.enquiries enable row level security;
 alter table public.enquiry_guests enable row level security;
+alter table public.clubs enable row level security;
+alter table public.cars enable row level security;
 
 -- Public website can insert enquiries only.
 drop policy if exists enquiries_public_insert on public.enquiries;
@@ -100,6 +128,66 @@ drop policy if exists enquiries_admin_update on public.enquiries;
 create policy enquiries_admin_update
 on public.enquiries
 for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
+
+-- Public read access for catalog content.
+drop policy if exists clubs_public_read on public.clubs;
+create policy clubs_public_read
+on public.clubs
+for select
+to anon, authenticated
+using (is_active = true);
+
+drop policy if exists cars_public_read on public.cars;
+create policy cars_public_read
+on public.cars
+for select
+to anon, authenticated
+using (is_active = true);
+
+-- Admin write access for catalog content.
+drop policy if exists clubs_admin_write on public.clubs;
+create policy clubs_admin_write
+on public.clubs
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
+
+drop policy if exists cars_admin_write on public.cars;
+create policy cars_admin_write
+on public.cars
+for all
 to authenticated
 using (
   exists (

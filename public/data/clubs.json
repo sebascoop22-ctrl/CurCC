@@ -126,12 +126,12 @@
     "address": "Chelsea London SW3",
     "daysOpen": "Mon|Wed|Thu|Fri|Sat",
     "bestVisitDays": [
-      "Thu",
+      "Mon",
       "Fri",
       "Sat"
     ],
     "featured": true,
-    "featuredDay": "Monday",
+    "featuredDay": "Monday Friday Saturday",
     "venueType": "lounge",
     "lat": 51.48793,
     "lng": -0.167239,
@@ -279,10 +279,12 @@
     "address": "91 Jermyn St London SW1Y 6JB England",
     "daysOpen": "Thu|Fri|Sat|Sun",
     "bestVisitDays": [
-      "Sun"
+      "Thu",
+      "Fri",
+      "Sat"
     ],
-    "featured": false,
-    "featuredDay": "",
+    "featured": true,
+    "featuredDay": "Thursday Friday Saturday",
     "venueType": "lounge",
     "lat": 51.5082,
     "lng": -0.13711,

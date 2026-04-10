@@ -33,6 +33,7 @@ function formatGuestlistsForPayload(club: Club): string {
 }
 
 type NotifyMethod = "email" | "phone" | "instagram_dm" | "tiktok_dm";
+type GuestlistGuest = { guestName: string; guestContact: string };
 
 /**
  * Opens a modal on `host` (e.g. #cc-venue-request-root). Does not navigate away.
@@ -340,6 +341,12 @@ export function openVenueRequestModal(opts: {
     if (method === "email") inquiryPayload.email = email;
     else inquiryPayload.email = siteConfig.email;
     if (method === "phone") inquiryPayload.phone = phone;
+    if (kind === "guestlist") {
+      const guests: GuestlistGuest[] = guestRows.filter(
+        (row) => row.guestName.length > 0 && row.guestContact.length > 0,
+      );
+      if (guests.length) inquiryPayload.guestlistGuests = guests;
+    }
 
     submitBtn.disabled = true;
     void (async () => {

@@ -98,7 +98,6 @@ export async function initNightlifeMap(): Promise<void> {
   function fillSidebar(c: Club): void {
     const quote = document.getElementById("sidebar-experience");
     const bestNights = document.getElementById("sidebar-best-nights");
-    const spend = document.getElementById("sidebar-spend");
     const amenitiesEl = document.getElementById("sidebar-amenities");
     const thumbs = document.getElementById("sidebar-thumbs");
     const directions = document.getElementById(
@@ -131,7 +130,6 @@ export async function initNightlifeMap(): Promise<void> {
       bestNights.textContent = c.bestVisitDays.length
         ? c.bestVisitDays.join(" · ")
         : "—";
-    if (spend) spend.textContent = c.minSpend;
     const kfItems = c.knownFor?.filter((x) => x.trim()) ?? [];
     const ew = c.entryPricingWomen?.trim() ?? "";
     const em = c.entryPricingMen?.trim() ?? "";
