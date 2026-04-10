@@ -4,4 +4,6 @@ dist/
 .env
 .env.local
 .env.*.local
-old_images/
+old_images
+be.txt
+supabase/README.md
