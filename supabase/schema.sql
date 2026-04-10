@@ -111,6 +111,36 @@ alter table public.clubs enable row level security;
 alter table public.cars enable row level security;
 alter table public.club_weekly_flyers enable row level security;
 
+-- Profiles: each user can read their own row (needed for admin role check in the browser).
+drop policy if exists profiles_self_read on public.profiles;
+create policy profiles_self_read
+on public.profiles
+for select
+to authenticated
+using (id = auth.uid());
+
+-- Enquiry guests: public inserts (website guestlist flow); team reads in admin.
+drop policy if exists enquiry_guests_public_insert on public.enquiry_guests;
+create policy enquiry_guests_public_insert
+on public.enquiry_guests
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists enquiry_guests_team_read on public.enquiry_guests;
+create policy enquiry_guests_team_read
+on public.enquiry_guests
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role in ('admin', 'host')
+  )
+);
+
 -- Public website can insert enquiries only.
 drop policy if exists enquiries_public_insert on public.enquiries;
 create policy enquiries_public_insert
@@ -236,9 +266,23 @@ drop policy if exists flyers_admin_write on public.club_weekly_flyers;
 create policy flyers_admin_write
 on public.club_weekly_flyers
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
 
 -- Storage bucket for nightlife flyers.
 insert into storage.buckets (id, name, public)
@@ -256,6 +300,22 @@ drop policy if exists flyers_storage_write on storage.objects;
 create policy flyers_storage_write
 on storage.objects
 for all
-to anon, authenticated
-using (bucket_id = 'club-flyers')
-with check (bucket_id = 'club-flyers');
+to authenticated
+using (
+  bucket_id = 'club-flyers'
+  and exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+)
+with check (
+  bucket_id = 'club-flyers'
+  and exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);

@@ -113,3 +113,76 @@
   font-size: 0.82rem;
   color: var(--cc-gold);
 }
+
+.admin-flash--error {
+  color: #f0a8a8;
+}
+
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 360px;
+  margin-top: 0.75rem;
+}
+
+.admin-login-card code {
+  font-size: 0.85em;
+}
+
+.admin-enquiry-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 1rem 0;
+}
+
+.admin-enquiry-meta dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cc-muted);
+  margin: 0 0 0.15rem;
+}
+
+.admin-enquiry-meta dd {
+  margin: 0;
+  color: var(--cc-cream);
+}
+
+.admin-subhead {
+  font-size: 0.85rem;
+  margin: 1rem 0 0.4rem;
+  color: var(--cc-cream);
+}
+
+.admin-guest-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--cc-cream);
+}
+
+.admin-json {
+  max-height: 280px;
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--cc-bg-deep);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cc-muted);
+  font-size: 0.82rem;
+}
+
+.admin-inline-label select {
+  min-height: 38px;
+}

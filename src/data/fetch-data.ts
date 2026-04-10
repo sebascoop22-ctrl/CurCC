@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Car, Club, ClubFlyer } from "../types";
 import { getSupabaseClient } from "../lib/supabase";
 
@@ -74,6 +75,43 @@ export async function fetchCars(): Promise<Car[]> {
     if (!r.ok) return [];
     const data = (await r.json()) as unknown;
     return Array.isArray(data) ? (data as Car[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** All flyers (including inactive) for admin — requires authenticated admin session. */
+export async function fetchClubFlyersAdmin(
+  supabase: SupabaseClient,
+): Promise<ClubFlyer[]> {
+  try {
+    const { data, error } = await supabase
+      .from("club_weekly_flyers")
+      .select(
+        "id,club_slug,event_date,title,description,image_path,image_url,is_active,sort_order",
+      )
+      .order("event_date", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.warn(`[Cooper Concierge] club flyers admin fetch failed: ${error.message}`);
+      return [];
+    }
+    if (!Array.isArray(data)) return [];
+    return data.map((row) => {
+      const flyer = row as FlyerRow;
+      return {
+        id: String(flyer.id || ""),
+        clubSlug: String(flyer.club_slug || "").trim(),
+        eventDate: String(flyer.event_date || ""),
+        title: String(flyer.title || "").trim(),
+        description: String(flyer.description || "").trim(),
+        imagePath: String(flyer.image_path || "").trim(),
+        imageUrl: String(flyer.image_url || "").trim(),
+        isActive: Boolean(flyer.is_active),
+        sortOrder: Number(flyer.sort_order || 0) || 0,
+      };
+    });
   } catch {
     return [];
   }

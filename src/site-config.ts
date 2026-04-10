@@ -7,7 +7,7 @@ export const siteConfig = {
   brandName: "Cooper Concierge",
   email: "enquiries@cooperconcierge.co.uk",
   phoneDisplay: "+44 7485 540 379",
-  /** Lightweight front-end gate for admin.html (not secure against determined users). */
+  /** Legacy; admin.html uses Supabase Auth + `profiles.role = admin`. */
   adminPasscode: import.meta.env.VITE_ADMIN_PASSCODE?.trim(),
   /** E.164 without + for wa.me */
   whatsappE164: "447485540379",

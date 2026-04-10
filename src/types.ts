@@ -1,4 +1,4 @@
-export type VenueType = "club" | "dining";
+export type VenueType = "club" | "dining" | "lounge";
 
 /** From `public/clubs/guestlists.csv` — merged at build time */
 export type GuestlistRecurrence = "one_off" | "weekly";
