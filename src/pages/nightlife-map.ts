@@ -232,7 +232,7 @@ export async function initNightlifeMap(): Promise<void> {
       const ctx = c.address
         ? `Chauffeur pickup — ${c.name} (${c.address})`
         : `Chauffeur pickup — ${c.name}`;
-      chauffeur.href = `enquiry.html?context=${encodeURIComponent(ctx)}`;
+      chauffeur.href = `/enquiry?context=${encodeURIComponent(ctx)}`;
     }
     const guestBlock = document.getElementById("sidebar-guestlist-block");
     const guestLines = document.getElementById("sidebar-guestlist-lines");

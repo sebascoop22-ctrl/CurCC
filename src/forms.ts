@@ -53,17 +53,21 @@ type InquiryChannelResult = {
   error?: string;
 };
 
-type GuestRowPayload = { guestName: string; guestContact: string };
-
 function compactString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
 function resolveClientKey(payload: Record<string, unknown>): string {
-  const email = compactString(payload.email).toLowerCase();
+  const siteMail = siteConfig.email.trim().toLowerCase();
+  const rawEmail = compactString(payload.email).toLowerCase();
+  const email = rawEmail && rawEmail !== siteMail ? rawEmail : "";
   if (email) return `email:${email}`;
   const phoneDigits = compactString(payload.phone).replace(/\D/g, "");
   if (phoneDigits) return `phone:${phoneDigits}`;
+  const ig = normalizeInstagramHandle(
+    compactString(payload.instagram_handle ?? payload.instagram),
+  );
+  if (ig) return `instagram:${ig}`;
   const name = compactString(payload.name || payload.fullName).toLowerCase();
   if (name) return `name:${name}`;
   return "";
@@ -78,6 +82,12 @@ function resolveService(payload: Record<string, unknown>, formName: string): str
   return "general";
 }
 
+function sanitizePayloadForJsonb(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+}
+
 async function submitToSupabase(
   payload: Record<string, unknown>,
   formName: string,
@@ -89,58 +99,32 @@ async function submitToSupabase(
   const email = compactString(payload.email).toLowerCase();
   const phone = compactString(payload.phone);
   const clientKey = resolveClientKey(payload);
-  const { data: inserted, error } = await supabase
-    .from("enquiries")
-    .insert({
-      form_name: formName,
-      form_label: FORM_LABELS[formName] ?? formName,
-      service: resolveService(payload, formName),
-      status: "new",
-      client_key: clientKey || null,
-      name: name || null,
-      email: email || null,
-      phone: phone || null,
-      payload,
-      source: "website",
-      submitted_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-  if (error || !inserted?.id) {
+  const guestsForRpc =
+    formName === "nightlife_guestlist" && Array.isArray(payload.guestlistGuests)
+      ? payload.guestlistGuests
+      : [];
+
+  const { data: enquiryId, error } = await supabase.rpc(
+    "submit_website_enquiry",
+    {
+      p_form_name: formName,
+      p_form_label: FORM_LABELS[formName] ?? formName,
+      p_service: resolveService(payload, formName),
+      p_client_key: clientKey,
+      p_name: name,
+      p_email: email,
+      p_phone: phone,
+      p_payload: sanitizePayloadForJsonb(payload),
+      p_guests: guestsForRpc,
+    },
+  );
+
+  if (error || !enquiryId) {
     return {
       attempted: true,
       ok: false,
       error: error?.message || "Could not save your enquiry right now.",
     };
-  }
-  if (formName === "nightlife_guestlist") {
-    const rawGuests = payload.guestlistGuests;
-    const guests = Array.isArray(rawGuests)
-      ? rawGuests
-          .map((g) => {
-            const row = g as Partial<GuestRowPayload>;
-            return {
-              guest_name: compactString(row.guestName),
-              guest_contact: compactString(row.guestContact),
-            };
-          })
-          .filter((g) => g.guest_name && g.guest_contact)
-      : [];
-    if (guests.length) {
-      const rows = guests.map((g) => ({ ...g, enquiry_id: inserted.id }));
-      const { error: guestsError } = await supabase
-        .from("enquiry_guests")
-        .insert(rows);
-      if (guestsError) {
-        return {
-          attempted: true,
-          ok: false,
-          error:
-            guestsError.message ||
-            "Could not save guest list details right now.",
-        };
-      }
-    }
   }
   return { attempted: true, ok: true };
 }
@@ -258,4 +242,14 @@ export function validateEmail(v: string): boolean {
 export function validatePhone(v: string): boolean {
   const digits = v.replace(/\D/g, "");
   return digits.length >= 8;
+}
+
+export function normalizeInstagramHandle(v: string): string {
+  return v.trim().replace(/^@+/u, "").toLowerCase();
+}
+
+/** Instagram username rules (simplified): letters, numbers, . and _ */
+export function validateInstagramHandle(v: string): boolean {
+  const h = normalizeInstagramHandle(v);
+  return h.length >= 1 && h.length <= 30 && /^[a-z0-9._]+$/i.test(h);
 }

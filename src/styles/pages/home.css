@@ -304,26 +304,26 @@
   border-color: #b45353 !important;
 }
 
-.lead-invite__fields[data-contact-mode="email"] {
+.lead-invite__fields[data-contact-mode="instagram"] {
   grid-template-columns: 1fr auto;
 }
 
-.lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-name {
+.lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-name {
   grid-column: 1 / -1;
 }
 
-.lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-email {
+.lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-instagram {
   grid-column: 1;
 }
 
-.lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-btn {
+.lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-btn {
   grid-column: 2;
   align-self: stretch;
   height: 100%;
   min-height: 48px;
 }
 
-.lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-phone {
+.lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-phone {
   display: none;
 }
 
@@ -340,7 +340,7 @@
   display: block;
 }
 
-.lead-invite__fields[data-contact-mode="phone"] .lead-invite__cell-email {
+.lead-invite__fields[data-contact-mode="phone"] .lead-invite__cell-instagram {
   display: none;
 }
 
@@ -352,14 +352,14 @@
 }
 
 @media (max-width: 640px) {
-  .lead-invite__fields[data-contact-mode="email"],
+  .lead-invite__fields[data-contact-mode="instagram"],
   .lead-invite__fields[data-contact-mode="phone"] {
     grid-template-columns: 1fr;
   }
 
-  .lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-name,
-  .lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-email,
-  .lead-invite__fields[data-contact-mode="email"] .lead-invite__cell-btn {
+  .lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-name,
+  .lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-instagram,
+  .lead-invite__fields[data-contact-mode="instagram"] .lead-invite__cell-btn {
     grid-column: 1;
   }
 

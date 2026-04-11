@@ -18,7 +18,7 @@ export type ActivePage =
   | "privacy"
   | "terms";
 
-const homeHref = "index.html";
+const homeHref = "/";
 const servicesHref = `${homeHref}#services`;
 
 function drawerLinks(active: ActivePage): string {
@@ -26,10 +26,10 @@ function drawerLinks(active: ActivePage): string {
     active === p ? ' class="is-active"' : "";
   return `
     <a href="${servicesHref}"${cls("home")}>Services</a>
-    <a href="nightlife.html"${cls("nightlife")}>Nightlife</a>
-    <a href="chauffeuring.html"${cls("chauffeuring")}>Chauffeur</a>
-    <a href="security.html"${cls("security")}>Security</a>
-    <a href="enquiry.html"${cls("enquiry")}>Inquiry</a>
+    <a href="/nightlife"${cls("nightlife")}>Nightlife</a>
+    <a href="/chauffeuring"${cls("chauffeuring")}>Chauffeur</a>
+    <a href="/security"${cls("security")}>Security</a>
+    <a href="/enquiry"${cls("enquiry")}>Inquiry</a>
   `;
 }
 
@@ -42,10 +42,10 @@ export function initChrome(active: ActivePage): void {
 
   const desktopNav = () => `<nav class="site-nav" aria-label="Primary">
     <a href="${servicesHref}" class="${active === "home" ? "is-active" : ""}">Services</a>
-    <a href="nightlife.html" class="${active === "nightlife" || active === "nightlife-map" ? "is-active" : ""}">Nightlife</a>
-    <a href="chauffeuring.html" class="${active === "chauffeuring" ? "is-active" : ""}">Chauffeur</a>
-    <a href="security.html" class="${active === "security" ? "is-active" : ""}">Security</a>
-    <a href="enquiry.html" class="${active === "enquiry" ? "is-active" : ""}">Inquiry</a>
+    <a href="/nightlife" class="${active === "nightlife" || active === "nightlife-map" ? "is-active" : ""}">Nightlife</a>
+    <a href="/chauffeuring" class="${active === "chauffeuring" ? "is-active" : ""}">Chauffeur</a>
+    <a href="/security" class="${active === "security" ? "is-active" : ""}">Security</a>
+    <a href="/enquiry" class="${active === "enquiry" ? "is-active" : ""}">Inquiry</a>
   </nav>`;
 
   header.innerHTML = `
@@ -76,16 +76,16 @@ export function initChrome(active: ActivePage): void {
       <div class="site-footer__cluster">
         <nav class="site-footer__pages" aria-label="Site pages">
           <a href="${homeHref}">Home</a>
-          <a href="nightlife.html">Nightlife</a>
-          <a href="nightlife-map.html">Map</a>
-          <a href="chauffeuring.html">Chauffeur</a>
-          <a href="security.html">Security</a>
-          <a href="enquiry.html">Enquiry</a>
+          <a href="/nightlife">Nightlife</a>
+          <a href="/nightlife-map">Map</a>
+          <a href="/chauffeuring">Chauffeur</a>
+          <a href="/security">Security</a>
+          <a href="/enquiry">Enquiry</a>
         </nav>
         ${socialHtml ? `<nav class="site-footer__social" aria-label="Social">${socialHtml}</nav>` : ""}
         <nav class="site-footer__links" aria-label="Legal">
-          <a href="privacy.html">Privacy</a>
-          <a href="terms.html">Terms</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
           <a href="/sitemap.xml">Sitemap</a>
         </nav>
       </div>
@@ -99,7 +99,7 @@ export function initChrome(active: ActivePage): void {
         <p class="cc-form-hint">Send a message through the enquiry form—replies go to your concierge inbox.</p>
         <div class="modal__actions">
           <a class="cc-btn cc-btn--gold" href="${whatsappHref("Cooper Concierge enquiry")}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
-          <a class="cc-btn cc-btn--ghost" href="enquiry.html">Enquiry form</a>
+          <a class="cc-btn cc-btn--ghost" href="/enquiry">Enquiry form</a>
         </div>
       </div>
     </div>`;

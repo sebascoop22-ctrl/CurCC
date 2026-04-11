@@ -5,7 +5,8 @@ import {
   showFormError,
   showFormSuccess,
   submitInquiry,
-  validateEmail,
+  validateInstagramHandle,
+  validatePhone,
 } from "../forms";
 import "../styles/pages/home.css";
 
@@ -201,7 +202,7 @@ export async function initHome(): Promise<void> {
       promoBlurbEl.textContent =
         "Featured destinations appear when configured in each club’s CSV.";
       thumb.removeAttribute("src");
-      if (detailsLnk) detailsLnk.href = "nightlife.html";
+      if (detailsLnk) detailsLnk.href = "/nightlife";
       itemLabel.textContent = "0 / 0";
       return;
     }
@@ -213,7 +214,7 @@ export async function initHome(): Promise<void> {
     thumb.alt = club.name;
     itemLabel.textContent = `${itemIndex + 1} / ${total}`;
     if (detailsLnk) {
-      detailsLnk.href = `nightlife.html?venue=${encodeURIComponent(club.slug)}`;
+      detailsLnk.href = `/nightlife?venue=${encodeURIComponent(club.slug)}`;
     }
   }
 
@@ -223,7 +224,7 @@ export async function initHome(): Promise<void> {
       promoBlurbEl.textContent =
         "Flyers will appear here once nightlife promotions are uploaded.";
       thumb.removeAttribute("src");
-      if (detailsLnk) detailsLnk.href = "nightlife.html";
+      if (detailsLnk) detailsLnk.href = "/nightlife";
       itemLabel.textContent = "0 / 0";
       return;
     }
@@ -239,7 +240,7 @@ export async function initHome(): Promise<void> {
     }
     itemLabel.textContent = `${itemIndex + 1} / ${total}`;
     if (detailsLnk) {
-      detailsLnk.href = `nightlife.html?venue=${encodeURIComponent(flyer.clubSlug)}`;
+      detailsLnk.href = `/nightlife?venue=${encodeURIComponent(flyer.clubSlug)}`;
     }
   }
 
@@ -360,7 +361,8 @@ export async function initHome(): Promise<void> {
       (form?.querySelector('input[name="contact_method"]:checked') as HTMLInputElement)
         ?.value,
     );
-    if (leadFields) leadFields.dataset.contactMode = m === "phone" ? "phone" : "email";
+    if (leadFields)
+      leadFields.dataset.contactMode = m === "instagram" ? "instagram" : "phone";
     form?.querySelectorAll(".lead-invite__chip").forEach((chip) => {
       const inp = chip.querySelector('input[name="contact_method"]');
       chip.classList.toggle(
@@ -379,8 +381,8 @@ export async function initHome(): Promise<void> {
     e.preventDefault();
     const fd = new FormData(form);
     const name = String(fd.get("name") || "").trim();
-    const method = String(fd.get("contact_method") || "email");
-    const email = String(fd.get("email") || "").trim();
+    const method = String(fd.get("contact_method") || "phone");
+    const instagramRaw = String(fd.get("instagram_handle") || "").trim();
     const phone = String(fd.get("phone") || "").trim();
 
     let ok = true;
@@ -390,24 +392,24 @@ export async function initHome(): Promise<void> {
     hideFormError(errorEl);
     successEl?.classList.remove("is-visible");
     if (!name) ok = false;
-    if (method === "email" && !validateEmail(email)) ok = false;
-    if (method === "phone" && phone.length < 8) ok = false;
+    if (method === "instagram" && !validateInstagramHandle(instagramRaw)) ok = false;
+    if (method === "phone" && !validatePhone(phone)) ok = false;
 
     if (!ok) {
       if (!name) document.getElementById("home-name")?.classList.add("lead-invite__input--error");
-      if (method === "email")
-        document.getElementById("home-email")?.classList.add("lead-invite__input--error");
+      if (method === "instagram")
+        document.getElementById("home-instagram")?.classList.add("lead-invite__input--error");
       if (method === "phone")
         document.getElementById("home-phone")?.classList.add("lead-invite__input--error");
       return;
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
       name,
       contactMethod: method,
-      email: method === "email" ? email : undefined,
-      phone: method === "phone" ? phone : undefined,
     };
+    if (method === "phone") payload.phone = phone;
+    if (method === "instagram") payload.instagram_handle = instagramRaw;
     const btn = form.querySelector(
       'button[type="submit"]',
     ) as HTMLButtonElement | null;

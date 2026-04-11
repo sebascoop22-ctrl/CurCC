@@ -52,6 +52,43 @@
   text-decoration: none;
 }
 
+.enquiry-contact-fieldset {
+  border: none;
+  margin: var(--cc-space-md) 0;
+  padding: 0;
+}
+
+.enquiry-contact-fieldset > legend {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.enquiry-contact-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+}
+
+.enquiry-contact-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--cc-cream);
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.enquiry-contact-options input[type="radio"] {
+  accent-color: var(--cc-gold);
+  width: 1rem;
+  height: 1rem;
+}
+
 .form-grid-2 {
   display: grid;
   gap: var(--cc-space-md);

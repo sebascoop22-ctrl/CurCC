@@ -16,11 +16,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="/media/home/brand-logo.jpeg" />
     <meta name="description" content="Enquire—nightlife, chauffeur, security." />
-    <link rel="canonical" href="https://www.cooperconcierge.co.uk/enquiry.html" />
+    <link rel="canonical" href="https://www.cooperconcierge.co.uk/enquiry" />
     <meta property="og:title" content="Enquiry | Cooper Concierge" />
     <meta property="og:description" content="Enquire—nightlife, chauffeur, security." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://www.cooperconcierge.co.uk/enquiry.html" />
+    <meta property="og:url" content="https://www.cooperconcierge.co.uk/enquiry" />
     <meta property="og:image" content="https://www.cooperconcierge.co.uk/media/home/brand-logo.jpeg" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -51,14 +51,6 @@
               <input id="eq-name" name="name" type="text" autocomplete="name" required />
             </div>
             <div class="cc-field">
-              <label for="eq-email">Email</label>
-              <input id="eq-email" name="email" type="email" autocomplete="email" required />
-            </div>
-            <div class="cc-field">
-              <label for="eq-phone">Phone</label>
-              <input id="eq-phone" name="phone" type="tel" autocomplete="tel" required />
-            </div>
-            <div class="cc-field">
               <label for="enquiry-service">Service of interest</label>
               <select id="enquiry-service" name="service" required>
                 <option value="">Select…</option>
@@ -70,9 +62,35 @@
               </select>
             </div>
           </div>
+          <fieldset class="enquiry-contact-fieldset">
+            <legend>How should we reach you?</legend>
+            <div class="enquiry-contact-options" role="radiogroup" aria-label="Contact method">
+              <label><input type="radio" name="contact_via" value="phone" checked /> Phone</label>
+              <label><input type="radio" name="contact_via" value="email" /> Email</label>
+              <label><input type="radio" name="contact_via" value="instagram" /> Instagram</label>
+            </div>
+          </fieldset>
+          <div id="eq-wrap-phone" class="cc-field">
+            <label for="eq-phone">Phone</label>
+            <input id="eq-phone" name="phone" type="tel" autocomplete="tel" placeholder="+44 …" />
+          </div>
+          <div id="eq-wrap-email" class="cc-field" hidden>
+            <label for="eq-email">Email</label>
+            <input id="eq-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" />
+          </div>
+          <div id="eq-wrap-ig" class="cc-field" hidden>
+            <label for="eq-instagram">Instagram</label>
+            <input
+              id="eq-instagram"
+              name="instagram_handle"
+              type="text"
+              autocomplete="username"
+              placeholder="@handle or handle"
+            />
+          </div>
           <div class="cc-field">
             <label for="eq-details">Detailed requirements</label>
-            <textarea id="eq-details" name="details" rows="6" required placeholder="Dates parties jurisdictions sensitivities…"></textarea>
+            <textarea id="eq-details" name="details" rows="6" required placeholder="Extra information…"></textarea>
           </div>
           <div style="text-align: center; margin-top: var(--cc-space-md)">
             <button type="submit" class="cc-btn cc-btn--gold" style="min-width: min(100%, 320px); min-height: 52px">Submit request</button>

@@ -195,6 +195,63 @@ with check (
   )
 );
 
+-- Browser inserts must not use PostgREST `.select()` after insert: anon has no SELECT on
+-- enquiries (`enquiries_no_public_read`), so `.insert().select('id')` raises an RLS error.
+-- This RPC returns the new id and inserts guest rows in one transaction.
+create or replace function public.submit_website_enquiry(
+  p_form_name text,
+  p_form_label text,
+  p_service text,
+  p_client_key text,
+  p_name text,
+  p_email text,
+  p_phone text,
+  p_payload jsonb,
+  p_guests jsonb default '[]'::jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  eid uuid;
+  elem jsonb;
+  gn text;
+  gc text;
+begin
+  insert into public.enquiries (
+    form_name, form_label, service, status, source, client_key, name, email, phone, payload, submitted_at
+  ) values (
+    coalesce(nullif(trim(p_form_name), ''), 'unknown'),
+    coalesce(nullif(trim(p_form_label), ''), 'unknown'),
+    coalesce(nullif(trim(p_service), ''), 'general'),
+    'new',
+    'website',
+    nullif(trim(p_client_key), ''),
+    nullif(trim(p_name), ''),
+    nullif(lower(trim(p_email)), ''),
+    nullif(trim(p_phone), ''),
+    coalesce(p_payload, '{}'::jsonb),
+    now()
+  )
+  returning id into eid;
+
+  for elem in select * from jsonb_array_elements(coalesce(p_guests, '[]'::jsonb))
+  loop
+    gn := trim(coalesce(elem->>'guestName', ''));
+    gc := trim(coalesce(elem->>'guestContact', ''));
+    if gn <> '' and gc <> '' then
+      insert into public.enquiry_guests (enquiry_id, guest_name, guest_contact)
+      values (eid, gn, gc);
+    end if;
+  end loop;
+
+  return eid;
+end;
+$$;
+
+grant execute on function public.submit_website_enquiry(text, text, text, text, text, text, text, jsonb, jsonb) to anon, authenticated;
+
 -- Public read access for catalog content.
 drop policy if exists clubs_public_read on public.clubs;
 create policy clubs_public_read

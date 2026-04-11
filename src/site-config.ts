@@ -1,5 +1,5 @@
 /**
- * UTM redirect pages for social bios: `/go/<platform>.html` (see `public/go/UTM-LINKS.txt`).
+ * UTM redirect pages for social bios: `/go/<platform>` (see `public/go/UTM-LINKS.txt`).
  * Optional: `?ref=name` → utm_content; `?c=stories` → utm_campaign.
  */
 /** Replace with production contact details */
@@ -7,7 +7,7 @@ export const siteConfig = {
   brandName: "Cooper Concierge",
   email: "enquiries@cooperconcierge.co.uk",
   phoneDisplay: "+44 7485 540 379",
-  /** Legacy; admin.html uses Supabase Auth + `profiles.role = admin`. */
+  /** Legacy; `/admin` uses Supabase Auth + `profiles.role = admin`. */
   adminPasscode: import.meta.env.VITE_ADMIN_PASSCODE?.trim(),
   /** E.164 without + for wa.me */
   whatsappE164: "447485540379",

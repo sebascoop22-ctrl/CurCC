@@ -48,7 +48,7 @@
             height="120"
           />
           <div class="hero__actions">
-            <a class="cc-btn cc-btn--gold" href="enquiry.html">Book the evening</a>
+            <a class="cc-btn cc-btn--gold" href="/enquiry">Book the evening</a>
             <a class="cc-btn cc-btn--ghost" href="#home-lead">Submit inquiry</a>
           </div>
         </div>
@@ -88,7 +88,7 @@
               <span id="featured-item-label" class="featured-banner__date-text">1 / 1</span>
               <button type="button" class="featured-banner__chev" id="featured-item-next" aria-label="Next item">›</button>
             </div>
-            <a href="nightlife.html" class="featured-banner__details" id="featured-details">Details</a>
+            <a href="/nightlife" class="featured-banner__details" id="featured-details">Details</a>
           </div>
         </div>
       </section>
@@ -100,7 +100,7 @@
           <div class="bento__grid bento__grid--services">
             <a
               class="bento__tile bento__tile--featured"
-              href="nightlife.html"
+              href="/nightlife"
               style="background-image: url(/media/home/bento-nightlife-photo.jpg), url(/media/home/bento-nightlife-bg.svg)"
             >
               <div class="bento__tile__inner">
@@ -110,7 +110,7 @@
             </a>
             <a
               class="bento__tile bento__tile--chauffeur"
-              href="chauffeuring.html"
+              href="/chauffeuring"
               style="background-image: url(/media/chauffeuring/hero-cover.jpg)"
             >
               <div class="bento__tile__inner">
@@ -120,7 +120,7 @@
             </a>
             <a
               class="bento__tile bento__tile--wide bento__tile--dining"
-              href="enquiry.html"
+              href="/enquiry"
               style="background-image: url(/media/home/bento-dining.jpg)"
             >
               <div class="bento__tile__inner">
@@ -130,7 +130,7 @@
             </a>
             <a
               class="bento__tile bento__tile--wide bento__tile--security"
-              href="security.html"
+              href="/security"
               style="background-image: url(/media/security/hero-cover.jpg)"
             >
               <div class="bento__tile__inner">
@@ -139,7 +139,7 @@
               </div>
             </a>
             <a class="bento__tile bento__tile--wide bento__tile--production"
-            href="enquiry.html"
+            href="/enquiry"
             style="background-image: url(/media/home/bento-venue-hire.jpg)">
               <div class="bento__tile__inner bento__tile__inner--solid">
                 <h3 class="bento__title">Venue Hire</h3>
@@ -170,15 +170,15 @@
           <form id="home-lead-form" class="lead-invite__form" novalidate>
             <div class="lead-invite__method" role="group" aria-label="Preferred contact method">
               <label class="lead-invite__chip">
-                <input type="radio" name="contact_method" value="email" checked />
-                Email
-              </label>
-              <label class="lead-invite__chip">
-                <input type="radio" name="contact_method" value="phone" />
+                <input type="radio" name="contact_method" value="phone" checked />
                 Phone
               </label>
+              <label class="lead-invite__chip">
+                <input type="radio" name="contact_method" value="instagram" />
+                Instagram
+              </label>
             </div>
-            <div id="lead-fields" class="lead-invite__fields" data-contact-mode="email">
+            <div id="lead-fields" class="lead-invite__fields" data-contact-mode="phone">
               <input
                 id="home-name"
                 name="name"
@@ -189,12 +189,12 @@
                 placeholder="Full Name"
               />
               <input
-                id="home-email"
-                name="email"
-                class="lead-invite__input lead-invite__cell-email"
-                type="email"
-                autocomplete="email"
-                placeholder="Professional Email Address"
+                id="home-instagram"
+                name="instagram_handle"
+                class="lead-invite__input lead-invite__cell-instagram"
+                type="text"
+                autocomplete="username"
+                placeholder="Instagram @handle"
               />
               <input
                 id="home-phone"

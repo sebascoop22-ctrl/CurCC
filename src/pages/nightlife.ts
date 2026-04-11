@@ -154,7 +154,7 @@ function renderClubPricing(c: Club): string {
 }
 
 function renderClubActions(c: Club): string {
-  const mapHref = `nightlife-map.html?venue=${encodeURIComponent(c.slug)}`;
+  const mapHref = `/nightlife-map?venue=${encodeURIComponent(c.slug)}`;
   const slugAttr = escapeHtml(c.slug);
   const website =
     c.website.trim() !== ""
