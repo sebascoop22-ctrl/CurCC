@@ -15,22 +15,30 @@ import {
   upsertClubToDb,
 } from "../admin/catalog";
 import {
+  createClientsFromEnquiry,
+  loadClientsForAdmin,
   loadEnquiriesForAdmin,
   loadEnquiryGuests,
   updateEnquiryStatus,
+  type ClientRow,
   type EnquiryGuestRow,
   type EnquiryRow,
 } from "../admin/enquiries";
+import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { getSupabaseClient } from "../lib/supabase";
 import type { Car, Club, ClubFlyer, GuestlistRecurrence } from "../types";
 import "../styles/pages/admin.css";
 
-type Tab = "clubs" | "cars" | "flyers" | "enquiries";
+/** Desk = CRM; catalog = clubs, cars, weekly flyers */
+type AdminView = "enquiries" | "clients" | "clubs" | "cars" | "flyers";
 
 type ClubEntry = { dbId: string | null; club: Club };
 type CarEntry = { dbId: string | null; car: Car };
 
-const FLYERS_BUCKET = "club-flyers";
+/** Public uploads: flyers, club/car catalog images (same bucket, different path prefixes). */
+const ADMIN_MEDIA_BUCKET = "club-flyers";
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const ENQUIRY_STATUSES = ["new", "contacted", "in_progress", "closed", "spam"] as const;
 
@@ -213,6 +221,97 @@ function escapeAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function validateClubShape(club: Club): string[] {
+  const err: string[] = [];
+  const slug = club.slug.trim();
+  if (!slug) err.push("Club slug is required.");
+  else if (!SLUG_PATTERN.test(slug))
+    err.push("Club slug: use lowercase letters, numbers, and hyphens only.");
+  if (!club.name.trim()) err.push("Club name is required.");
+  const lat = club.lat;
+  const lng = club.lng;
+  if (lat !== 0 || lng !== 0) {
+    if (Number.isNaN(lat) || lat < -90 || lat > 90)
+      err.push("Latitude must be between -90 and 90.");
+    if (Number.isNaN(lng) || lng < -180 || lng > 180)
+      err.push("Longitude must be between -180 and 180.");
+  }
+  const w = club.website.trim();
+  if (w) {
+    try {
+      const u = w.includes("://") ? w : `https://${w}`;
+      new URL(u);
+    } catch {
+      err.push("Website does not look like a valid URL.");
+    }
+  }
+  return err;
+}
+
+function validateCarShape(car: Car): string[] {
+  const err: string[] = [];
+  const slug = car.slug.trim();
+  if (!slug) err.push("Car slug is required.");
+  else if (!SLUG_PATTERN.test(slug))
+    err.push("Car slug: use lowercase letters, numbers, and hyphens only.");
+  if (!car.name.trim()) err.push("Car name is required.");
+  const g = car.gridSize;
+  if (g !== "large" && g !== "medium" && g !== "feature")
+    err.push("Grid size must be large, medium, or feature.");
+  return err;
+}
+
+function validateFlyerShape(f: ClubFlyer, entries: ClubEntry[]): string[] {
+  const err: string[] = [];
+  const slug = f.clubSlug.trim();
+  if (!slug) err.push("Select a club.");
+  else {
+    const entry = entries.find((x) => x.club.slug.trim() === slug);
+    if (!entry?.dbId)
+      err.push(
+        "That club is not in the database yet—open Catalog → Clubs and save it first.",
+      );
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.eventDate.trim()))
+    err.push("Event date must be YYYY-MM-DD.");
+  if (!f.title.trim()) err.push("Flyer title is required.");
+  if (!f.imageUrl.trim() && !f.imagePath.trim())
+    err.push("Add a flyer image (upload or paste a public image URL).");
+  return err;
+}
+
+function flyerClubSelectOptions(
+  entries: ClubEntry[],
+  selectedSlug: string,
+): string {
+  if (!entries.length) {
+    return `<option value="">No clubs—add one under Catalog → Clubs</option>`;
+  }
+  const sel = selectedSlug.trim();
+  return entries
+    .map((entry) => {
+      const s = entry.club.slug.trim();
+      const label = `${entry.club.name} (${s})`;
+      const selected = s === sel ? " selected" : "";
+      return `<option value="${escapeAttr(s)}"${selected}>${escapeAttr(label)}</option>`;
+    })
+    .join("");
+}
+
+function renderClientDetail(c: ClientRow): string {
+  return `
+      <div class="admin-client-detail">
+        <h4 class="admin-subhead" style="margin-top: 0">Client</h4>
+        <dl class="admin-enquiry-meta">
+          <div><dt>Added</dt><dd>${escapeAttr(c.created_at || "—")}</dd></div>
+          <div><dt>Name</dt><dd>${escapeAttr(c.name ?? "—")}</dd></div>
+          <div><dt>Email</dt><dd>${escapeAttr(c.email ?? "—")}</dd></div>
+          <div><dt>Phone</dt><dd>${escapeAttr(c.phone ?? "—")}</dd></div>
+          <div><dt>Instagram</dt><dd>${escapeAttr(c.instagram ?? "—")}</dd></div>
+        </dl>
+      </div>`;
+}
+
 export async function initAdminPortal(): Promise<void> {
   const adminRoot = document.getElementById("admin-root");
   if (!adminRoot) return;
@@ -227,16 +326,18 @@ export async function initAdminPortal(): Promise<void> {
     return;
   }
 
-  let tab: Tab = "clubs";
+  let view: AdminView = "enquiries";
   let selectedClub = 0;
   let selectedCar = 0;
   let selectedFlyer = 0;
   let selectedEnquiry: string | null = null;
+  let selectedClientId: string | null = null;
   let clubEntries: ClubEntry[] = [];
   let carEntries: CarEntry[] = [];
   let flyers: ClubFlyer[] = [];
   let enquiries: EnquiryRow[] = [];
   let enquiryGuests: EnquiryGuestRow[] = [];
+  let clients: ClientRow[] = [];
   let loginError = "";
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
@@ -302,22 +403,36 @@ export async function initAdminPortal(): Promise<void> {
     }
   }
 
+  async function reloadClients(): Promise<void> {
+    const r = await loadClientsForAdmin(supabase);
+    if (r.ok) clients = r.rows;
+    if (selectedClientId && !clients.some((c) => c.id === selectedClientId)) {
+      selectedClientId = clients[0]?.id ?? null;
+    }
+    if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
+  }
+
   async function reloadAllFromDb(): Promise<void> {
     clubEntries = await loadClubEntries();
     carEntries = await loadCarEntries();
     await reloadFlyers();
     await reloadEnquiries();
+    await reloadClients();
     selectedClub = Math.min(selectedClub, Math.max(0, clubEntries.length - 1));
     selectedCar = Math.min(selectedCar, Math.max(0, carEntries.length - 1));
   }
 
-  function flash(msg: string): void {
+  function flash(msg: string, tone: "ok" | "error" = "ok"): void {
     const el = adminRoot.querySelector("#admin-flash");
     if (el) {
       el.textContent = msg;
+      el.classList.toggle("admin-flash--error", tone === "error");
       setTimeout(() => {
-        if (el.textContent === msg) el.textContent = "";
-      }, 3200);
+        if (el.textContent === msg) {
+          el.textContent = "";
+          el.classList.remove("admin-flash--error");
+        }
+      }, 4200);
     }
   }
 
@@ -386,6 +501,7 @@ export async function initAdminPortal(): Promise<void> {
             <select id="enquiry-status-select" data-enquiry-id="${escapeAttr(e.id)}">${statusOpts}</select>
           </label>
           <button type="button" class="cc-btn cc-btn--gold" id="enquiry-status-save">Update status</button>
+          <button type="button" class="cc-btn cc-btn--ghost" id="enquiry-create-clients" data-enquiry-id="${escapeAttr(e.id)}">Create clients from names</button>
         </div>
         <dl class="admin-enquiry-meta">
           <div><dt>Form</dt><dd>${escapeAttr(e.form_label)}</dd></div>
@@ -395,7 +511,7 @@ export async function initAdminPortal(): Promise<void> {
           <div><dt>Email</dt><dd>${escapeAttr(e.email ?? "—")}</dd></div>
           <div><dt>Phone</dt><dd>${escapeAttr(e.phone ?? "—")}</dd></div>
         </dl>
-        <h4 class="admin-subhead">Guest list</h4>
+        <h4 class="admin-subhead">Guest list (booker first, then party)</h4>
         ${guestsHtml}
         <h4 class="admin-subhead">Payload (JSON)</h4>
         <pre class="admin-json">${escapeAttr(payloadPretty)}</pre>
@@ -411,27 +527,55 @@ export async function initAdminPortal(): Promise<void> {
       : enquiries[0];
     if (!selectedEnquiry && enquiry) selectedEnquiry = enquiry.id;
 
+    if (view === "clients") {
+      if (!clients.length) selectedClientId = null;
+      else if (
+        !selectedClientId ||
+        !clients.some((c) => c.id === selectedClientId)
+      ) {
+        selectedClientId = clients[0].id;
+      }
+    }
+    const clientRow =
+      view === "clients" && selectedClientId
+        ? clients.find((c) => c.id === selectedClientId)
+        : undefined;
+
+    const vt = club.venueType;
+    const gs = car.gridSize;
+
     adminRoot.innerHTML = `
       <div class="admin-card">
-        <div class="admin-toolbar">
-          <div class="admin-tabs">
-            <button id="tab-clubs" class="${tab === "clubs" ? "is-active" : ""}" type="button">Clubs</button>
-            <button id="tab-cars" class="${tab === "cars" ? "is-active" : ""}" type="button">Cars</button>
-            <button id="tab-flyers" class="${tab === "flyers" ? "is-active" : ""}" type="button">Flyers</button>
-            <button id="tab-enquiries" class="${tab === "enquiries" ? "is-active" : ""}" type="button">Enquiries</button>
+        <div class="admin-toolbar admin-toolbar--sections">
+          <div class="admin-section-group">
+            <span class="admin-section-label">Desk</span>
+            <div class="admin-tabs">
+              <button type="button" class="admin-view-tab ${view === "enquiries" ? "is-active" : ""}" data-view="enquiries">Enquiries</button>
+              <button type="button" class="admin-view-tab ${view === "clients" ? "is-active" : ""}" data-view="clients">Clients</button>
+            </div>
           </div>
+          <div class="admin-section-group">
+            <span class="admin-section-label">Catalog</span>
+            <div class="admin-tabs">
+              <button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button>
+              <button type="button" class="admin-view-tab ${view === "cars" ? "is-active" : ""}" data-view="cars">Cars</button>
+              <button type="button" class="admin-view-tab ${view === "flyers" ? "is-active" : ""}" data-view="flyers">Flyers</button>
+            </div>
+          </div>
+        </div>
+        <div class="admin-toolbar">
           <button class="cc-btn cc-btn--ghost" id="admin-logout" type="button">Sign out</button>
           <button class="cc-btn cc-btn--ghost" id="admin-reload-db" type="button">Reload from database</button>
           <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>
           <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
           ${
-            tab === "clubs"
+            view === "clubs"
               ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
                  <button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
               : ""
           }
           ${
-            tab === "cars"
+            view === "cars"
               ? `<button class="cc-btn cc-btn--gold" id="admin-save-car" type="button">Save car to DB</button>
                  <button class="cc-btn cc-btn--ghost" id="admin-save-all-cars" type="button">Save all cars</button>`
               : ""
@@ -440,14 +584,16 @@ export async function initAdminPortal(): Promise<void> {
         <div class="admin-grid">
           <aside>
             <p class="admin-hint">${
-              tab === "enquiries"
+              view === "enquiries"
                 ? "Select an enquiry."
-                : "Select an item to edit."
+                : view === "clients"
+                  ? "Client records (from enquiries and imports)."
+                  : "Select an item to edit."
             }</p>
             <div class="admin-list" id="admin-list"></div>
             <div class="admin-actions">
               ${
-                tab !== "enquiries"
+                view === "clubs" || view === "cars" || view === "flyers"
                   ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
                   : ""
@@ -456,59 +602,97 @@ export async function initAdminPortal(): Promise<void> {
           </aside>
           <section id="admin-form-wrap">
             ${
-              tab === "clubs"
+              view === "clubs"
                 ? `
             <form class="admin-form" id="club-form">
-              <div class="cc-field"><label>Slug</label><input name="slug" value="${escapeAttr(club.slug)}" /></div>
-              <div class="cc-field"><label>Name</label><input name="name" value="${escapeAttr(club.name)}" /></div>
+              <div class="cc-field"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
+              <div class="cc-field"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
               <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${escapeAttr(club.shortDescription)}</textarea></div>
               <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${escapeAttr(club.longDescription)}</textarea></div>
               <div class="cc-field"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
-              <div class="cc-field"><label>Address</label><input name="address" value="${escapeAttr(club.address)}" /></div>
+              <div class="cc-field full">
+                <label for="club-address-input">Address</label>
+                <input id="club-address-input" name="address" autocomplete="off" value="${escapeAttr(club.address)}" />
+                <p class="admin-maps-hint" id="club-address-maps-hint"></p>
+              </div>
               <div class="cc-field"><label>Days open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
               <div class="cc-field"><label>Best visit days (pipe)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
               <div class="cc-field"><label>Featured day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
-              <div class="cc-field"><label>Venue type (lounge | club | dining)</label><input name="venueType" value="${escapeAttr(club.venueType)}" /></div>
-              <div class="cc-field"><label>Lat</label><input name="lat" value="${club.lat}" /></div>
-              <div class="cc-field"><label>Lng</label><input name="lng" value="${club.lng}" /></div>
+              <div class="cc-field"><label>Venue type</label>
+                <select name="venueType">
+                  <option value="lounge" ${vt === "lounge" ? "selected" : ""}>Lounge</option>
+                  <option value="club" ${vt === "club" ? "selected" : ""}>Club</option>
+                  <option value="dining" ${vt === "dining" ? "selected" : ""}>Dining</option>
+                </select>
+              </div>
+              <div class="cc-field"><label>Lat</label><input name="lat" type="number" step="any" value="${club.lat}" /></div>
+              <div class="cc-field"><label>Lng</label><input name="lng" type="number" step="any" value="${club.lng}" /></div>
               <div class="cc-field"><label>Min spend</label><input name="minSpend" value="${escapeAttr(club.minSpend)}" /></div>
-              <div class="cc-field"><label>Website</label><input name="website" value="${escapeAttr(club.website)}" /></div>
+              <div class="cc-field"><label>Website</label><input name="website" placeholder="https://…" value="${escapeAttr(club.website)}" /></div>
               <div class="cc-field"><label>Entry (women)</label><input name="entryPricingWomen" value="${escapeAttr(club.entryPricingWomen)}" /></div>
               <div class="cc-field"><label>Entry (men)</label><input name="entryPricingMen" value="${escapeAttr(club.entryPricingMen)}" /></div>
               <div class="cc-field"><label>Tables standard</label><input name="tablesStandard" value="${escapeAttr(club.tablesStandard)}" /></div>
               <div class="cc-field"><label>Tables luxury</label><input name="tablesLuxury" value="${escapeAttr(club.tablesLuxury)}" /></div>
               <div class="cc-field"><label>Tables VIP</label><input name="tablesVip" value="${escapeAttr(club.tablesVip)}" /></div>
-              <div class="cc-field"><label>Featured (true/false)</label><input name="featured" value="${club.featured ? "true" : "false"}" /></div>
+              <div class="cc-field"><label>Featured on site</label>
+                <select name="featured">
+                  <option value="true" ${club.featured ? "selected" : ""}>Yes</option>
+                  <option value="false" ${!club.featured ? "selected" : ""}>No</option>
+                </select>
+              </div>
               <div class="cc-field full"><label>Reviews (one per line)</label><textarea name="reviews">${escapeAttr(club.reviews.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${escapeAttr(club.knownFor.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Amenities (one per line)</label><textarea name="amenities">${escapeAttr(club.amenities.join("\n"))}</textarea></div>
-              <div class="cc-field full"><label>Images (one URL/path per line)</label><textarea name="images">${escapeAttr(club.images.join("\n"))}</textarea></div>
+              <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="club-images-text">${escapeAttr(club.images.join("\n"))}</textarea></div>
+              <div class="cc-field full admin-upload-row">
+                <label for="club-image-file">Upload image</label>
+                <input id="club-image-file" type="file" accept="image/*" />
+                <button type="button" class="cc-btn cc-btn--ghost" id="club-image-upload">Upload to storage &amp; append URL</button>
+              </div>
               <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
             </form>`
-                : tab === "cars"
+                : view === "cars"
                   ? `
             <form class="admin-form" id="car-form">
-              <div class="cc-field"><label>Slug</label><input name="slug" value="${escapeAttr(car.slug)}" /></div>
-              <div class="cc-field"><label>Name</label><input name="name" value="${escapeAttr(car.name)}" /></div>
+              <div class="cc-field"><label for="car-slug">Slug</label><input id="car-slug" name="slug" required value="${escapeAttr(car.slug)}" /></div>
+              <div class="cc-field"><label for="car-name">Name</label><input id="car-name" name="name" required value="${escapeAttr(car.name)}" /></div>
               <div class="cc-field"><label>Role label</label><input name="roleLabel" value="${escapeAttr(car.roleLabel)}" /></div>
-              <div class="cc-field"><label>Grid size (large/medium/feature)</label><input name="gridSize" value="${escapeAttr(car.gridSize)}" /></div>
-              <div class="cc-field"><label>Order</label><input name="order" value="${car.order}" /></div>
+              <div class="cc-field"><label>Grid size</label>
+                <select name="gridSize">
+                  <option value="large" ${gs === "large" ? "selected" : ""}>Large</option>
+                  <option value="medium" ${gs === "medium" ? "selected" : ""}>Medium</option>
+                  <option value="feature" ${gs === "feature" ? "selected" : ""}>Feature</option>
+                </select>
+              </div>
+              <div class="cc-field"><label>Order</label><input name="order" type="number" step="1" value="${car.order}" /></div>
               <div class="cc-field full"><label>Specs (one per line)</label><textarea name="specsHover">${escapeAttr(car.specsHover.join("\n"))}</textarea></div>
-              <div class="cc-field full"><label>Images (one URL/path per line)</label><textarea name="images">${escapeAttr(car.images.join("\n"))}</textarea></div>
+              <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="car-images-text">${escapeAttr(car.images.join("\n"))}</textarea></div>
+              <div class="cc-field full admin-upload-row">
+                <label for="car-image-file">Upload image</label>
+                <input id="car-image-file" type="file" accept="image/*" />
+                <button type="button" class="cc-btn cc-btn--ghost" id="car-image-upload">Upload to storage &amp; append URL</button>
+              </div>
             </form>`
-                  : tab === "flyers"
+                  : view === "flyers"
                     ? `
             <form class="admin-form" id="flyer-form">
-              <div class="cc-field"><label>Club slug</label><input name="clubSlug" value="${escapeAttr(flyer.clubSlug)}" /></div>
-              <div class="cc-field"><label>Event date (YYYY-MM-DD)</label><input name="eventDate" value="${escapeAttr(flyer.eventDate)}" /></div>
-              <div class="cc-field full"><label>Title</label><input name="title" value="${escapeAttr(flyer.title)}" /></div>
+              <div class="cc-field full"><label for="flyer-club-select">Club</label>
+                <select id="flyer-club-select" name="clubSlug" required>${flyerClubSelectOptions(clubEntries, flyer.clubSlug)}</select>
+              </div>
+              <div class="cc-field"><label for="flyer-event-date">Event date</label><input id="flyer-event-date" name="eventDate" type="date" required value="${escapeAttr(flyer.eventDate)}" /></div>
+              <div class="cc-field full"><label>Title</label><input name="title" required value="${escapeAttr(flyer.title)}" /></div>
               <div class="cc-field full"><label>Description</label><textarea name="description">${escapeAttr(flyer.description)}</textarea></div>
-              <div class="cc-field"><label>Sort order</label><input name="sortOrder" value="${flyer.sortOrder}" /></div>
-              <div class="cc-field"><label>Active (true/false)</label><input name="isActive" value="${flyer.isActive ? "true" : "false"}" /></div>
-              <div class="cc-field full"><label>Image URL</label><input name="imageUrl" value="${escapeAttr(flyer.imageUrl)}" /></div>
-              <div class="cc-field full"><label>Image path (storage)</label><input name="imagePath" value="${escapeAttr(flyer.imagePath)}" /></div>
+              <div class="cc-field"><label>Sort order</label><input name="sortOrder" type="number" step="1" value="${flyer.sortOrder}" /></div>
+              <div class="cc-field"><label>Active</label>
+                <select name="isActive">
+                  <option value="true" ${flyer.isActive ? "selected" : ""}>Yes</option>
+                  <option value="false" ${!flyer.isActive ? "selected" : ""}>No</option>
+                </select>
+              </div>
+              <div class="cc-field full"><label>Image URL</label><input name="imageUrl" placeholder="Filled automatically after upload" value="${escapeAttr(flyer.imageUrl)}" /></div>
+              <div class="cc-field full"><label>Image path (storage)</label><input name="imagePath" value="${escapeAttr(flyer.imagePath)}" readonly /></div>
               <div class="cc-field full">
-                <label for="flyer-image-file">Upload image to Supabase Storage</label>
+                <label for="flyer-image-file">Upload image</label>
                 <input id="flyer-image-file" type="file" accept="image/*" />
               </div>
               <div class="admin-actions full">
@@ -516,13 +700,17 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="flyer-save-db">${flyer.id ? "Update flyer" : "Create flyer"}</button>
               </div>
             </form>`
-                    : enquiry
-                      ? renderEnquiryDetail(enquiry)
-                      : `<p class="admin-note">No enquiries yet.</p>`
+                    : view === "enquiries"
+                      ? enquiry
+                        ? renderEnquiryDetail(enquiry)
+                        : `<p class="admin-note">No enquiries yet.</p>`
+                      : clientRow
+                        ? renderClientDetail(clientRow)
+                        : `<p class="admin-note">No clients yet. Use “Create clients from names” on a guestlist enquiry.</p>`
             }
           </section>
         </div>
-        <p class="admin-hint">Clubs and cars are stored in Supabase (<code>public.clubs</code> / <code>public.cars</code>). Flyers require a matching club slug in the database. The live site reads catalog rows from Supabase when configured.</p>
+        <p class="admin-hint">Desk: enquiries and imported clients. Catalog: <code>public.clubs</code>, <code>public.cars</code>, and weekly flyers (club must be saved to the DB first). Images upload to the <code>${escapeAttr(ADMIN_MEDIA_BUCKET)}</code> storage bucket.</p>
         <div class="admin-flash" id="admin-flash"></div>
       </div>
     `;
@@ -531,21 +719,15 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   function bindDashboardEvents(): void {
-    adminRoot.querySelector("#tab-clubs")?.addEventListener("click", () => {
-      tab = "clubs";
-      renderDashboard();
-    });
-    adminRoot.querySelector("#tab-cars")?.addEventListener("click", () => {
-      tab = "cars";
-      renderDashboard();
-    });
-    adminRoot.querySelector("#tab-flyers")?.addEventListener("click", () => {
-      tab = "flyers";
-      renderDashboard();
-    });
-    adminRoot.querySelector("#tab-enquiries")?.addEventListener("click", () => {
-      tab = "enquiries";
-      void reloadEnquiries().then(() => renderDashboard());
+    adminRoot.querySelectorAll(".admin-view-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = (btn as HTMLButtonElement).dataset.view as AdminView | undefined;
+        if (!v) return;
+        view = v;
+        if (v === "enquiries") void reloadEnquiries().then(() => renderDashboard());
+        else if (v === "clients") void reloadClients().then(() => renderDashboard());
+        else renderDashboard();
+      });
     });
 
     adminRoot.querySelector("#admin-logout")?.addEventListener("click", () => {
@@ -582,8 +764,10 @@ export async function initAdminPortal(): Promise<void> {
 
     adminRoot.querySelector("#admin-save-club")?.addEventListener("click", () => {
       const c = clubEntries[selectedClub]?.club;
-      if (!c?.slug.trim()) {
-        flash("Slug required.");
+      if (!c) return;
+      const v = validateClubShape(c);
+      if (v.length) {
+        flash(v.join(" "), "error");
         return;
       }
       void (async () => {
@@ -592,7 +776,7 @@ export async function initAdminPortal(): Promise<void> {
           isActive: true,
         });
         if (!res.ok) {
-          flash(`Save failed: ${res.message}`);
+          flash(`Save failed: ${res.message}`, "error");
           return;
         }
         await syncClubIdsFromDb();
@@ -603,12 +787,19 @@ export async function initAdminPortal(): Promise<void> {
 
     adminRoot.querySelector("#admin-save-all-clubs")?.addEventListener("click", () => {
       void (async () => {
+        for (const e of clubEntries) {
+          const v = validateClubShape(e.club);
+          if (v.length) {
+            flash(`Fix “${e.club.slug}”: ${v.join(" ")}`, "error");
+            return;
+          }
+        }
         const res = await upsertAllClubsOrder(
           supabase,
           clubEntries.map((e) => e.club),
         );
         if (!res.ok) {
-          flash(`Save failed: ${res.message}`);
+          flash(`Save failed: ${res.message}`, "error");
           return;
         }
         await syncClubIdsFromDb();
@@ -619,8 +810,10 @@ export async function initAdminPortal(): Promise<void> {
 
     adminRoot.querySelector("#admin-save-car")?.addEventListener("click", () => {
       const c = carEntries[selectedCar]?.car;
-      if (!c?.slug.trim()) {
-        flash("Slug required.");
+      if (!c) return;
+      const v = validateCarShape(c);
+      if (v.length) {
+        flash(v.join(" "), "error");
         return;
       }
       void (async () => {
@@ -629,7 +822,7 @@ export async function initAdminPortal(): Promise<void> {
           isActive: true,
         });
         if (!res.ok) {
-          flash(`Save failed: ${res.message}`);
+          flash(`Save failed: ${res.message}`, "error");
           return;
         }
         await syncCarIdsFromDb();
@@ -640,12 +833,19 @@ export async function initAdminPortal(): Promise<void> {
 
     adminRoot.querySelector("#admin-save-all-cars")?.addEventListener("click", () => {
       void (async () => {
+        for (const e of carEntries) {
+          const v = validateCarShape(e.car);
+          if (v.length) {
+            flash(`Fix “${e.car.slug}”: ${v.join(" ")}`, "error");
+            return;
+          }
+        }
         const res = await upsertAllCarsOrder(
           supabase,
           carEntries.map((e) => e.car),
         );
         if (!res.ok) {
-          flash(`Save failed: ${res.message}`);
+          flash(`Save failed: ${res.message}`, "error");
           return;
         }
         await syncCarIdsFromDb();
@@ -656,7 +856,7 @@ export async function initAdminPortal(): Promise<void> {
 
     const listEl = adminRoot.querySelector("#admin-list");
     if (listEl) {
-      if (tab === "enquiries") {
+      if (view === "enquiries") {
         listEl.innerHTML = enquiries
           .map(
             (e, i) =>
@@ -678,7 +878,23 @@ export async function initAdminPortal(): Promise<void> {
             })();
           });
         });
-      } else if (tab === "flyers") {
+      } else if (view === "clients") {
+        listEl.innerHTML = clients
+          .map(
+            (c) =>
+              `<button type="button" data-client-id="${escapeAttr(c.id)}" class="${c.id === selectedClientId ? "is-active" : ""}">
+              ${escapeAttr(c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8))}
+            </button>`,
+          )
+          .join("");
+        listEl.querySelectorAll("button[data-client-id]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            selectedClientId =
+              (btn as HTMLButtonElement).dataset.clientId ?? null;
+            renderDashboard();
+          });
+        });
+      } else if (view === "flyers") {
         const activeIndex = selectedFlyer;
         listEl.innerHTML = flyers
           .map(
@@ -693,7 +909,7 @@ export async function initAdminPortal(): Promise<void> {
           });
         });
       } else {
-        const isClubs = tab === "clubs";
+        const isClubs = view === "clubs";
         const items = isClubs ? clubEntries : carEntries;
         const activeIndex = isClubs ? selectedClub : selectedCar;
         listEl.innerHTML = items
@@ -716,13 +932,13 @@ export async function initAdminPortal(): Promise<void> {
     }
 
     adminRoot.querySelector("#admin-add")?.addEventListener("click", () => {
-      if (tab === "clubs") {
+      if (view === "clubs") {
         clubEntries.push({
           dbId: null,
           club: cloneClub({ slug: "new-club", name: "New Club" }),
         });
         selectedClub = clubEntries.length - 1;
-      } else if (tab === "cars") {
+      } else if (view === "cars") {
         carEntries.push({
           dbId: null,
           car: cloneCar({ slug: "new-car", name: "New Car" }),
@@ -743,14 +959,14 @@ export async function initAdminPortal(): Promise<void> {
     });
 
     adminRoot.querySelector("#admin-delete")?.addEventListener("click", () => {
-      if (tab === "clubs" && clubEntries.length) {
+      if (view === "clubs" && clubEntries.length) {
         const victim = clubEntries[selectedClub];
         const slug = victim?.club.slug.trim();
         void (async () => {
           if (slug) {
             const res = await deleteClubFromDb(supabase, slug);
             if (!res.ok) {
-              flash(`Delete failed: ${res.message}`);
+              flash(`Delete failed: ${res.message}`, "error");
               return;
             }
           }
@@ -761,14 +977,14 @@ export async function initAdminPortal(): Promise<void> {
         })();
         return;
       }
-      if (tab === "cars" && carEntries.length) {
+      if (view === "cars" && carEntries.length) {
         const victim = carEntries[selectedCar];
         const slug = victim?.car.slug.trim();
         void (async () => {
           if (slug) {
             const res = await deleteCarFromDb(supabase, slug);
             if (!res.ok) {
-              flash(`Delete failed: ${res.message}`);
+              flash(`Delete failed: ${res.message}`, "error");
               return;
             }
           }
@@ -779,7 +995,7 @@ export async function initAdminPortal(): Promise<void> {
         })();
         return;
       }
-      if (tab === "flyers" && flyers.length) {
+      if (view === "flyers" && flyers.length) {
         const victim = flyers[selectedFlyer];
         if (victim?.id) {
           void (async () => {
@@ -788,7 +1004,7 @@ export async function initAdminPortal(): Promise<void> {
               .delete()
               .eq("id", victim.id);
             if (error) {
-              flash(`Delete failed: ${error.message}`);
+              flash(`Delete failed: ${error.message}`, "error");
               return;
             }
             await reloadFlyers();
@@ -805,7 +1021,7 @@ export async function initAdminPortal(): Promise<void> {
 
     const clubForm = adminRoot.querySelector("#club-form");
     if (clubForm) {
-      clubForm.addEventListener("input", () => {
+      const syncClubFromForm = (): void => {
         const fd = new FormData(clubForm as HTMLFormElement);
         clubEntries[selectedClub] = {
           ...clubEntries[selectedClub],
@@ -843,12 +1059,45 @@ export async function initAdminPortal(): Promise<void> {
             guestlists: parseGuestlists(String(fd.get("guestlists") || "")),
           }),
         };
-      });
+      };
+      clubForm.addEventListener("input", syncClubFromForm);
+      clubForm.addEventListener("change", syncClubFromForm);
     }
+
+    adminRoot.querySelector("#club-image-upload")?.addEventListener("click", () => {
+      const slug = clubEntries[selectedClub]?.club.slug.trim() ?? "";
+      if (!slug || !SLUG_PATTERN.test(slug)) {
+        flash("Set a valid lowercase slug (letters, numbers, hyphens) before uploading.", "error");
+        return;
+      }
+      const input = adminRoot.querySelector("#club-image-file") as HTMLInputElement | null;
+      const ta = adminRoot.querySelector("#club-images-text") as HTMLTextAreaElement | null;
+      const file = input?.files?.[0];
+      if (!file || !ta) {
+        flash("Choose an image file.", "error");
+        return;
+      }
+      void (async () => {
+        const path = `catalog/clubs/${slug}/${safeUploadPath(file.name)}`;
+        const { error } = await supabase.storage
+          .from(ADMIN_MEDIA_BUCKET)
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (error) {
+          flash(`Upload failed: ${error.message}`, "error");
+          return;
+        }
+        const pub = supabase.storage.from(ADMIN_MEDIA_BUCKET).getPublicUrl(path);
+        const line = pub.data.publicUrl;
+        const cur = ta.value.trim();
+        ta.value = cur ? `${cur}\n${line}` : line;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        flash("Club image uploaded — URL appended.");
+      })();
+    });
 
     const carForm = adminRoot.querySelector("#car-form");
     if (carForm) {
-      carForm.addEventListener("input", () => {
+      const syncCarFromForm = (): void => {
         const fd = new FormData(carForm as HTMLFormElement);
         const rawGrid = String(fd.get("gridSize") || "medium").trim();
         carEntries[selectedCar] = {
@@ -865,12 +1114,45 @@ export async function initAdminPortal(): Promise<void> {
             images: parseLines(String(fd.get("images") || "")),
           }),
         };
-      });
+      };
+      carForm.addEventListener("input", syncCarFromForm);
+      carForm.addEventListener("change", syncCarFromForm);
     }
+
+    adminRoot.querySelector("#car-image-upload")?.addEventListener("click", () => {
+      const slug = carEntries[selectedCar]?.car.slug.trim() ?? "";
+      if (!slug || !SLUG_PATTERN.test(slug)) {
+        flash("Set a valid lowercase slug before uploading.", "error");
+        return;
+      }
+      const input = adminRoot.querySelector("#car-image-file") as HTMLInputElement | null;
+      const ta = adminRoot.querySelector("#car-images-text") as HTMLTextAreaElement | null;
+      const file = input?.files?.[0];
+      if (!file || !ta) {
+        flash("Choose an image file.", "error");
+        return;
+      }
+      void (async () => {
+        const path = `catalog/cars/${slug}/${safeUploadPath(file.name)}`;
+        const { error } = await supabase.storage
+          .from(ADMIN_MEDIA_BUCKET)
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (error) {
+          flash(`Upload failed: ${error.message}`, "error");
+          return;
+        }
+        const pub = supabase.storage.from(ADMIN_MEDIA_BUCKET).getPublicUrl(path);
+        const line = pub.data.publicUrl;
+        const cur = ta.value.trim();
+        ta.value = cur ? `${cur}\n${line}` : line;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        flash("Car image uploaded — URL appended.");
+      })();
+    });
 
     const flyerForm = adminRoot.querySelector("#flyer-form");
     if (flyerForm) {
-      flyerForm.addEventListener("input", () => {
+      const syncFlyerFromForm = (): void => {
         const fd = new FormData(flyerForm as HTMLFormElement);
         flyers[selectedFlyer] = cloneFlyer({
           ...flyers[selectedFlyer],
@@ -886,24 +1168,26 @@ export async function initAdminPortal(): Promise<void> {
             .toLowerCase()
             .includes("true"),
         });
-      });
+      };
+      flyerForm.addEventListener("input", syncFlyerFromForm);
+      flyerForm.addEventListener("change", syncFlyerFromForm);
       adminRoot.querySelector("#flyer-upload")?.addEventListener("click", () => {
         const input = adminRoot.querySelector("#flyer-image-file") as HTMLInputElement | null;
         const file = input?.files?.[0];
         if (!file) {
-          flash("Choose an image first.");
+          flash("Choose an image first.", "error");
           return;
         }
         void (async () => {
           const path = safeUploadPath(file.name);
           const { error } = await supabase.storage
-            .from(FLYERS_BUCKET)
+            .from(ADMIN_MEDIA_BUCKET)
             .upload(path, file, { upsert: true, contentType: file.type });
           if (error) {
-            flash(`Upload failed: ${error.message}`);
+            flash(`Upload failed: ${error.message}`, "error");
             return;
           }
-          const pub = supabase.storage.from(FLYERS_BUCKET).getPublicUrl(path);
+          const pub = supabase.storage.from(ADMIN_MEDIA_BUCKET).getPublicUrl(path);
           flyers[selectedFlyer] = cloneFlyer({
             ...flyers[selectedFlyer],
             imagePath: path,
@@ -916,11 +1200,12 @@ export async function initAdminPortal(): Promise<void> {
       adminRoot.querySelector("#flyer-save-db")?.addEventListener("click", () => {
         const current = flyers[selectedFlyer];
         if (!current) {
-          flash("No flyer selected.");
+          flash("No flyer selected.", "error");
           return;
         }
-        if (!current.clubSlug || !current.eventDate) {
-          flash("Club slug and event date are required.");
+        const ve = validateFlyerShape(current, clubEntries);
+        if (ve.length) {
+          flash(ve.join(" "), "error");
           return;
         }
         void (async () => {
@@ -940,7 +1225,7 @@ export async function initAdminPortal(): Promise<void> {
             : supabase.from("club_weekly_flyers").insert(row).select("id");
           const { data, error } = await q;
           if (error) {
-            flash(`Save failed: ${error.message}`);
+            flash(`Save failed: ${error.message}`, "error");
             return;
           }
           if (!current.id && Array.isArray(data) && data[0]?.id) {
@@ -964,12 +1249,36 @@ export async function initAdminPortal(): Promise<void> {
       void (async () => {
         const res = await updateEnquiryStatus(supabase, id, status);
         if (!res.ok) {
-          flash(`Update failed: ${res.message}`);
+          flash(`Update failed: ${res.message}`, "error");
           return;
         }
         await reloadEnquiries();
         flash("Status updated.");
         renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#enquiry-create-clients")?.addEventListener("click", () => {
+      const btn = adminRoot.querySelector(
+        "#enquiry-create-clients",
+      ) as HTMLButtonElement | null;
+      const id = btn?.dataset.enquiryId;
+      if (!id) return;
+      void (async () => {
+        btn.disabled = true;
+        const res = await createClientsFromEnquiry(supabase, id);
+        btn.disabled = false;
+        if (!res.ok) {
+          flash(`Clients: ${res.message}`, "error");
+          return;
+        }
+        await reloadClients();
+        renderDashboard();
+        flash(
+          res.created === 0
+            ? "No new clients (all rows already exist or nothing to import)."
+            : `Created ${res.created} client(s).`,
+        );
       })();
     });
 
@@ -981,6 +1290,33 @@ export async function initAdminPortal(): Promise<void> {
         if (row) row.status = t.value;
       }
     });
+
+    const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+    const mapsHint = adminRoot.querySelector("#club-address-maps-hint");
+    if (mapsHint) {
+      mapsHint.textContent = mapsKey
+        ? "Type to search Google Places; choosing a result fills address, latitude, and longitude."
+        : "Tip: set VITE_GOOGLE_MAPS_API_KEY (enable Maps JavaScript API + Places API; restrict the key by HTTP referrer) to enable address search.";
+    }
+    const mapsClubForm = adminRoot.querySelector("#club-form");
+    if (mapsClubForm && mapsKey) {
+      const address = mapsClubForm.querySelector<HTMLInputElement>('input[name="address"]');
+      const lat = mapsClubForm.querySelector<HTMLInputElement>('input[name="lat"]');
+      const lng = mapsClubForm.querySelector<HTMLInputElement>('input[name="lng"]');
+      if (address && lat && lng) {
+        void attachClubAddressAutocomplete({
+          addressInput: address,
+          latInput: lat,
+          lngInput: lng,
+          apiKey: mapsKey,
+        }        ).catch(() =>
+          flash(
+            "Could not load Google Maps — check API key, billing, and Places API.",
+            "error",
+          ),
+        );
+      }
+    }
   }
 
   async function loadAdminDashboard(): Promise<void> {

@@ -1,8 +1,10 @@
 import type { Club } from "../types";
 import { siteConfig } from "../site-config";
 import {
+  normalizeInstagramHandle,
   submitInquiry,
   validateEmail,
+  validateInstagramOrPhone,
   validatePhone,
 } from "../forms";
 import "./venue-request-modal.css";
@@ -34,6 +36,31 @@ function formatGuestlistsForPayload(club: Club): string {
 
 type NotifyMethod = "email" | "phone" | "instagram_dm" | "tiktok_dm";
 type GuestlistGuest = { guestName: string; guestContact: string };
+
+function formatPrimaryGuestlistContact(
+  method: NotifyMethod,
+  email: string,
+  phone: string,
+  ig: string,
+  tt: string,
+): string {
+  switch (method) {
+    case "email":
+      return email.trim();
+    case "phone":
+      return phone.trim();
+    case "instagram_dm": {
+      const h = normalizeInstagramHandle(ig);
+      return h ? `@${h}` : "";
+    }
+    case "tiktok_dm": {
+      const raw = tt.trim().replace(/^@+/u, "");
+      return raw ? `@${raw}` : "";
+    }
+    default:
+      return "";
+  }
+}
 
 /**
  * Opens a modal on `host` (e.g. #cc-venue-request-root). Does not navigate away.
@@ -84,7 +111,7 @@ export function openVenueRequestModal(opts: {
         <p class="venue-request-modal__party-title">Party list (up to 10)</p>
         <button type="button" class="cc-btn cc-btn--ghost venue-request-modal__add-guest" id="vr-add-guest">Add another person</button>
       </div>
-      <p class="venue-request-modal__hint">Add guest names and contact details for the door list.</p>
+      <p class="venue-request-modal__hint">Add each guest’s name plus <strong>Instagram handle or phone</strong> (not email).</p>
       <div id="vr-guest-rows" class="venue-request-modal__guest-rows"></div>
     </section>`
       : "";
@@ -177,7 +204,7 @@ export function openVenueRequestModal(opts: {
       </div>
       <div class="cc-field">
         <label for="vr-guest-contact-${n}">Guest ${n} contact</label>
-        <input id="vr-guest-contact-${n}" type="text" data-guest-contact placeholder="Email or phone" />
+        <input id="vr-guest-contact-${n}" type="text" data-guest-contact placeholder="@instagram or phone" />
       </div>
       <button type="button" class="venue-request-modal__remove-guest" data-remove-guest aria-label="Remove guest ${n}">Remove</button>
     </div>`;
@@ -302,6 +329,7 @@ export function openVenueRequestModal(opts: {
       showError("Please enter a valid phone number.");
       return;
     }
+    let guestlistAllGuests: GuestlistGuest[] | null = null;
     if (kind === "guestlist") {
       for (const row of guestRows) {
         const hasName = row.guestName.length > 0;
@@ -310,7 +338,31 @@ export function openVenueRequestModal(opts: {
           showError("Each added guest must include both name and contact.");
           return;
         }
+        if (hasContact && !validateInstagramOrPhone(row.guestContact)) {
+          showError(
+            "Party list contacts must be an Instagram handle or a phone number (not email).",
+          );
+          return;
+        }
       }
+      const primaryReachOut = formatPrimaryGuestlistContact(
+        method,
+        email,
+        phone,
+        ig,
+        tt,
+      );
+      if (!primaryReachOut) {
+        showError("Please complete how we should reach you.");
+        return;
+      }
+      const party = guestRows.filter(
+        (row) => row.guestName.length > 0 && row.guestContact.length > 0,
+      );
+      guestlistAllGuests = [
+        { guestName: name, guestContact: primaryReachOut },
+        ...party,
+      ];
     }
 
     const payload: Record<string, string> = {
@@ -325,27 +377,18 @@ export function openVenueRequestModal(opts: {
     if (method === "phone") payload.phone = phone;
     if (method === "instagram_dm" && ig) payload.instagram_handle = ig;
     if (method === "tiktok_dm" && tt) payload.tiktok_handle = tt;
-    if (kind === "guestlist") {
-      const guests = guestRows.filter(
-        (row) => row.guestName.length > 0 && row.guestContact.length > 0,
-      );
-      if (guests.length) {
-        payload.party_size = String(guests.length);
-        payload.guestlist_people = guests
-          .map((g, idx) => `${idx + 1}. ${g.guestName} (${g.guestContact})`)
-          .join(" | ");
-      }
+    if (guestlistAllGuests) {
+      payload.party_size = String(guestlistAllGuests.length);
+      payload.guestlist_people = guestlistAllGuests
+        .map((g, idx) => `${idx + 1}. ${g.guestName} (${g.guestContact})`)
+        .join(" | ");
     }
-
     const inquiryPayload: Record<string, unknown> = { ...payload };
     if (method === "email") inquiryPayload.email = email;
     else inquiryPayload.email = siteConfig.email;
     if (method === "phone") inquiryPayload.phone = phone;
-    if (kind === "guestlist") {
-      const guests: GuestlistGuest[] = guestRows.filter(
-        (row) => row.guestName.length > 0 && row.guestContact.length > 0,
-      );
-      if (guests.length) inquiryPayload.guestlistGuests = guests;
+    if (guestlistAllGuests) {
+      inquiryPayload.guestlistGuests = guestlistAllGuests;
     }
 
     submitBtn.disabled = true;

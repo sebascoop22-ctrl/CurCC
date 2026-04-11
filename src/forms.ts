@@ -253,3 +253,13 @@ export function validateInstagramHandle(v: string): boolean {
   const h = normalizeInstagramHandle(v);
   return h.length >= 1 && h.length <= 30 && /^[a-z0-9._]+$/i.test(h);
 }
+
+/** Guestlist party contacts: Instagram handle or phone — not email. */
+export function validateInstagramOrPhone(v: string): boolean {
+  const t = v.trim();
+  if (!t) return false;
+  if (validateEmail(t)) return false;
+  if (validatePhone(t)) return true;
+  if (validateInstagramHandle(t)) return true;
+  return false;
+}

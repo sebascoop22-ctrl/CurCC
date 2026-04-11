@@ -252,6 +252,159 @@ $$;
 
 grant execute on function public.submit_website_enquiry(text, text, text, text, text, text, text, jsonb, jsonb) to anon, authenticated;
 
+-- Admins: list / insert clients (RPC below also inserts under definer).
+drop policy if exists clients_admin_select on public.clients;
+create policy clients_admin_select
+on public.clients
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
+
+drop policy if exists clients_admin_insert on public.clients;
+create policy clients_admin_insert
+on public.clients
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
+
+-- Create client rows from enquiry_guests (and legacy enquiries row if no guests).
+create or replace function public.create_clients_from_enquiry(p_enquiry_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n int := 0;
+  v_name text;
+  v_contact text;
+  v_email text;
+  v_phone text;
+  v_ig text;
+  v_digits text;
+  r record;
+  en_name text;
+  en_email text;
+  en_phone text;
+  en_digits text;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if not exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+
+  for r in
+    select guest_name, guest_contact
+    from public.enquiry_guests
+    where enquiry_id = p_enquiry_id
+    order by created_at asc
+  loop
+    v_name := trim(coalesce(r.guest_name, ''));
+    v_contact := trim(coalesce(r.guest_contact, ''));
+    if v_name = '' or v_contact = '' then
+      continue;
+    end if;
+
+    v_email := null;
+    v_phone := null;
+    v_ig := null;
+    v_digits := regexp_replace(v_contact, '\D', '', 'g');
+
+    if v_contact ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
+      v_email := lower(v_contact);
+    elsif length(v_digits) >= 8 then
+      v_phone := v_digits;
+    else
+      v_ig := lower(regexp_replace(trim(v_contact), '^@+', ''));
+    end if;
+
+    if exists (
+      select 1
+      from public.clients c
+      where (v_email is not null and lower(trim(coalesce(c.email, ''))) = v_email)
+         or (
+           v_phone is not null
+           and length(v_phone) >= 8
+           and regexp_replace(coalesce(c.phone, ''), '\D', '', 'g') = v_phone
+         )
+         or (
+           v_ig is not null
+           and length(trim(v_ig)) > 0
+           and lower(trim(regexp_replace(coalesce(c.instagram, ''), '^@+', ''))) = trim(v_ig)
+         )
+    ) then
+      continue;
+    end if;
+
+    insert into public.clients (name, email, phone, instagram)
+    values (v_name, v_email, v_phone, nullif(trim(v_ig), ''));
+    n := n + 1;
+  end loop;
+
+  if not exists (
+    select 1
+    from public.enquiry_guests
+    where enquiry_id = p_enquiry_id
+    limit 1
+  ) then
+    select trim(coalesce(e.name, '')),
+           nullif(lower(trim(coalesce(e.email, ''))), ''),
+           trim(coalesce(e.phone, ''))
+    into en_name, en_email, en_phone
+    from public.enquiries e
+    where e.id = p_enquiry_id;
+
+    if en_name <> '' then
+      v_email := en_email;
+      en_digits := regexp_replace(coalesce(en_phone, ''), '\D', '', 'g');
+      v_phone := case when length(en_digits) >= 8 then en_digits else null end;
+      v_ig := null;
+
+      if v_email is null and v_phone is null then
+        null;
+      elsif not exists (
+        select 1
+        from public.clients c
+        where (v_email is not null and lower(trim(coalesce(c.email, ''))) = v_email)
+           or (
+             v_phone is not null
+             and regexp_replace(coalesce(c.phone, ''), '\D', '', 'g') = v_phone
+           )
+      ) then
+        insert into public.clients (name, email, phone, instagram)
+        values (en_name, v_email, v_phone, null);
+        n := n + 1;
+      end if;
+    end if;
+  end if;
+
+  return n;
+end;
+$$;
+
+grant execute on function public.create_clients_from_enquiry(uuid) to authenticated;
+
 -- Public read access for catalog content.
 drop policy if exists clubs_public_read on public.clubs;
 create policy clubs_public_read
