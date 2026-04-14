@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "fleet-images": "node scripts/download-fleet-images.mjs",
-    "seed:supabase": "node scripts/seed-supabase.mjs"
+    "seed:supabase": "node scripts/seed-supabase.mjs",
+    "backfill:promoters": "node scripts/backfill-promoter-domain.mjs"
   },
   "devDependencies": {
     "@types/google.maps": "^3.58.1",

@@ -1,9 +1,11 @@
 import {
   fetchClubFlyers,
   fetchClubs,
+  fetchPromoterAssignments,
+  groupAssignmentsByClub,
   groupFlyersByClubSlug,
 } from "../data/fetch-data";
-import type { Club, ClubFlyer } from "../types";
+import type { Club, ClubFlyer, PromoterShiftAssignment } from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -23,12 +25,14 @@ export async function initNightlifeMap(): Promise<void> {
   const { default: maplibregl } = await import("maplibre-gl");
   await import("maplibre-gl/dist/maplibre-gl.css");
 
-  const [clubs, flyers] = await Promise.all([
+  const [clubs, flyers, assignments] = await Promise.all([
     fetchClubs().catch(() => [] as Club[]),
     fetchClubFlyers().catch(() => [] as ClubFlyer[]),
+    fetchPromoterAssignments().catch(() => [] as PromoterShiftAssignment[]),
   ]);
   const hasAnyFlyers = flyers.length > 0;
   const flyersByClub = groupFlyersByClubSlug(flyers);
+  const assignmentsByClub = groupAssignmentsByClub(assignments);
   const mapEl = document.getElementById("venue-map");
   if (!mapEl) return;
 
@@ -236,6 +240,8 @@ export async function initNightlifeMap(): Promise<void> {
     }
     const guestBlock = document.getElementById("sidebar-guestlist-block");
     const guestLines = document.getElementById("sidebar-guestlist-lines");
+    const promotersBlock = document.getElementById("sidebar-promoters-block");
+    const promotersLines = document.getElementById("sidebar-promoters-lines");
     if (guestBlock && guestLines) {
       if (c.guestlists?.length) {
         guestBlock.hidden = false;
@@ -250,6 +256,21 @@ export async function initNightlifeMap(): Promise<void> {
       } else {
         guestBlock.hidden = true;
         guestLines.innerHTML = "";
+      }
+    }
+    if (promotersBlock && promotersLines) {
+      const rows = assignmentsByClub[c.slug] ?? [];
+      if (rows.length) {
+        promotersBlock.hidden = false;
+        promotersLines.innerHTML = rows
+          .map(
+            (row) =>
+              `<li><a href="/enquiry?context=${encodeURIComponent(`Nightlife promoter request: ${row.promoterName}`)}">${escapeHtml(row.promoterName)}</a></li>`,
+          )
+          .join("");
+      } else {
+        promotersBlock.hidden = true;
+        promotersLines.innerHTML = "";
       }
     }
     if (flyerBlock && flyerCard && flyerIndex) {

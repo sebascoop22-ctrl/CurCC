@@ -24,13 +24,45 @@ import {
   type EnquiryGuestRow,
   type EnquiryRow,
 } from "../admin/enquiries";
+import {
+  approvePromoterRevision,
+  completePromoterJob,
+  createPromoterJob,
+  generateInvoiceForPromoter,
+  getFinancialReport,
+  loadPromoterAvailability,
+  loadPromoterInvoices,
+  loadPromoterJobs,
+  loadPromoterPreferences,
+  type PromoterRevisionRow,
+  loadPromotersForAdmin,
+  loadPromoterRevisionsForAdmin,
+} from "../admin/promoters";
 import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { getSupabaseClient } from "../lib/supabase";
-import type { Car, Club, ClubFlyer, GuestlistRecurrence } from "../types";
+import type {
+  Car,
+  Club,
+  ClubFlyer,
+  GuestlistRecurrence,
+  PromoterAvailabilitySlot,
+  PromoterInvoice,
+  PromoterJob,
+  PromoterProfile,
+} from "../types";
 import "../styles/pages/admin.css";
 
 /** Desk = CRM; catalog = clubs, cars, weekly flyers */
-type AdminView = "enquiries" | "clients" | "clubs" | "cars" | "flyers";
+type AdminView =
+  | "enquiries"
+  | "clients"
+  | "promoters"
+  | "jobs"
+  | "invoices"
+  | "financials"
+  | "clubs"
+  | "cars"
+  | "flyers";
 
 type ClubEntry = { dbId: string | null; club: Club };
 type CarEntry = { dbId: string | null; car: Car };
@@ -332,12 +364,21 @@ export async function initAdminPortal(): Promise<void> {
   let selectedFlyer = 0;
   let selectedEnquiry: string | null = null;
   let selectedClientId: string | null = null;
+  let selectedPromoterId: string | null = null;
+  let selectedRevisionId: string | null = null;
   let clubEntries: ClubEntry[] = [];
   let carEntries: CarEntry[] = [];
   let flyers: ClubFlyer[] = [];
   let enquiries: EnquiryRow[] = [];
   let enquiryGuests: EnquiryGuestRow[] = [];
   let clients: ClientRow[] = [];
+  let promoters: PromoterProfile[] = [];
+  let promoterRevisions: PromoterRevisionRow[] = [];
+  let promoterAvailability: PromoterAvailabilitySlot[] = [];
+  let promoterPreferences: Array<{ clubSlug: string; weekdays: string[]; status: string }> = [];
+  let promoterJobs: PromoterJob[] = [];
+  let promoterInvoices: PromoterInvoice[] = [];
+  let financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
   let loginError = "";
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
@@ -412,12 +453,56 @@ export async function initAdminPortal(): Promise<void> {
     if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
   }
 
+  async function reloadPromoters(): Promise<void> {
+    const r = await loadPromotersForAdmin(supabase);
+    if (r.ok) promoters = r.rows;
+    if (!selectedPromoterId || !promoters.some((p) => p.id === selectedPromoterId)) {
+      selectedPromoterId = promoters[0]?.id ?? null;
+    }
+    const rev = await loadPromoterRevisionsForAdmin(supabase, selectedPromoterId ?? undefined);
+    promoterRevisions = rev.ok ? rev.rows : [];
+    if (!selectedRevisionId || !promoterRevisions.some((x) => x.id === selectedRevisionId)) {
+      selectedRevisionId = promoterRevisions[0]?.id ?? null;
+    }
+    if (selectedPromoterId) {
+      const [a, pref, j, inv] = await Promise.all([
+        loadPromoterAvailability(supabase, selectedPromoterId),
+        loadPromoterPreferences(supabase, selectedPromoterId),
+        loadPromoterJobs(supabase, selectedPromoterId),
+        loadPromoterInvoices(supabase, selectedPromoterId),
+      ]);
+      promoterAvailability = a.ok ? a.rows : [];
+      promoterPreferences = (pref.ok ? pref.rows : []).map((x) => ({
+        clubSlug: x.clubSlug,
+        weekdays: x.weekdays,
+        status: x.status,
+      }));
+      promoterJobs = j.ok ? j.rows : [];
+      promoterInvoices = inv.ok ? inv.rows : [];
+    } else {
+      promoterAvailability = [];
+      promoterPreferences = [];
+      promoterJobs = [];
+      promoterInvoices = [];
+    }
+  }
+
+  async function reloadFinancialReport(): Promise<void> {
+    const now = new Date();
+    const from = `${now.getFullYear()}-01-01`;
+    const to = `${now.getFullYear()}-12-31`;
+    const r = await getFinancialReport(supabase, "month", from, to);
+    financialRows = r.ok ? r.rows : [];
+  }
+
   async function reloadAllFromDb(): Promise<void> {
     clubEntries = await loadClubEntries();
     carEntries = await loadCarEntries();
     await reloadFlyers();
     await reloadEnquiries();
     await reloadClients();
+    await reloadPromoters();
+    await reloadFinancialReport();
     selectedClub = Math.min(selectedClub, Math.max(0, clubEntries.length - 1));
     selectedCar = Math.min(selectedCar, Math.max(0, carEntries.length - 1));
   }
@@ -555,6 +640,15 @@ export async function initAdminPortal(): Promise<void> {
             </div>
           </div>
           <div class="admin-section-group">
+            <span class="admin-section-label">Promoters</span>
+            <div class="admin-tabs">
+              <button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button>
+              <button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button>
+              <button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button>
+              <button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>
+            </div>
+          </div>
+          <div class="admin-section-group">
             <span class="admin-section-label">Catalog</span>
             <div class="admin-tabs">
               <button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button>
@@ -588,12 +682,20 @@ export async function initAdminPortal(): Promise<void> {
                 ? "Select an enquiry."
                 : view === "clients"
                   ? "Client records (from enquiries and imports)."
+                  : view === "promoters"
+                    ? "Promoter profiles and revision approvals."
+                    : view === "jobs"
+                      ? "Assign and complete promoter jobs."
+                      : view === "invoices"
+                        ? "Generate and review promoter invoices."
+                        : view === "financials"
+                          ? "Monthly financial summaries."
                   : "Select an item to edit."
             }</p>
             <div class="admin-list" id="admin-list"></div>
             <div class="admin-actions">
               ${
-                view === "clubs" || view === "cars" || view === "flyers"
+                view === "clubs" || view === "cars" || view === "flyers" || view === "jobs"
                   ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
                   : ""
@@ -700,6 +802,132 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="flyer-save-db">${flyer.id ? "Update flyer" : "Create flyer"}</button>
               </div>
             </form>`
+                    : view === "promoters"
+                      ? `
+            <div class="admin-form">
+              <h4 class="full">Promoter profile</h4>
+              ${
+                promoters.find((p) => p.id === selectedPromoterId)
+                  ? (() => {
+                      const p = promoters.find((x) => x.id === selectedPromoterId)!;
+                      return `<div class="cc-field"><label>Name</label><input value="${escapeAttr(p.displayName)}" disabled /></div>
+                      <div class="cc-field"><label>Approval</label><input value="${escapeAttr(p.approvalStatus)}" disabled /></div>
+                      <div class="cc-field full"><label>Bio</label><textarea disabled>${escapeAttr(p.bio)}</textarea></div>
+                      <div class="cc-field full"><label>Image</label><input value="${escapeAttr(p.profileImageUrl)}" disabled /></div>`;
+                    })()
+                  : `<p class="admin-note full">No promoters yet.</p>`
+              }
+              <h4 class="full">Pending revisions</h4>
+              <div class="full admin-list admin-list--inline">
+                ${
+                  promoterRevisions.length
+                    ? promoterRevisions
+                        .map(
+                          (r) =>
+                            `<button type="button" data-revision-id="${escapeAttr(r.id)}" class="${r.id === selectedRevisionId ? "is-active" : ""}">${escapeAttr(r.status)} · ${escapeAttr(r.created_at)}</button>`,
+                        )
+                        .join("")
+                    : `<p class="admin-note">No revision requests.</p>`
+                }
+              </div>
+              ${
+                promoterRevisions.find((r) => r.id === selectedRevisionId)
+                  ? (() => {
+                      const r = promoterRevisions.find((x) => x.id === selectedRevisionId)!;
+                      return `<div class="cc-field full"><label>Revision payload</label><pre class="admin-json">${escapeAttr(JSON.stringify(r.payload, null, 2))}</pre></div>
+                      <div class="cc-field full"><label>Review notes</label><textarea id="promoter-review-notes">${escapeAttr(r.review_notes || "")}</textarea></div>
+                      <div class="admin-actions full">
+                        <button class="cc-btn cc-btn--gold" type="button" id="promoter-approve-revision">Approve</button>
+                        <button class="cc-btn cc-btn--ghost" type="button" id="promoter-reject-revision">Reject</button>
+                      </div>`;
+                    })()
+                  : ""
+              }
+            </div>`
+                      : view === "jobs"
+                        ? `
+            <form class="admin-form" id="promoter-job-form">
+              <div class="cc-field"><label>Promoter</label>
+                <select name="promoterId">
+                  ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="cc-field"><label>Club</label>
+                <select name="clubSlug">
+                  <option value="">(none)</option>
+                  ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
+              <div class="cc-field"><label>Service</label><input name="service" value="guestlist" /></div>
+              <div class="cc-field"><label>Shift fee</label><input name="shiftFee" type="number" step="0.01" value="0" /></div>
+              <div class="cc-field"><label>Guestlist fee</label><input name="guestFee" type="number" step="0.01" value="0" /></div>
+              <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="0" /></div>
+              <div class="cc-field full"><label>Notes</label><textarea name="notes"></textarea></div>
+              <div class="admin-actions full">
+                <button class="cc-btn cc-btn--gold" type="button" id="promoter-job-create">Create job</button>
+                <button class="cc-btn cc-btn--ghost" type="button" id="promoter-job-complete">Mark selected completed</button>
+              </div>
+              <div class="full promoter-table-wrap">
+                <table>
+                  <thead><tr><th>Date</th><th>Club</th><th>Status</th><th>Guests</th><th>Shift</th><th>Per guest</th></tr></thead>
+                  <tbody>
+                    ${
+                      promoterJobs.length
+                        ? promoterJobs
+                            .map((j) => `<tr><td>${escapeAttr(j.jobDate)}</td><td>${escapeAttr(j.clubSlug ?? "—")}</td><td>${escapeAttr(j.status)}</td><td>${j.guestsCount}</td><td>${escapeAttr(`£${j.shiftFee.toFixed(2)}`)}</td><td>${escapeAttr(`£${j.guestlistFee.toFixed(2)}`)}</td></tr>`)
+                            .join("")
+                        : "<tr><td colspan='6'>No jobs for selected promoter.</td></tr>"
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </form>`
+                        : view === "invoices"
+                          ? `
+            <form class="admin-form" id="promoter-invoice-form">
+              <div class="cc-field"><label>Promoter</label>
+                <select name="promoterId">${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}</select>
+              </div>
+              <div class="cc-field"><label>Period start</label><input name="from" type="date" value="${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)}" /></div>
+              <div class="cc-field"><label>Period end</label><input name="to" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
+              <div class="admin-actions full">
+                <button class="cc-btn cc-btn--gold" type="button" id="promoter-invoice-generate">Generate invoice</button>
+              </div>
+              <div class="full promoter-table-wrap">
+                <table>
+                  <thead><tr><th>Period</th><th>Status</th><th>Total</th></tr></thead>
+                  <tbody>
+                    ${
+                      promoterInvoices.length
+                        ? promoterInvoices
+                            .map((i) => `<tr><td>${escapeAttr(i.periodStart)} to ${escapeAttr(i.periodEnd)}</td><td>${escapeAttr(i.status)}</td><td>${escapeAttr(`£${i.total.toFixed(2)}`)}</td></tr>`)
+                            .join("")
+                        : "<tr><td colspan='3'>No invoices for selected promoter.</td></tr>"
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </form>`
+                          : view === "financials"
+                            ? `
+            <div class="admin-form">
+              <h4 class="full">Financial summary (current year by month)</h4>
+              <div class="full promoter-table-wrap">
+                <table>
+                  <thead><tr><th>Period</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
+                  <tbody>
+                    ${
+                      financialRows.length
+                        ? financialRows
+                            .map((r) => `<tr><td>${escapeAttr(r.period_label)}</td><td>${escapeAttr(`£${r.income.toFixed(2)}`)}</td><td>${escapeAttr(`£${r.expense.toFixed(2)}`)}</td><td>${escapeAttr(`£${r.net.toFixed(2)}`)}</td></tr>`)
+                            .join("")
+                        : "<tr><td colspan='4'>No financial rows yet. Add records in public.financial_transactions.</td></tr>"
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>`
                     : view === "enquiries"
                       ? enquiry
                         ? renderEnquiryDetail(enquiry)
@@ -726,6 +954,10 @@ export async function initAdminPortal(): Promise<void> {
         view = v;
         if (v === "enquiries") void reloadEnquiries().then(() => renderDashboard());
         else if (v === "clients") void reloadClients().then(() => renderDashboard());
+        else if (v === "promoters" || v === "jobs" || v === "invoices")
+          void reloadPromoters().then(() => renderDashboard());
+        else if (v === "financials")
+          void reloadFinancialReport().then(() => renderDashboard());
         else renderDashboard();
       });
     });
@@ -894,6 +1126,24 @@ export async function initAdminPortal(): Promise<void> {
             renderDashboard();
           });
         });
+      } else if (view === "promoters" || view === "jobs" || view === "invoices") {
+        listEl.innerHTML = promoters
+          .map(
+            (p) =>
+              `<button type="button" data-promoter-id="${escapeAttr(p.id)}" class="${p.id === selectedPromoterId ? "is-active" : ""}">
+                ${escapeAttr(p.displayName || p.userId)} · ${escapeAttr(p.approvalStatus)}
+              </button>`,
+          )
+          .join("");
+        listEl.querySelectorAll("button[data-promoter-id]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            selectedPromoterId =
+              (btn as HTMLButtonElement).dataset.promoterId ?? null;
+            void reloadPromoters().then(() => renderDashboard());
+          });
+        });
+      } else if (view === "financials") {
+        listEl.innerHTML = `<p class="admin-note">Financial reporting is generated from \`financial_transactions\`.</p>`;
       } else if (view === "flyers") {
         const activeIndex = selectedFlyer;
         listEl.innerHTML = flyers
@@ -1240,6 +1490,127 @@ export async function initAdminPortal(): Promise<void> {
         })();
       });
     }
+
+    adminRoot.querySelectorAll("button[data-revision-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectedRevisionId =
+          (btn as HTMLButtonElement).dataset.revisionId ?? null;
+        renderDashboard();
+      });
+    });
+
+    adminRoot.querySelector("#promoter-approve-revision")?.addEventListener("click", () => {
+      const rev = promoterRevisions.find((r) => r.id === selectedRevisionId);
+      if (!rev) return;
+      const notes = String(
+        (adminRoot.querySelector("#promoter-review-notes") as HTMLTextAreaElement | null)
+          ?.value || "",
+      ).trim();
+      void (async () => {
+        const res = await approvePromoterRevision(supabase, rev.id, true, notes);
+        if (!res.ok) {
+          flash(`Approve failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoters();
+        flash("Revision approved.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-reject-revision")?.addEventListener("click", () => {
+      const rev = promoterRevisions.find((r) => r.id === selectedRevisionId);
+      if (!rev) return;
+      const notes = String(
+        (adminRoot.querySelector("#promoter-review-notes") as HTMLTextAreaElement | null)
+          ?.value || "",
+      ).trim();
+      void (async () => {
+        const res = await approvePromoterRevision(supabase, rev.id, false, notes);
+        if (!res.ok) {
+          flash(`Reject failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoters();
+        flash("Revision rejected.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-job-create")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector("#promoter-job-form") as HTMLFormElement | null;
+      if (!form) return;
+      const fd = new FormData(form);
+      const promoterId = String(fd.get("promoterId") || "").trim();
+      const clubSlug = String(fd.get("clubSlug") || "").trim();
+      const jobDate = String(fd.get("jobDate") || "").trim();
+      if (!promoterId || !jobDate) {
+        flash("Promoter and date are required.", "error");
+        return;
+      }
+      void (async () => {
+        const res = await createPromoterJob(supabase, {
+          promoter_id: promoterId,
+          club_slug: clubSlug || null,
+          service: String(fd.get("service") || "guestlist").trim() || "guestlist",
+          job_date: jobDate,
+          shift_fee: Number(fd.get("shiftFee") || 0) || 0,
+          guestlist_fee: Number(fd.get("guestFee") || 0) || 0,
+          guests_count: Number(fd.get("guestCount") || 0) || 0,
+          notes: String(fd.get("notes") || "").trim(),
+        });
+        if (!res.ok) {
+          flash(`Create job failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoters();
+        flash("Job created.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-job-complete")?.addEventListener("click", () => {
+      const candidate =
+        promoterJobs.find((j) => j.status === "assigned") ?? promoterJobs[0];
+      if (!candidate) {
+        flash("No job available for selected promoter.", "error");
+        return;
+      }
+      void (async () => {
+        const res = await completePromoterJob(supabase, candidate.id);
+        if (!res.ok) {
+          flash(`Complete job failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoters();
+        await reloadFinancialReport();
+        flash("Job completed and earnings recorded.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-invoice-generate")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector("#promoter-invoice-form") as HTMLFormElement | null;
+      if (!form) return;
+      const fd = new FormData(form);
+      const promoterId = String(fd.get("promoterId") || "").trim();
+      const from = String(fd.get("from") || "").trim();
+      const to = String(fd.get("to") || "").trim();
+      if (!promoterId || !from || !to) {
+        flash("Promoter and date range are required.", "error");
+        return;
+      }
+      void (async () => {
+        const res = await generateInvoiceForPromoter(supabase, promoterId, from, to);
+        if (!res.ok) {
+          flash(`Invoice failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoters();
+        flash(`Invoice generated: ${res.invoiceId.slice(0, 8)}…`);
+        renderDashboard();
+      })();
+    });
 
     adminRoot.querySelector("#enquiry-status-save")?.addEventListener("click", () => {
       const sel = adminRoot.querySelector("#enquiry-status-select") as HTMLSelectElement | null;

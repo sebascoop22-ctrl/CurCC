@@ -1,5 +1,11 @@
-import { fetchClubFlyers, fetchClubs, groupFlyersByClubSlug } from "../data/fetch-data";
-import type { Club, ClubFlyer } from "../types";
+import {
+  fetchClubFlyers,
+  fetchClubs,
+  fetchPromoterAssignments,
+  groupAssignmentsByClub,
+  groupFlyersByClubSlug,
+} from "../data/fetch-data";
+import type { Club, ClubFlyer, PromoterShiftAssignment } from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -153,14 +159,24 @@ function renderClubPricing(c: Club): string {
     </details>`;
 }
 
-function renderClubActions(c: Club): string {
+function renderClubActions(
+  c: Club,
+  assignmentsByClub: Record<string, PromoterShiftAssignment[]>,
+): string {
   const mapHref = `/nightlife-map?venue=${encodeURIComponent(c.slug)}`;
   const slugAttr = escapeHtml(c.slug);
   const website =
     c.website.trim() !== ""
       ? `<a class="club-card__web-link" href="${escapeHtml(c.website)}" target="_blank" rel="noopener noreferrer" aria-label="Club website (opens in new tab)">Website <span aria-hidden="true">↗</span></a>`
       : "";
+  const assignments = assignmentsByClub[c.slug] ?? [];
+  const promoterStrip = assignments.length
+    ? `<div class="club-card__promoters">Working tonight: ${assignments
+        .map((a) => `<button type="button" class="club-card__promoter-chip" data-promoter-name="${escapeHtml(a.promoterName)}" data-promoter-id="${escapeHtml(a.promoterId)}">${escapeHtml(a.promoterName)}</button>`)
+        .join("")}</div>`
+    : `<div class="club-card__promoters">No promoter assigned yet tonight.</div>`;
   return `<div class="club-card__actions">
+      ${promoterStrip}
       <div class="club-card__actions-bar">
         ${website}
         <a class="club-card__map-pin" href="${mapHref}" aria-label="View on map">${MAP_PIN_SVG}</a>
@@ -177,12 +193,14 @@ function renderClubActions(c: Club): string {
 }
 
 export async function initNightlife(): Promise<void> {
-  const [clubRows, flyerRows] = await Promise.all([
+  const [clubRows, flyerRows, assignments] = await Promise.all([
     fetchClubs().catch(() => [] as Club[]),
     fetchClubFlyers().catch(() => [] as ClubFlyer[]),
+    fetchPromoterAssignments().catch(() => [] as PromoterShiftAssignment[]),
   ]);
   const clubs = clubRows.map(normalizeClub);
   const flyersByClub = groupFlyersByClubSlug(flyerRows);
+  const assignmentsByClub = groupAssignmentsByClub(assignments);
   const clubsGrid = document.getElementById("clubs-grid");
   const today = startOfDay(new Date());
   const modeFeaturedBtn = document.getElementById("nightlife-mode-featured");
@@ -259,7 +277,7 @@ export async function initNightlife(): Promise<void> {
             <div class="club-card__tail">
               ${renderClubKnownFor(c)}
               ${renderClubPricing(c)}
-              ${renderClubActions(c)}
+              ${renderClubActions(c, assignmentsByClub)}
             </div>
           </div>
         </article>`;
@@ -302,6 +320,15 @@ export async function initNightlife(): Promise<void> {
         selectedClubSlug = clickedSlug;
         selectedFlyerIdx = 0;
         updateFlyerPanel();
+      }
+      const promoterChip = (e.target as HTMLElement).closest(
+        "[data-promoter-name]",
+      ) as HTMLElement | null;
+      if (promoterChip) {
+        const name = promoterChip.dataset.promoterName || "promoter";
+        const to = `/enquiry?context=${encodeURIComponent(`Nightlife promoter request: ${name}`)}`;
+        window.location.href = to;
+        return;
       }
       const t = (e.target as HTMLElement).closest(
         "[data-vr-kind]",

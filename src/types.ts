@@ -73,3 +73,65 @@ export interface Car {
   order: number;
   images: string[];
 }
+
+export interface PromoterProfile {
+  id: string;
+  userId: string;
+  displayName: string;
+  bio: string;
+  profileImageUrl: string;
+  isApproved: boolean;
+  approvalStatus: "pending" | "approved" | "rejected";
+  approvalNotes: string;
+}
+
+export interface PromoterAvailabilitySlot {
+  id: string;
+  promoterId: string;
+  weekday: number;
+  isAvailable: boolean;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface PromoterClubPreference {
+  id: string;
+  promoterId: string;
+  clubSlug: string;
+  weekdays: string[];
+  notes: string;
+  status: "pending" | "approved" | "rejected";
+}
+
+export interface PromoterJob {
+  id: string;
+  promoterId: string;
+  clubSlug: string | null;
+  service: string;
+  jobDate: string;
+  status: "assigned" | "completed" | "cancelled";
+  guestsCount: number;
+  shiftFee: number;
+  guestlistFee: number;
+  notes: string;
+}
+
+export interface PromoterInvoice {
+  id: string;
+  promoterId: string;
+  periodStart: string;
+  periodEnd: string;
+  status: "draft" | "finalized" | "paid" | "cancelled";
+  subtotal: number;
+  adjustments: number;
+  total: number;
+}
+
+export interface PromoterShiftAssignment {
+  jobId: string;
+  promoterId: string;
+  promoterName: string;
+  clubSlug: string;
+  jobDate: string;
+  status: "assigned" | "completed" | "cancelled";
+}

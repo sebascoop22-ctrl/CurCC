@@ -464,6 +464,26 @@
   padding-top: 0.35rem;
 }
 
+.club-card__promoters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+  color: var(--cc-muted);
+  font-size: 0.72rem;
+}
+
+.club-card__promoter-chip {
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+  color: var(--cc-cream);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.52rem;
+  cursor: pointer;
+}
+
 .club-card__actions-bar {
   display: flex;
   flex-wrap: nowrap;
