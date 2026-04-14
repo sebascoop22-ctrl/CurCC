@@ -7,7 +7,7 @@ import {
   loadGuestEvents,
   loadGuestSignupsByEvent,
 } from "../admin/guest-intel";
-import { gateAdminUser } from "../admin/auth";
+import { gateAdminUser, gatePromoterUser } from "../admin/auth";
 import { getSupabaseClient } from "../lib/supabase";
 
 type Panel = "operations" | "guests" | "performance" | "campaigns";
@@ -36,9 +36,10 @@ export async function initWorkspacePage(): Promise<void> {
     root.innerHTML = `<div class="admin-card"><p>Supabase is not configured.</p></div>`;
     return;
   }
-  const gate = await gateAdminUser(supabase);
-  if (!gate.ok) {
-    root.innerHTML = `<div class="admin-card"><p>Admin account required.</p></div>`;
+  const adminGate = await gateAdminUser(supabase);
+  const promoterGate = adminGate.ok ? null : await gatePromoterUser(supabase);
+  if (!adminGate.ok && !promoterGate?.ok) {
+    root.innerHTML = `<div class="admin-card"><p>Sign in with an admin or promoter account to access the workspace.</p></div>`;
     return;
   }
 

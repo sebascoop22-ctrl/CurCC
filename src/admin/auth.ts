@@ -14,6 +14,41 @@ type ProfileRow = {
   role: AppRole;
 };
 
+async function ensurePromoterRows(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    email: string;
+    displayName?: string;
+    bio?: string;
+    profileImageUrl?: string;
+  },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const displayName = (input.displayName || input.email).trim() || input.email;
+  const { error: profileError } = await supabase.from("profiles").upsert(
+    {
+      id: input.userId,
+      role: "promoter",
+      display_name: displayName,
+    },
+    { onConflict: "id" },
+  );
+  if (profileError) return { ok: false, message: profileError.message };
+  const { error: promoterError } = await supabase.from("promoters").upsert(
+    {
+      user_id: input.userId,
+      display_name: displayName,
+      bio: (input.bio || "").trim(),
+      profile_image_url: (input.profileImageUrl || "").trim(),
+      approval_status: "pending",
+      is_approved: false,
+    },
+    { onConflict: "user_id" },
+  );
+  if (promoterError) return { ok: false, message: promoterError.message };
+  return { ok: true };
+}
+
 async function fetchSessionAndRole(
   supabase: SupabaseClient,
 ): Promise<
@@ -111,11 +146,20 @@ export async function signInPromoter(
   email: string,
   password: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
     password,
   });
   if (error) return { ok: false, message: error.message };
+  const userId = data.user?.id || data.session?.user?.id;
+  if (userId) {
+    const seeded = await ensurePromoterRows(supabase, {
+      userId,
+      email: email.trim().toLowerCase(),
+      displayName: String(data.user?.user_metadata?.display_name || ""),
+    });
+    if (!seeded.ok) return seeded;
+  }
   const gate = await gatePromoterUser(supabase);
   if (!gate.ok) {
     await supabase.auth.signOut();
@@ -147,35 +191,26 @@ export async function signUpPromoter(
   const { data, error } = await supabase.auth.signUp({
     email,
     password: input.password,
+    options: {
+      data: {
+        role: "promoter",
+        display_name: displayName || email,
+      },
+    },
   });
   if (error) return { ok: false, message: error.message };
-  const userId = data.user?.id;
-  if (!userId) {
-    return {
-      ok: false,
-      message: "Signup started, but no user session returned.",
-    };
+  const userId = data.session?.user?.id || data.user?.id;
+  if (!userId) return { ok: true };
+  if (!data.session) {
+    // Email confirmation flows may not include an authenticated session yet.
+    // Seed rows after first successful sign-in to avoid RLS failures.
+    return { ok: true };
   }
-  const { error: profileError } = await supabase.from("profiles").upsert(
-    {
-      id: userId,
-      role: "promoter",
-      display_name: displayName || email,
-    },
-    { onConflict: "id" },
-  );
-  if (profileError) return { ok: false, message: profileError.message };
-  const { error: promoterError } = await supabase.from("promoters").upsert(
-    {
-      user_id: userId,
-      display_name: displayName || email,
-      bio,
-      profile_image_url: profileImageUrl,
-      approval_status: "pending",
-      is_approved: false,
-    },
-    { onConflict: "user_id" },
-  );
-  if (promoterError) return { ok: false, message: promoterError.message };
-  return { ok: true };
+  return ensurePromoterRows(supabase, {
+    userId,
+    email,
+    displayName: displayName || email,
+    bio,
+    profileImageUrl,
+  });
 }
