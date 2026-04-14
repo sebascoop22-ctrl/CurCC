@@ -14,6 +14,11 @@ type ProfileRow = {
   role: AppRole;
 };
 
+function isEmailRateLimitError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("email rate limit") || m.includes("over_email_send_rate_limit");
+}
+
 async function ensurePromoterRows(
   supabase: SupabaseClient,
   input: {
@@ -198,7 +203,20 @@ export async function signUpPromoter(
       },
     },
   });
-  if (error) return { ok: false, message: error.message };
+  if (error) {
+    if (isEmailRateLimitError(error.message)) {
+      // If the account already exists and is confirmed, sign in directly instead of
+      // repeatedly triggering confirmation email limits.
+      const signIn = await signInPromoter(supabase, email, input.password);
+      if (signIn.ok) return { ok: true };
+      return {
+        ok: false,
+        message:
+          "Email sending is temporarily rate-limited by Supabase. If you already created this account, sign in instead. Otherwise wait a few minutes and try again.",
+      };
+    }
+    return { ok: false, message: error.message };
+  }
   const userId = data.session?.user?.id || data.user?.id;
   if (!userId) return { ok: true };
   if (!data.session) {
