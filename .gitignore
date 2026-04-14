@@ -6,5 +6,5 @@ dist/
 .env.*.local
 old_images/
 be.txt
-supabase/
 supabase/schema.sql
+supabase/README.md

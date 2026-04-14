@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "fleet-images": "node scripts/download-fleet-images.mjs",
     "seed:supabase": "node scripts/seed-supabase.mjs",
-    "backfill:promoters": "node scripts/backfill-promoter-domain.mjs"
+    "backfill:promoters": "node scripts/backfill-promoter-domain.mjs",
+    "backfill:guest-intel": "node scripts/backfill-guest-intelligence.mjs"
   },
   "devDependencies": {
     "@types/google.maps": "^3.58.1",

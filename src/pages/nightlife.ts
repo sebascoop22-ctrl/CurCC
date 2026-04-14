@@ -1,11 +1,18 @@
 import {
   fetchClubFlyers,
   fetchClubs,
+  fetchGuestlistEventContexts,
   fetchPromoterAssignments,
   groupAssignmentsByClub,
+  groupGuestlistContextsByClub,
   groupFlyersByClubSlug,
 } from "../data/fetch-data";
-import type { Club, ClubFlyer, PromoterShiftAssignment } from "../types";
+import type {
+  Club,
+  ClubFlyer,
+  GuestlistEventContext,
+  PromoterShiftAssignment,
+} from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -162,6 +169,7 @@ function renderClubPricing(c: Club): string {
 function renderClubActions(
   c: Club,
   assignmentsByClub: Record<string, PromoterShiftAssignment[]>,
+  guestlistContextByClub: Record<string, GuestlistEventContext[]>,
 ): string {
   const mapHref = `/nightlife-map?venue=${encodeURIComponent(c.slug)}`;
   const slugAttr = escapeHtml(c.slug);
@@ -170,13 +178,18 @@ function renderClubActions(
       ? `<a class="club-card__web-link" href="${escapeHtml(c.website)}" target="_blank" rel="noopener noreferrer" aria-label="Club website (opens in new tab)">Website <span aria-hidden="true">↗</span></a>`
       : "";
   const assignments = assignmentsByClub[c.slug] ?? [];
+  const eventContext = guestlistContextByClub[c.slug]?.[0] ?? null;
   const promoterStrip = assignments.length
     ? `<div class="club-card__promoters">Working tonight: ${assignments
         .map((a) => `<button type="button" class="club-card__promoter-chip" data-promoter-name="${escapeHtml(a.promoterName)}" data-promoter-id="${escapeHtml(a.promoterId)}">${escapeHtml(a.promoterName)}</button>`)
         .join("")}</div>`
     : `<div class="club-card__promoters">No promoter assigned yet tonight.</div>`;
+  const guestlistStrip = eventContext
+    ? `<div class="club-card__promoters">Guestlist ${eventContext.status}: ${eventContext.attended}/${eventContext.signups} attended (${Math.round(eventContext.conversion * 100)}% conversion)</div>`
+    : `<div class="club-card__promoters">Guestlist context unavailable.</div>`;
   return `<div class="club-card__actions">
       ${promoterStrip}
+      ${guestlistStrip}
       <div class="club-card__actions-bar">
         ${website}
         <a class="club-card__map-pin" href="${mapHref}" aria-label="View on map">${MAP_PIN_SVG}</a>
@@ -193,14 +206,16 @@ function renderClubActions(
 }
 
 export async function initNightlife(): Promise<void> {
-  const [clubRows, flyerRows, assignments] = await Promise.all([
+  const [clubRows, flyerRows, assignments, guestEvents] = await Promise.all([
     fetchClubs().catch(() => [] as Club[]),
     fetchClubFlyers().catch(() => [] as ClubFlyer[]),
     fetchPromoterAssignments().catch(() => [] as PromoterShiftAssignment[]),
+    fetchGuestlistEventContexts().catch(() => [] as GuestlistEventContext[]),
   ]);
   const clubs = clubRows.map(normalizeClub);
   const flyersByClub = groupFlyersByClubSlug(flyerRows);
   const assignmentsByClub = groupAssignmentsByClub(assignments);
+  const guestlistContextByClub = groupGuestlistContextsByClub(guestEvents);
   const clubsGrid = document.getElementById("clubs-grid");
   const today = startOfDay(new Date());
   const modeFeaturedBtn = document.getElementById("nightlife-mode-featured");
@@ -277,7 +292,7 @@ export async function initNightlife(): Promise<void> {
             <div class="club-card__tail">
               ${renderClubKnownFor(c)}
               ${renderClubPricing(c)}
-              ${renderClubActions(c, assignmentsByClub)}
+            ${renderClubActions(c, assignmentsByClub, guestlistContextByClub)}
             </div>
           </div>
         </article>`;

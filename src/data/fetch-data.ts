@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Car, Club, ClubFlyer, PromoterShiftAssignment } from "../types";
+import type {
+  Car,
+  Club,
+  ClubFlyer,
+  GuestlistEventContext,
+  PromoterShiftAssignment,
+} from "../types";
 import { getSupabaseClient } from "../lib/supabase";
 
 type CatalogRow = {
@@ -25,6 +31,14 @@ type PromoterShiftRow = {
   job_date: string;
   status: string;
   promoters: { id: string; display_name: string } | null;
+};
+
+type EventContextRow = {
+  id: string;
+  club_slug: string;
+  event_date: string;
+  status: "open" | "closed" | "cancelled";
+  capacity: number | null;
 };
 
 export async function fetchClubs(): Promise<Club[]> {
@@ -213,6 +227,74 @@ export function groupAssignmentsByClub(
   rows: PromoterShiftAssignment[],
 ): Record<string, PromoterShiftAssignment[]> {
   const by: Record<string, PromoterShiftAssignment[]> = {};
+  for (const row of rows) {
+    const slug = row.clubSlug.trim();
+    if (!slug) continue;
+    if (!by[slug]) by[slug] = [];
+    by[slug].push(row);
+  }
+  return by;
+}
+
+export async function fetchGuestlistEventContexts(
+  dateIso?: string,
+): Promise<GuestlistEventContext[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const date = dateIso?.trim() || new Date().toISOString().slice(0, 10);
+  try {
+    const [{ data: events, error: eventError }, { data: metrics, error: metricError }] =
+      await Promise.all([
+        supabase
+          .from("guestlist_events")
+          .select("id,club_slug,event_date,status,capacity")
+          .eq("event_date", date),
+        supabase.rpc("get_guestlist_conversion_metrics", {
+          p_club_slug: null,
+          p_promoter_id: null,
+          p_from: date,
+          p_to: date,
+        }),
+      ]);
+    if (eventError || metricError || !Array.isArray(events) || !Array.isArray(metrics)) {
+      return [];
+    }
+    const metricsByEvent = new Map<string, { signups: number; attended: number; conversion: number }>();
+    for (const raw of metrics) {
+      const r = raw as Record<string, unknown>;
+      metricsByEvent.set(String(r.event_id ?? ""), {
+        signups: Number(r.signups ?? 0) || 0,
+        attended: Number(r.attended ?? 0) || 0,
+        conversion: Number(r.conversion ?? 0) || 0,
+      });
+    }
+    return events.map((raw) => {
+      const row = raw as unknown as EventContextRow;
+      const metric = metricsByEvent.get(String(row.id || "")) || {
+        signups: 0,
+        attended: 0,
+        conversion: 0,
+      };
+      return {
+        eventId: String(row.id || ""),
+        clubSlug: String(row.club_slug || ""),
+        eventDate: String(row.event_date || ""),
+        status: row.status || "open",
+        capacity: Number(row.capacity || 0) || 0,
+        signups: metric.signups,
+        attended: metric.attended,
+        conversion: metric.conversion,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function groupGuestlistContextsByClub(
+  rows: GuestlistEventContext[],
+): Record<string, GuestlistEventContext[]> {
+  const by: Record<string, GuestlistEventContext[]> = {};
   for (const row of rows) {
     const slug = row.clubSlug.trim();
     if (!slug) continue;

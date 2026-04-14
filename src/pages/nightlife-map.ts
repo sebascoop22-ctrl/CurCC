@@ -1,11 +1,18 @@
 import {
   fetchClubFlyers,
   fetchClubs,
+  fetchGuestlistEventContexts,
   fetchPromoterAssignments,
   groupAssignmentsByClub,
+  groupGuestlistContextsByClub,
   groupFlyersByClubSlug,
 } from "../data/fetch-data";
-import type { Club, ClubFlyer, PromoterShiftAssignment } from "../types";
+import type {
+  Club,
+  ClubFlyer,
+  GuestlistEventContext,
+  PromoterShiftAssignment,
+} from "../types";
 import {
   openVenueRequestModal,
   type VenueRequestKind,
@@ -25,14 +32,16 @@ export async function initNightlifeMap(): Promise<void> {
   const { default: maplibregl } = await import("maplibre-gl");
   await import("maplibre-gl/dist/maplibre-gl.css");
 
-  const [clubs, flyers, assignments] = await Promise.all([
+  const [clubs, flyers, assignments, guestContexts] = await Promise.all([
     fetchClubs().catch(() => [] as Club[]),
     fetchClubFlyers().catch(() => [] as ClubFlyer[]),
     fetchPromoterAssignments().catch(() => [] as PromoterShiftAssignment[]),
+    fetchGuestlistEventContexts().catch(() => [] as GuestlistEventContext[]),
   ]);
   const hasAnyFlyers = flyers.length > 0;
   const flyersByClub = groupFlyersByClubSlug(flyers);
   const assignmentsByClub = groupAssignmentsByClub(assignments);
+  const guestContextByClub = groupGuestlistContextsByClub(guestContexts);
   const mapEl = document.getElementById("venue-map");
   if (!mapEl) return;
 
@@ -243,19 +252,29 @@ export async function initNightlifeMap(): Promise<void> {
     const promotersBlock = document.getElementById("sidebar-promoters-block");
     const promotersLines = document.getElementById("sidebar-promoters-lines");
     if (guestBlock && guestLines) {
+      const context = guestContextByClub[c.slug]?.[0] ?? null;
       if (c.guestlists?.length) {
         guestBlock.hidden = false;
-        guestLines.innerHTML = c.guestlists
+        guestLines.innerHTML =
+          c.guestlists
           .map((g) => {
             const days = g.days.length ? g.days.join(" · ") : "—";
             const rec = g.recurrence === "one_off" ? "One-off" : "Weekly";
             const note = g.notes ? ` — ${escapeHtml(g.notes)}` : "";
             return `<li>${escapeHtml(days)} · ${rec}${note}</li>`;
           })
-          .join("");
+          .join("") +
+          (context
+            ? `<li>Tonight: ${context.attended}/${context.signups} attended (${Math.round(context.conversion * 100)}% conversion)</li>`
+            : "");
       } else {
-        guestBlock.hidden = true;
-        guestLines.innerHTML = "";
+        if (context) {
+          guestBlock.hidden = false;
+          guestLines.innerHTML = `<li>Tonight: ${context.attended}/${context.signups} attended (${Math.round(context.conversion * 100)}% conversion)</li>`;
+        } else {
+          guestBlock.hidden = true;
+          guestLines.innerHTML = "";
+        }
       }
     }
     if (promotersBlock && promotersLines) {

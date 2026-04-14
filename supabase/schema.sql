@@ -1051,6 +1051,471 @@ grant execute on function public.calculate_promoter_earnings(uuid, date, date) t
 grant execute on function public.generate_promoter_invoice(uuid, date, date) to authenticated;
 grant execute on function public.get_financial_report(text, date, date) to authenticated;
 
+-- Guest intelligence domain (signups, attendance, demographics, campaigns).
+create table if not exists public.guest_profiles (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null default '',
+  primary_phone text,
+  primary_email text,
+  primary_instagram text,
+  age smallint,
+  gender text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.guest_identity_links (
+  id uuid primary key default gen_random_uuid(),
+  guest_profile_id uuid not null references public.guest_profiles (id) on delete cascade,
+  identity_type text not null check (identity_type in ('phone', 'email', 'instagram')),
+  identity_value text not null,
+  normalized_value text not null,
+  created_at timestamptz not null default now(),
+  unique (identity_type, normalized_value)
+);
+
+create table if not exists public.guestlist_events (
+  id uuid primary key default gen_random_uuid(),
+  club_slug text not null references public.clubs (slug) on delete cascade,
+  event_date date not null,
+  promoter_id uuid references public.promoters (id) on delete set null,
+  capacity integer not null default 0,
+  status text not null default 'open' check (status in ('open', 'closed', 'cancelled')),
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (club_slug, event_date, promoter_id)
+);
+
+create table if not exists public.guestlist_signups (
+  id uuid primary key default gen_random_uuid(),
+  guestlist_event_id uuid not null references public.guestlist_events (id) on delete cascade,
+  guest_profile_id uuid not null references public.guest_profiles (id) on delete cascade,
+  source text not null default 'website',
+  signup_at timestamptz not null default now(),
+  status text not null default 'signed_up' check (status in ('signed_up', 'attended', 'no_show', 'cancelled')),
+  created_by uuid references auth.users (id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  unique (guestlist_event_id, guest_profile_id)
+);
+
+create table if not exists public.guestlist_checkins (
+  id uuid primary key default gen_random_uuid(),
+  guestlist_signup_id uuid not null references public.guestlist_signups (id) on delete cascade,
+  checked_in_at timestamptz not null default now(),
+  checkin_source text not null check (checkin_source in ('self', 'promoter', 'admin')),
+  checked_in_by uuid references auth.users (id) on delete set null,
+  notes text not null default ''
+);
+
+create table if not exists public.guestlist_demographics (
+  id uuid primary key default gen_random_uuid(),
+  guest_profile_id uuid not null references public.guest_profiles (id) on delete cascade,
+  guestlist_event_id uuid references public.guestlist_events (id) on delete set null,
+  age smallint,
+  gender text,
+  source text not null check (source in ('self', 'promoter', 'admin')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_audiences (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text not null default '',
+  filter_payload jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_audience_members (
+  id uuid primary key default gen_random_uuid(),
+  audience_id uuid not null references public.campaign_audiences (id) on delete cascade,
+  guest_profile_id uuid not null references public.guest_profiles (id) on delete cascade,
+  added_at timestamptz not null default now(),
+  unique (audience_id, guest_profile_id)
+);
+
+create index if not exists guest_profiles_seen_idx on public.guest_profiles (last_seen_at desc);
+create index if not exists guest_identity_lookup_idx on public.guest_identity_links (identity_type, normalized_value);
+create index if not exists guestlist_events_date_idx on public.guestlist_events (event_date desc, club_slug);
+create index if not exists guestlist_signups_event_idx on public.guestlist_signups (guestlist_event_id, status);
+create index if not exists guestlist_signups_guest_idx on public.guestlist_signups (guest_profile_id, signup_at desc);
+create index if not exists guestlist_checkins_signup_idx on public.guestlist_checkins (guestlist_signup_id, checked_in_at desc);
+create index if not exists guestlist_demographics_guest_idx on public.guestlist_demographics (guest_profile_id, created_at desc);
+
+alter table public.guest_profiles enable row level security;
+alter table public.guest_identity_links enable row level security;
+alter table public.guestlist_events enable row level security;
+alter table public.guestlist_signups enable row level security;
+alter table public.guestlist_checkins enable row level security;
+alter table public.guestlist_demographics enable row level security;
+alter table public.campaign_audiences enable row level security;
+alter table public.campaign_audience_members enable row level security;
+
+drop policy if exists guest_profiles_admin on public.guest_profiles;
+create policy guest_profiles_admin
+on public.guest_profiles
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists guest_identity_links_admin on public.guest_identity_links;
+create policy guest_identity_links_admin
+on public.guest_identity_links
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists guestlist_events_admin on public.guestlist_events;
+create policy guestlist_events_admin
+on public.guestlist_events
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists guestlist_signups_admin on public.guestlist_signups;
+create policy guestlist_signups_admin
+on public.guestlist_signups
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists guestlist_checkins_admin on public.guestlist_checkins;
+create policy guestlist_checkins_admin
+on public.guestlist_checkins
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists guestlist_demographics_admin on public.guestlist_demographics;
+create policy guestlist_demographics_admin
+on public.guestlist_demographics
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists campaign_audiences_admin on public.campaign_audiences;
+create policy campaign_audiences_admin
+on public.campaign_audiences
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+drop policy if exists campaign_audience_members_admin on public.campaign_audience_members;
+create policy campaign_audience_members_admin
+on public.campaign_audience_members
+for all
+to authenticated
+using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')))
+with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('admin', 'promoter')));
+
+create or replace function public.upsert_guest_profile_from_identity(
+  p_full_name text,
+  p_phone text default null,
+  p_email text default null,
+  p_instagram text default null,
+  p_age smallint default null,
+  p_gender text default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_phone text := nullif(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), '');
+  v_email text := nullif(lower(trim(coalesce(p_email, ''))), '');
+  v_ig text := nullif(lower(regexp_replace(trim(coalesce(p_instagram, '')), '^@+', '')), '');
+  v_guest_id uuid;
+begin
+  select guest_profile_id into v_guest_id
+  from public.guest_identity_links
+  where (identity_type = 'phone' and normalized_value = coalesce(v_phone, '___none___'))
+     or (identity_type = 'email' and normalized_value = coalesce(v_email, '___none___'))
+     or (identity_type = 'instagram' and normalized_value = coalesce(v_ig, '___none___'))
+  limit 1;
+
+  if v_guest_id is null then
+    insert into public.guest_profiles (
+      full_name, primary_phone, primary_email, primary_instagram, age, gender, first_seen_at, last_seen_at
+    ) values (
+      coalesce(nullif(trim(p_full_name), ''), 'Guest'),
+      v_phone,
+      v_email,
+      v_ig,
+      p_age,
+      nullif(trim(coalesce(p_gender, '')), ''),
+      now(),
+      now()
+    )
+    returning id into v_guest_id;
+  else
+    update public.guest_profiles
+    set full_name = coalesce(nullif(trim(p_full_name), ''), full_name),
+        primary_phone = coalesce(v_phone, primary_phone),
+        primary_email = coalesce(v_email, primary_email),
+        primary_instagram = coalesce(v_ig, primary_instagram),
+        age = coalesce(p_age, age),
+        gender = coalesce(nullif(trim(coalesce(p_gender, '')), ''), gender),
+        last_seen_at = now(),
+        updated_at = now()
+    where id = v_guest_id;
+  end if;
+
+  if v_phone is not null then
+    insert into public.guest_identity_links (guest_profile_id, identity_type, identity_value, normalized_value)
+    values (v_guest_id, 'phone', coalesce(p_phone, ''), v_phone)
+    on conflict (identity_type, normalized_value) do update
+    set guest_profile_id = excluded.guest_profile_id;
+  end if;
+  if v_email is not null then
+    insert into public.guest_identity_links (guest_profile_id, identity_type, identity_value, normalized_value)
+    values (v_guest_id, 'email', coalesce(p_email, ''), v_email)
+    on conflict (identity_type, normalized_value) do update
+    set guest_profile_id = excluded.guest_profile_id;
+  end if;
+  if v_ig is not null then
+    insert into public.guest_identity_links (guest_profile_id, identity_type, identity_value, normalized_value)
+    values (v_guest_id, 'instagram', coalesce(p_instagram, ''), v_ig)
+    on conflict (identity_type, normalized_value) do update
+    set guest_profile_id = excluded.guest_profile_id;
+  end if;
+
+  return v_guest_id;
+end;
+$$;
+
+create or replace function public.promote_signup_to_attended(
+  p_signup_id uuid,
+  p_source text,
+  p_checked_in_by uuid default null,
+  p_age smallint default null,
+  p_gender text default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event_id uuid;
+  v_guest_id uuid;
+  v_checkin_id uuid;
+begin
+  update public.guestlist_signups
+  set status = 'attended'
+  where id = p_signup_id
+  returning guestlist_event_id, guest_profile_id into v_event_id, v_guest_id;
+
+  if v_guest_id is null then
+    raise exception 'signup not found';
+  end if;
+
+  insert into public.guestlist_checkins (
+    guestlist_signup_id, checked_in_at, checkin_source, checked_in_by
+  ) values (
+    p_signup_id, now(), coalesce(nullif(trim(p_source), ''), 'admin'), p_checked_in_by
+  )
+  returning id into v_checkin_id;
+
+  if p_age is not null or nullif(trim(coalesce(p_gender, '')), '') is not null then
+    insert into public.guestlist_demographics (
+      guest_profile_id, guestlist_event_id, age, gender, source
+    ) values (
+      v_guest_id,
+      v_event_id,
+      p_age,
+      nullif(trim(coalesce(p_gender, '')), ''),
+      coalesce(nullif(trim(p_source), ''), 'admin')
+    );
+  end if;
+
+  update public.guest_profiles
+  set last_seen_at = now(),
+      age = coalesce(p_age, age),
+      gender = coalesce(nullif(trim(coalesce(p_gender, '')), ''), gender),
+      updated_at = now()
+  where id = v_guest_id;
+
+  return v_checkin_id;
+end;
+$$;
+
+create or replace function public.create_guestlist_signup_bundle(
+  p_club_slug text,
+  p_event_date date,
+  p_source text,
+  p_guests jsonb
+) returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event_id uuid;
+  elem jsonb;
+  v_guest_id uuid;
+  v_count integer := 0;
+  v_name text;
+  v_contact text;
+  v_phone text;
+  v_email text;
+  v_ig text;
+begin
+  if nullif(trim(coalesce(p_club_slug, '')), '') is null then
+    return 0;
+  end if;
+
+  select id into v_event_id
+  from public.guestlist_events
+  where club_slug = p_club_slug
+    and event_date = p_event_date
+    and promoter_id is null
+  limit 1;
+
+  if v_event_id is null then
+    insert into public.guestlist_events (club_slug, event_date, promoter_id, status, notes)
+    values (p_club_slug, p_event_date, null, 'open', 'Auto-created from website guestlist signup')
+    returning id into v_event_id;
+  end if;
+
+  for elem in select * from jsonb_array_elements(coalesce(p_guests, '[]'::jsonb))
+  loop
+    v_name := nullif(trim(coalesce(elem->>'guestName', '')), '');
+    v_contact := trim(coalesce(elem->>'guestContact', ''));
+    if v_name is null or v_contact = '' then
+      continue;
+    end if;
+    v_phone := null;
+    v_email := null;
+    v_ig := null;
+    if v_contact ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
+      v_email := lower(v_contact);
+    elsif length(regexp_replace(v_contact, '\D', '', 'g')) >= 8 then
+      v_phone := regexp_replace(v_contact, '\D', '', 'g');
+    else
+      v_ig := lower(regexp_replace(v_contact, '^@+', ''));
+    end if;
+
+    v_guest_id := public.upsert_guest_profile_from_identity(
+      v_name, v_phone, v_email, v_ig, null, null
+    );
+
+    insert into public.guestlist_signups (
+      guestlist_event_id, guest_profile_id, source, signup_at, status, created_by, metadata
+    ) values (
+      v_event_id,
+      v_guest_id,
+      coalesce(nullif(trim(coalesce(p_source, '')), ''), 'website'),
+      now(),
+      'signed_up',
+      auth.uid(),
+      jsonb_build_object('channel', 'guestlist_form')
+    )
+    on conflict (guestlist_event_id, guest_profile_id) do update
+    set signup_at = excluded.signup_at;
+    v_count := v_count + 1;
+  end loop;
+
+  return v_count;
+end;
+$$;
+
+create or replace function public.get_guestlist_conversion_metrics(
+  p_club_slug text default null,
+  p_promoter_id uuid default null,
+  p_from date default null,
+  p_to date default null
+) returns table (
+  event_id uuid,
+  club_slug text,
+  promoter_id uuid,
+  event_date date,
+  signups integer,
+  attended integer,
+  conversion numeric
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with base as (
+    select
+      e.id as event_id,
+      e.club_slug,
+      e.promoter_id,
+      e.event_date,
+      count(s.id) as signups,
+      count(s.id) filter (where s.status = 'attended') as attended
+    from public.guestlist_events e
+    left join public.guestlist_signups s on s.guestlist_event_id = e.id
+    where (p_club_slug is null or e.club_slug = p_club_slug)
+      and (p_promoter_id is null or e.promoter_id = p_promoter_id)
+      and (p_from is null or e.event_date >= p_from)
+      and (p_to is null or e.event_date <= p_to)
+    group by e.id, e.club_slug, e.promoter_id, e.event_date
+  )
+  select
+    event_id,
+    club_slug,
+    promoter_id,
+    event_date,
+    signups::integer,
+    attended::integer,
+    case when signups > 0 then round(attended::numeric / signups::numeric, 4) else 0 end as conversion
+  from base
+  order by event_date desc;
+$$;
+
+create or replace function public.generate_campaign_audience(
+  p_name text,
+  p_description text default '',
+  p_filter_payload jsonb default '{}'::jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_audience_id uuid;
+  v_min_events int := coalesce((p_filter_payload->>'min_attended_events')::int, 1);
+begin
+  insert into public.campaign_audiences (
+    name, description, filter_payload, created_by
+  ) values (
+    coalesce(nullif(trim(p_name), ''), 'Untitled audience'),
+    coalesce(p_description, ''),
+    coalesce(p_filter_payload, '{}'::jsonb),
+    auth.uid()
+  )
+  returning id into v_audience_id;
+
+  insert into public.campaign_audience_members (audience_id, guest_profile_id)
+  select v_audience_id, s.guest_profile_id
+  from public.guestlist_signups s
+  where s.status = 'attended'
+  group by s.guest_profile_id
+  having count(*) >= v_min_events;
+
+  return v_audience_id;
+end;
+$$;
+
+grant execute on function public.upsert_guest_profile_from_identity(text, text, text, text, smallint, text) to anon, authenticated;
+grant execute on function public.promote_signup_to_attended(uuid, text, uuid, smallint, text) to authenticated;
+grant execute on function public.create_guestlist_signup_bundle(text, date, text, jsonb) to anon, authenticated;
+grant execute on function public.get_guestlist_conversion_metrics(text, uuid, date, date) to authenticated;
+grant execute on function public.generate_campaign_audience(text, text, jsonb) to authenticated;
+
 -- Public read access for catalog content.
 drop policy if exists clubs_public_read on public.clubs;
 create policy clubs_public_read

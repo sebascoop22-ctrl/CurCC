@@ -658,6 +658,7 @@ export async function initAdminPortal(): Promise<void> {
           </div>
         </div>
         <div class="admin-toolbar">
+          <a class="cc-btn cc-btn--gold" href="/workspace">Open new workspace</a>
           <button class="cc-btn cc-btn--ghost" id="admin-logout" type="button">Sign out</button>
           <button class="cc-btn cc-btn--ghost" id="admin-reload-db" type="button">Reload from database</button>
           <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>

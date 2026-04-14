@@ -88,6 +88,15 @@ function sanitizePayloadForJsonb(
   return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
 }
 
+function resolveGuestlistEventDate(payload: Record<string, unknown>): string {
+  const raw =
+    compactString(payload.event_date) ||
+    compactString(payload.eventDate) ||
+    compactString(payload.date);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function submitToSupabase(
   payload: Record<string, unknown>,
   formName: string,
@@ -125,6 +134,30 @@ async function submitToSupabase(
       ok: false,
       error: error?.message || "Could not save your enquiry right now.",
     };
+  }
+  if (formName === "nightlife_guestlist" && guestsForRpc.length > 0) {
+    const clubSlug = compactString(payload.venue_slug || payload.club_slug);
+    if (clubSlug) {
+      const eventDate = resolveGuestlistEventDate(payload);
+      const { error: guestBundleError } = await supabase.rpc(
+        "create_guestlist_signup_bundle",
+        {
+          p_club_slug: clubSlug,
+          p_event_date: eventDate,
+          p_source: "website",
+          p_guests: guestsForRpc,
+        },
+      );
+      if (guestBundleError) {
+        return {
+          attempted: true,
+          ok: false,
+          error:
+            guestBundleError.message ||
+            "Could not store guestlist analytics rows.",
+        };
+      }
+    }
   }
   return { attempted: true, ok: true };
 }

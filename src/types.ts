@@ -135,3 +135,14 @@ export interface PromoterShiftAssignment {
   jobDate: string;
   status: "assigned" | "completed" | "cancelled";
 }
+
+export interface GuestlistEventContext {
+  eventId: string;
+  clubSlug: string;
+  eventDate: string;
+  status: "open" | "closed" | "cancelled";
+  capacity: number;
+  signups: number;
+  attended: number;
+  conversion: number;
+}
