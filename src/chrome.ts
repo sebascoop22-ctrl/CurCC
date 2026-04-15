@@ -28,7 +28,6 @@ function drawerLinks(active: ActivePage): string {
   return `
     <a href="${servicesHref}"${cls("home")}>Services</a>
     <a href="/nightlife"${cls("nightlife")}>Nightlife</a>
-    <a href="/promoter"${cls("promoter")}>Promoter Portal</a>
     <a href="/chauffeuring"${cls("chauffeuring")}>Chauffeur</a>
     <a href="/security"${cls("security")}>Security</a>
     <a href="/enquiry"${cls("enquiry")}>Inquiry</a>
@@ -45,7 +44,6 @@ export function initChrome(active: ActivePage): void {
   const desktopNav = () => `<nav class="site-nav" aria-label="Primary">
     <a href="${servicesHref}" class="${active === "home" ? "is-active" : ""}">Services</a>
     <a href="/nightlife" class="${active === "nightlife" || active === "nightlife-map" ? "is-active" : ""}">Nightlife</a>
-    <a href="/promoter" class="${active === "promoter" ? "is-active" : ""}">Promoter Portal</a>
     <a href="/chauffeuring" class="${active === "chauffeuring" ? "is-active" : ""}">Chauffeur</a>
     <a href="/security" class="${active === "security" ? "is-active" : ""}">Security</a>
     <a href="/enquiry" class="${active === "enquiry" ? "is-active" : ""}">Inquiry</a>

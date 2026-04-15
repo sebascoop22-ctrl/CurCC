@@ -242,3 +242,127 @@
 .admin-inline-label select {
   min-height: 38px;
 }
+
+/* Sleek workspace/admin skin */
+.admin-page {
+  background: linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
+}
+
+.admin-page h1 {
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.admin-note,
+.admin-hint,
+.admin-section-label {
+  color: #667085;
+}
+
+.admin-card {
+  background: #ffffff;
+  border: 1px solid #e4e7ec;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(16, 24, 40, 0.08);
+  padding: 1rem;
+}
+
+.admin-list {
+  max-height: 65vh;
+}
+
+.admin-list button,
+.admin-list .admin-list-item {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #e4e7ec;
+  border-radius: 12px;
+}
+
+.admin-list button:hover,
+.admin-list .admin-list-item:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.admin-list button.is-active,
+.admin-list .admin-list-item.is-active {
+  border-color: #94a3b8;
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+.admin-tabs button {
+  background: #f8fafc;
+  color: #475467;
+  border-color: #d0d5dd;
+  padding: 0.35rem 0.9rem;
+}
+
+.admin-tabs button.is-active {
+  background: #0f172a;
+  color: #fff;
+  border-color: #0f172a;
+}
+
+.admin-form .cc-field label {
+  color: #667085;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.cc-field input,
+.cc-field select,
+.cc-field textarea {
+  background: #fff;
+  color: #101828;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+}
+
+.admin-form input:focus,
+.admin-form select:focus,
+.admin-form textarea:focus,
+.cc-field input:focus,
+.cc-field select:focus,
+.cc-field textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #eaecf0;
+  color: #101828;
+  padding: 0.62rem 0.7rem;
+  font-size: 0.84rem;
+}
+
+.admin-table th {
+  color: #667085;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #f8fafc;
+}
+
+.admin-flash {
+  color: #0b5ed7;
+  font-weight: 500;
+}
+
+.admin-flash--error {
+  color: #b42318;
+}
