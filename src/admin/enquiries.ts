@@ -105,36 +105,3 @@ export async function createClientsFromEnquiry(
   const created = typeof data === "number" ? data : Number(data) || 0;
   return { ok: true, created };
 }
-
-export type ClientRow = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  instagram: string | null;
-  created_at: string;
-};
-
-export async function loadClientsForAdmin(
-  supabase: SupabaseClient,
-  limit = 500,
-): Promise<{ ok: true; rows: ClientRow[] } | { ok: false; message: string }> {
-  const { data, error } = await supabase
-    .from("clients")
-    .select("id, name, email, phone, instagram, created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) return { ok: false, message: error.message };
-  const rows: ClientRow[] = (data ?? []).map((raw) => {
-    const r = raw as Record<string, unknown>;
-    return {
-      id: String(r.id ?? ""),
-      name: r.name != null ? String(r.name) : null,
-      email: r.email != null ? String(r.email) : null,
-      phone: r.phone != null ? String(r.phone) : null,
-      instagram: r.instagram != null ? String(r.instagram) : null,
-      created_at: String(r.created_at ?? ""),
-    };
-  });
-  return { ok: true, rows };
-}

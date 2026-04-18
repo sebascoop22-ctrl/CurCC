@@ -157,6 +157,21 @@ async function submitToSupabase(
             "Could not store guestlist analytics rows.",
         };
       }
+      const { error: syncClientErr } = await supabase.rpc(
+        "sync_crm_clients_from_guestlist_batch",
+        {
+          p_enquiry_id: String(enquiryId),
+          p_club_slug: clubSlug,
+          p_event_date: eventDate,
+          p_guests: guestsForRpc,
+        },
+      );
+      if (syncClientErr) {
+        console.warn(
+          "sync_crm_clients_from_guestlist_batch:",
+          syncClientErr.message,
+        );
+      }
     }
   }
   return { attempted: true, ok: true };

@@ -16,14 +16,21 @@ import {
 } from "../admin/catalog";
 import {
   createClientsFromEnquiry,
-  loadClientsForAdmin,
   loadEnquiriesForAdmin,
   loadEnquiryGuests,
   updateEnquiryStatus,
-  type ClientRow,
   type EnquiryGuestRow,
   type EnquiryRow,
 } from "../admin/enquiries";
+import {
+  createEmptyClient,
+  deleteClientById,
+  loadClientGuestlistActivityForAdmin,
+  loadClientsForAdmin,
+  updateClientById,
+  type ClientGuestlistActivityRow,
+  type ClientRow,
+} from "../admin/clients";
 import {
   approvePromoterRevision,
   completePromoterJob,
@@ -75,7 +82,8 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
   },
   clients: {
     title: "Clients",
-    subtitle: "CRM-style records created from enquiries or imports.",
+    subtitle:
+      "CRM profiles: edit fields, notes, and spend; guestlist signups append club / night / promoter history.",
   },
   promoter_requests: {
     title: "Promoter requests",
@@ -300,6 +308,14 @@ function escapeAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Safe for textarea / raw text nodes (not attribute-quoted). */
+function escapeHtmlText(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/\u0000/g, "");
+}
+
 /** Single-line display text for admin list cells (truncate before escaping). */
 function adminDisplayTruncate(s: string, max: number): string {
   const t = String(s).replace(/\s+/g, " ").trim();
@@ -405,17 +421,85 @@ function flyerClubSelectOptions(
     .join("");
 }
 
-function renderClientDetail(c: ClientRow): string {
+function renderClientDetail(
+  c: ClientRow,
+  activity: ClientGuestlistActivityRow[],
+  promoters: PromoterProfile[],
+): string {
+  const spendVal =
+    c.typical_spend_gbp != null && Number.isFinite(c.typical_spend_gbp)
+      ? String(c.typical_spend_gbp)
+      : "";
+  const promoOpts = [
+    `<option value="">— None —</option>`,
+    ...promoters.map(
+      (p) =>
+        `<option value="${escapeAttr(p.id)}"${p.id === c.preferred_promoter_id ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
+    ),
+  ].join("");
+  const activityRows =
+    activity.length === 0
+      ? "<tr><td colspan='5'>No guestlist visits linked yet (signups append automatically).</td></tr>"
+      : activity
+          .map((a) => {
+            const pr = a.promoter_id
+              ? promoters.find((p) => p.id === a.promoter_id)
+              : undefined;
+            const promo = a.promoter_id
+              ? escapeAttr(pr?.displayName || pr?.userId || `${a.promoter_id.slice(0, 8)}…`)
+              : "—";
+            return `<tr>
+            <td>${escapeAttr(a.event_date)}</td>
+            <td><code class="admin-list-code">${escapeAttr(a.club_slug)}</code></td>
+            <td>${promo}</td>
+            <td>${a.enquiry_id ? `<code class="admin-list-code">${escapeAttr(a.enquiry_id.slice(0, 8))}…</code>` : "—"}</td>
+            <td>${a.guest_profile_id ? `<code class="admin-list-code">${escapeAttr(a.guest_profile_id.slice(0, 8))}…</code>` : "—"}</td>
+          </tr>`;
+          })
+          .join("");
   return `
       <div class="admin-client-detail">
-        <h4 class="admin-subhead" style="margin-top: 0">Client</h4>
-        <dl class="admin-enquiry-meta">
-          <div><dt>Added</dt><dd>${escapeAttr(c.created_at || "—")}</dd></div>
-          <div><dt>Name</dt><dd>${escapeAttr(c.name ?? "—")}</dd></div>
-          <div><dt>Email</dt><dd>${escapeAttr(c.email ?? "—")}</dd></div>
-          <div><dt>Phone</dt><dd>${escapeAttr(c.phone ?? "—")}</dd></div>
-          <div><dt>Instagram</dt><dd>${escapeAttr(c.instagram ?? "—")}</dd></div>
-        </dl>
+        <h4 class="admin-subhead" style="margin-top: 0">Client record</h4>
+        <form class="admin-form" id="admin-client-form">
+          <input type="hidden" name="client_id" value="${escapeAttr(c.id)}" />
+          <div class="cc-field"><label for="client-name">Name</label>
+            <input id="client-name" name="name" value="${escapeAttr(c.name ?? "")}" /></div>
+          <div class="cc-field"><label for="client-email">Email</label>
+            <input id="client-email" name="email" type="email" value="${escapeAttr(c.email ?? "")}" /></div>
+          <div class="cc-field"><label for="client-phone">Phone</label>
+            <input id="client-phone" name="phone" value="${escapeAttr(c.phone ?? "")}" /></div>
+          <div class="cc-field"><label for="client-ig">Instagram</label>
+            <input id="client-ig" name="instagram" value="${escapeAttr(c.instagram ?? "")}" placeholder="@handle" /></div>
+          <div class="cc-field"><label for="client-spend">Typical spend (GBP / night)</label>
+            <input id="client-spend" name="typical_spend_gbp" type="number" min="0" step="0.01" placeholder="e.g. 500" value="${escapeAttr(spendVal)}" /></div>
+          <div class="cc-field full"><label for="client-nights">Preferred nights</label>
+            <input id="client-nights" name="preferred_nights" value="${escapeAttr(c.preferred_nights ?? "")}" placeholder="Fri, Sat" /></div>
+          <div class="cc-field full"><label for="client-promoter">Preferred promoter</label>
+            <select id="client-promoter" name="preferred_promoter_id">${promoOpts}</select></div>
+          <div class="cc-field full"><label for="client-notes">Internal notes</label>
+            <textarea id="client-notes" name="notes" rows="4" placeholder="VIP preferences, relationships, spend patterns…">${escapeHtmlText(c.notes ?? "")}</textarea></div>
+          <div class="cc-field full"><label>Guest profile id</label>
+            <input value="${escapeAttr(c.guest_profile_id ?? "—")}" readonly /></div>
+          <div class="cc-field full"><label>Added</label>
+            <input value="${escapeAttr(c.created_at || "—")}" readonly /></div>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-save">Save client</button>
+          </div>
+        </form>
+        <h4 class="admin-subhead">Guestlist history</h4>
+        <p class="admin-hint">Clubs and nights captured when this person (or party) signs up on the site; promoter comes from the guestlist event if set.</p>
+        <div class="full promoter-table-wrap">
+          <table class="admin-list-table">
+            <thead><tr>
+              <th scope="col">Night</th>
+              <th scope="col">Club</th>
+              <th scope="col">Promoter (event)</th>
+              <th scope="col">Enquiry</th>
+              <th scope="col">Guest profile</th>
+            </tr></thead>
+            <tbody>${activityRows}</tbody>
+          </table>
+        </div>
       </div>`;
 }
 
@@ -447,6 +531,7 @@ export async function initAdminPortal(): Promise<void> {
   let enquiries: EnquiryRow[] = [];
   let enquiryGuests: EnquiryGuestRow[] = [];
   let clients: ClientRow[] = [];
+  let clientGuestlistActivity: ClientGuestlistActivityRow[] = [];
   let promoterSignupRequests: PromoterSignupRequest[] = [];
   let selectedPromoterRequestId: string | null = null;
   let promoters: PromoterProfile[] = [];
@@ -528,6 +613,14 @@ export async function initAdminPortal(): Promise<void> {
       selectedClientId = clients[0]?.id ?? null;
     }
     if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
+    clientGuestlistActivity = [];
+    if (selectedClientId) {
+      const a = await loadClientGuestlistActivityForAdmin(
+        supabase,
+        selectedClientId,
+      );
+      clientGuestlistActivity = a.ok ? a.rows : [];
+    }
   }
 
   async function reloadPromoterSignupRequests(): Promise<void> {
@@ -803,7 +896,10 @@ export async function initAdminPortal(): Promise<void> {
                     view === "clubs" || view === "cars" || view === "flyers" || view === "jobs"
                       ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
-                      : ""
+                      : view === "clients"
+                        ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add-client">Add client</button>
+                     <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete-client">Delete selected</button>`
+                        : ""
                   }
                 </div>
               </aside>
@@ -1077,8 +1173,12 @@ export async function initAdminPortal(): Promise<void> {
                         ? renderEnquiryDetail(enquiry)
                         : `<p class="admin-note">No enquiries yet.</p>`
                       : clientRow
-                        ? renderClientDetail(clientRow)
-                        : `<p class="admin-note">No clients yet. Use “Create clients from names” on a guestlist enquiry.</p>`
+                        ? renderClientDetail(
+                            clientRow,
+                            clientGuestlistActivity,
+                            promoters,
+                          )
+                        : `<p class="admin-note">No clients yet. Add one with “Add client” or use “Create clients from names” on a guestlist enquiry.</p>`
             }
               </section>
             </div>
@@ -1305,7 +1405,7 @@ export async function initAdminPortal(): Promise<void> {
           );
           bindAdminListRows(listEl, "tr[data-client-id]", (row) => {
             selectedClientId = row.dataset.clientId ?? null;
-            renderDashboard();
+            void reloadClients().then(() => renderDashboard());
           });
         }
       } else if (view === "promoter_requests") {
@@ -1988,6 +2088,76 @@ export async function initAdminPortal(): Promise<void> {
             ? "No new clients (all rows already exist or nothing to import)."
             : `Created ${res.created} client(s).`,
         );
+      })();
+    });
+
+    adminRoot.querySelector("#admin-client-save")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector("#admin-client-form") as HTMLFormElement | null;
+      if (!form || !selectedClientId) return;
+      const fd = new FormData(form);
+      const spendRaw = String(fd.get("typical_spend_gbp") || "").trim();
+      const spendParsed =
+        spendRaw === "" ? null : Number.parseFloat(spendRaw.replace(",", "."));
+      const spend =
+        spendParsed != null && Number.isFinite(spendParsed) ? spendParsed : null;
+      const promoId = String(fd.get("preferred_promoter_id") || "").trim();
+      void (async () => {
+        const res = await updateClientById(supabase, selectedClientId!, {
+          name: String(fd.get("name") || "").trim() || null,
+          email: String(fd.get("email") || "").trim().toLowerCase() || null,
+          phone: String(fd.get("phone") || "").trim() || null,
+          instagram: String(fd.get("instagram") || "").trim() || null,
+          notes: String(fd.get("notes") || "").trim() || null,
+          typical_spend_gbp: spend,
+          preferred_nights: String(fd.get("preferred_nights") || "").trim() || null,
+          preferred_promoter_id: promoId || null,
+        });
+        if (!res.ok) {
+          flash(`Save failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadClients();
+        flash("Client saved.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#admin-add-client")?.addEventListener("click", () => {
+      void (async () => {
+        const res = await createEmptyClient(supabase);
+        if (!res.ok) {
+          flash(`Could not add client: ${res.message}`, "error");
+          return;
+        }
+        selectedClientId = res.id;
+        await reloadClients();
+        flash("New client created — fill in details and save.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#admin-delete-client")?.addEventListener("click", () => {
+      if (!selectedClientId) {
+        flash("Select a client first.", "error");
+        return;
+      }
+      if (
+        !globalThis.confirm(
+          "Delete this client? Guestlist activity rows for them will be removed too.",
+        )
+      )
+        return;
+      void (async () => {
+        const id = selectedClientId!;
+        const res = await deleteClientById(supabase, id);
+        if (!res.ok) {
+          flash(`Delete failed: ${res.message}`, "error");
+          return;
+        }
+        selectedClientId = null;
+        await reloadClients();
+        flash("Client deleted.");
+        renderDashboard();
       })();
     });
 
