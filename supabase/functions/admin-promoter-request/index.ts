@@ -1,6 +1,6 @@
 /**
  * Supabase Edge Function: admin-promoter-request
- * Deploy: supabase functions deploy admin-promoter-request
+ * Deploy: supabase functions deploy admin-promoter-request --no-verify-jwt
  *
  * Approve (create auth user + promoter row + emails) or deny (update row + email).
  * Requires Authorization: Bearer <user JWT> for an admin profile.

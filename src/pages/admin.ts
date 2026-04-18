@@ -68,6 +68,49 @@ type AdminView =
   | "cars"
   | "flyers";
 
+const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }> = {
+  enquiries: {
+    title: "Enquiries",
+    subtitle: "Review submissions, guest lists, and payload. Update status as you work each lead.",
+  },
+  clients: {
+    title: "Clients",
+    subtitle: "CRM-style records created from enquiries or imports.",
+  },
+  promoter_requests: {
+    title: "Promoter requests",
+    subtitle: "Access requests from the portal. Approve or deny with clear actions.",
+  },
+  promoters: {
+    title: "Promoter profiles",
+    subtitle: "Review profiles and pending revision payloads.",
+  },
+  jobs: {
+    title: "Promoter jobs",
+    subtitle: "Create jobs and mark work complete. Table shows history for the selected promoter.",
+  },
+  invoices: {
+    title: "Promoter invoices",
+    subtitle: "Generate period invoices and review totals.",
+  },
+  financials: {
+    title: "Financials",
+    subtitle: "Monthly summaries from financial_transactions.",
+  },
+  clubs: {
+    title: "Clubs",
+    subtitle: "Nightlife catalog: edit fields and save to the database.",
+  },
+  cars: {
+    title: "Cars",
+    subtitle: "Chauffeur fleet tiles: edit fields and save to the database.",
+  },
+  flyers: {
+    title: "Weekly flyers",
+    subtitle: "Event flyers per club. Save clubs to the DB before linking.",
+  },
+};
+
 type ClubEntry = { dbId: string | null; club: Club };
 type CarEntry = { dbId: string | null; car: Car };
 
@@ -255,6 +298,34 @@ function escapeAttr(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Single-line display text for admin list cells (truncate before escaping). */
+function adminDisplayTruncate(s: string, max: number): string {
+  const t = String(s).replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function adminListTableWrap(tableInner: string): string {
+  return `<div class="admin-list-table-wrap"><table class="admin-table admin-list-table">${tableInner}</table></div>`;
+}
+
+function bindAdminListRows(
+  listEl: Element,
+  rowSelector: string,
+  handler: (row: HTMLElement) => void,
+): void {
+  listEl.querySelectorAll<HTMLElement>(rowSelector).forEach((row) => {
+    const run = () => handler(row);
+    row.addEventListener("click", run);
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        run();
+      }
+    });
+  });
 }
 
 function validateClubShape(club: Club): string[] {
@@ -646,85 +717,97 @@ export async function initAdminPortal(): Promise<void> {
 
     const vt = club.venueType;
     const gs = car.gridSize;
+    const vh = ADMIN_VIEW_HEADINGS[view];
 
     adminRoot.innerHTML = `
-      <div class="admin-card">
-        <div class="admin-toolbar admin-toolbar--sections">
-          <div class="admin-section-group">
-            <span class="admin-section-label">Desk</span>
-            <div class="admin-tabs">
+      <div class="admin-shell">
+        <aside class="admin-sidebar" aria-label="Admin sections">
+          <div class="admin-sidebar__brand">
+            <p class="admin-sidebar__eyebrow">Cooper Concierge</p>
+            <p class="admin-sidebar__title">Admin</p>
+          </div>
+          <nav class="admin-sidebar__nav">
+            <div class="admin-nav-block">
+              <p class="admin-nav-heading">Enquiries</p>
               <button type="button" class="admin-view-tab ${view === "enquiries" ? "is-active" : ""}" data-view="enquiries">Enquiries</button>
               <button type="button" class="admin-view-tab ${view === "clients" ? "is-active" : ""}" data-view="clients">Clients</button>
             </div>
-          </div>
-          <div class="admin-section-group">
-            <span class="admin-section-label">Promoters</span>
-            <div class="admin-tabs">
+            <div class="admin-nav-block">
+              <p class="admin-nav-heading">Promoters</p>
               <button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button>
               <button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button>
               <button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button>
               <button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button>
               <button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>
             </div>
-          </div>
-          <div class="admin-section-group">
-            <span class="admin-section-label">Catalog</span>
-            <div class="admin-tabs">
+            <div class="admin-nav-block">
+              <p class="admin-nav-heading">Website</p>
               <button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button>
               <button type="button" class="admin-view-tab ${view === "cars" ? "is-active" : ""}" data-view="cars">Cars</button>
               <button type="button" class="admin-view-tab ${view === "flyers" ? "is-active" : ""}" data-view="flyers">Flyers</button>
             </div>
+          </nav>
+          <div class="admin-sidebar__footer">
+            <a class="admin-sidebar__link" href="/workspace">Open workspace</a>
+            <button type="button" class="admin-sidebar__btn" id="admin-logout">Sign out</button>
+            <button type="button" class="admin-sidebar__btn" id="admin-reload-db">Reload from database</button>
           </div>
-        </div>
-        <div class="admin-toolbar">
-          <a class="cc-btn cc-btn--gold" href="/workspace">Open new workspace</a>
-          <button class="cc-btn cc-btn--ghost" id="admin-logout" type="button">Sign out</button>
-          <button class="cc-btn cc-btn--ghost" id="admin-reload-db" type="button">Reload from database</button>
-          <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>
-          <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
-          ${
-            view === "clubs"
-              ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
-                 <button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
-              : ""
-          }
-          ${
-            view === "cars"
-              ? `<button class="cc-btn cc-btn--gold" id="admin-save-car" type="button">Save car to DB</button>
-                 <button class="cc-btn cc-btn--ghost" id="admin-save-all-cars" type="button">Save all cars</button>`
-              : ""
-          }
-        </div>
-        <div class="admin-grid">
-          <aside>
-            <p class="admin-hint">${
-              view === "enquiries"
-                ? "Select an enquiry."
-                : view === "clients"
-                  ? "Client records (from enquiries and imports)."
-                  : view === "promoter_requests"
-                    ? "Access requests from the promoter portal. Approve or deny via Edge Function (emails require Resend)."
-                    : view === "promoters"
-                    ? "Promoter profiles and revision approvals."
-                    : view === "jobs"
-                      ? "Assign and complete promoter jobs."
-                      : view === "invoices"
-                        ? "Generate and review promoter invoices."
-                        : view === "financials"
-                          ? "Monthly financial summaries."
-                  : "Select an item to edit."
-            }</p>
-            <div class="admin-list" id="admin-list"></div>
-            <div class="admin-actions">
+        </aside>
+        <div class="admin-main">
+          <header class="admin-main__header">
+            <div class="admin-main__intro">
+              <h2 class="admin-main__title">${escapeAttr(vh.title)}</h2>
+              <p class="admin-main__subtitle">${escapeAttr(vh.subtitle)}</p>
+            </div>
+            <div class="admin-toolbar admin-toolbar--main">
+              <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>
+              <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
               ${
-                view === "clubs" || view === "cars" || view === "flyers" || view === "jobs"
-                  ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
-                     <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
+                view === "clubs"
+                  ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
+                 <button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
+                  : ""
+              }
+              ${
+                view === "cars"
+                  ? `<button class="cc-btn cc-btn--gold" id="admin-save-car" type="button">Save car to DB</button>
+                 <button class="cc-btn cc-btn--ghost" id="admin-save-all-cars" type="button">Save all cars</button>`
                   : ""
               }
             </div>
-          </aside>
-          <section id="admin-form-wrap">
+          </header>
+          <div class="admin-workspace">
+            <div class="admin-grid">
+              <aside class="admin-list-panel">
+                <h3 class="admin-list-panel__title">List</h3>
+                <p class="admin-list-panel__hint">${
+                  view === "enquiries"
+                    ? "Select an enquiry to open details and update status."
+                    : view === "clients"
+                      ? "Client records from enquiries and imports."
+                      : view === "promoter_requests"
+                        ? "Pending rows first. Use the detail panel to approve or deny."
+                        : view === "promoters"
+                          ? "Choose a promoter for profile and revisions."
+                          : view === "jobs"
+                            ? "Choose a promoter to attach jobs and history."
+                            : view === "invoices"
+                              ? "Choose a promoter for invoice tools."
+                              : view === "financials"
+                                ? "Reporting uses financial_transactions."
+                                : "Choose an item to edit in the panel."
+                }</p>
+                <div class="admin-list" id="admin-list"></div>
+                <div class="admin-actions">
+                  ${
+                    view === "clubs" || view === "cars" || view === "flyers" || view === "jobs"
+                      ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
+                     <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
+                      : ""
+                  }
+                </div>
+              </aside>
+              <section class="admin-detail-panel" id="admin-form-wrap">
             ${
               view === "clubs"
                 ? `
@@ -997,10 +1080,12 @@ export async function initAdminPortal(): Promise<void> {
                         ? renderClientDetail(clientRow)
                         : `<p class="admin-note">No clients yet. Use “Create clients from names” on a guestlist enquiry.</p>`
             }
-          </section>
+              </section>
+            </div>
+            <p class="admin-workspace__footer-hint">Enquiries and clients live in the CRM tables. Website content maps to <code>public.clubs</code>, <code>public.cars</code>, and weekly flyers (save a club before linking flyers). Images use the <code>${escapeAttr(ADMIN_MEDIA_BUCKET)}</code> bucket.</p>
+            <div class="admin-flash" id="admin-flash"></div>
+          </div>
         </div>
-        <p class="admin-hint">Desk: enquiries and imported clients. Catalog: <code>public.clubs</code>, <code>public.cars</code>, and weekly flyers (club must be saved to the DB first). Images upload to the <code>${escapeAttr(ADMIN_MEDIA_BUCKET)}</code> storage bucket.</p>
-        <div class="admin-flash" id="admin-flash"></div>
       </div>
     `;
 
@@ -1152,17 +1237,38 @@ export async function initAdminPortal(): Promise<void> {
     const listEl = adminRoot.querySelector("#admin-list");
     if (listEl) {
       if (view === "enquiries") {
-        listEl.innerHTML = enquiries
-          .map(
-            (e, i) =>
-              `<button type="button" data-enquiry-id="${escapeAttr(e.id)}" class="${e.id === selectedEnquiry ? "is-active" : ""}">
-              ${escapeAttr(e.submitted_at?.slice(0, 10) || e.created_at?.slice(0, 10) || "—")} · ${escapeAttr(e.form_label)} · ${escapeAttr(e.status)}
-            </button>`,
-          )
-          .join("");
-        listEl.querySelectorAll("button[data-enquiry-id]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const id = (btn as HTMLButtonElement).dataset.enquiryId ?? null;
+        listEl.className = "admin-list admin-list--table";
+        if (!enquiries.length) {
+          listEl.innerHTML = `<p class="admin-note">No enquiries yet.</p>`;
+        } else {
+          const rows = enquiries
+            .map((e) => {
+              const date =
+                e.submitted_at?.slice(0, 10) ||
+                e.created_at?.slice(0, 10) ||
+                "—";
+              const contact = [e.name, e.email, e.phone]
+                .filter(Boolean)
+                .join(" · ") || "—";
+              const active = e.id === selectedEnquiry ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-enquiry-id="${escapeAttr(e.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(date)}</td>
+                <td>${escapeAttr(adminDisplayTruncate(e.form_label, 36))}</td>
+                <td><span class="admin-list-badge">${escapeAttr(e.status)}</span></td>
+                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(contact, 42))}</td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Date</th>
+              <th scope="col">Form</th>
+              <th scope="col">Status</th>
+              <th scope="col">Contact</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-enquiry-id]", (row) => {
+            const id = row.dataset.enquiryId ?? null;
             selectedEnquiry = id;
             void (async () => {
               if (id) {
@@ -1172,93 +1278,159 @@ export async function initAdminPortal(): Promise<void> {
               renderDashboard();
             })();
           });
-        });
+        }
       } else if (view === "clients") {
-        listEl.innerHTML = clients
-          .map(
-            (c) =>
-              `<button type="button" data-client-id="${escapeAttr(c.id)}" class="${c.id === selectedClientId ? "is-active" : ""}">
-              ${escapeAttr(c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8))}
-            </button>`,
-          )
-          .join("");
-        listEl.querySelectorAll("button[data-client-id]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            selectedClientId =
-              (btn as HTMLButtonElement).dataset.clientId ?? null;
+        listEl.className = "admin-list admin-list--table";
+        if (!clients.length) {
+          listEl.innerHTML = `<p class="admin-note">No clients yet.</p>`;
+        } else {
+          const rows = clients
+            .map((c) => {
+              const label =
+                c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8);
+              const active = c.id === selectedClientId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-client-id="${escapeAttr(c.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(adminDisplayTruncate(label, 40))}</td>
+                <td>${escapeAttr(adminDisplayTruncate(c.email || "—", 36))}</td>
+                <td>${escapeAttr(c.created_at?.slice(0, 10) || "—")}</td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Name / handle</th>
+              <th scope="col">Email</th>
+              <th scope="col">Added</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-client-id]", (row) => {
+            selectedClientId = row.dataset.clientId ?? null;
             renderDashboard();
           });
-        });
+        }
       } else if (view === "promoter_requests") {
-        listEl.innerHTML = promoterSignupRequests.length
-          ? promoterSignupRequests
-              .map(
-                (q) =>
-                  `<button type="button" data-promoter-request-id="${escapeAttr(q.id)}" class="${q.id === selectedPromoterRequestId ? "is-active" : ""}">
-                ${escapeAttr(q.status)} · ${escapeAttr(q.fullName)} · ${escapeAttr(q.email)} · ${escapeAttr(q.createdAt.slice(0, 10))}
-              </button>`,
-              )
-              .join("")
-          : `<p class="admin-note">No requests.</p>`;
-        listEl.querySelectorAll("button[data-promoter-request-id]").forEach((btn) => {
-          btn.addEventListener("click", () => {
+        listEl.className = "admin-list admin-list--table";
+        if (!promoterSignupRequests.length) {
+          listEl.innerHTML = `<p class="admin-note">No requests.</p>`;
+        } else {
+          const rows = promoterSignupRequests
+            .map((q) => {
+              const active =
+                q.id === selectedPromoterRequestId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-promoter-request-id="${escapeAttr(q.id)}" tabindex="0" role="button">
+                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(q.status)}">${escapeAttr(q.status)}</span></td>
+                <td>${escapeAttr(adminDisplayTruncate(q.fullName, 28))}</td>
+                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(q.email, 40))}</td>
+                <td>${escapeAttr(q.createdAt.slice(0, 10))}</td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Status</th>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Requested</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-promoter-request-id]", (row) => {
             selectedPromoterRequestId =
-              (btn as HTMLButtonElement).dataset.promoterRequestId ?? null;
+              row.dataset.promoterRequestId ?? null;
             renderDashboard();
           });
-        });
+        }
       } else if (view === "promoters" || view === "jobs" || view === "invoices") {
-        listEl.innerHTML = promoters
-          .map(
-            (p) =>
-              `<button type="button" data-promoter-id="${escapeAttr(p.id)}" class="${p.id === selectedPromoterId ? "is-active" : ""}">
-                ${escapeAttr(p.displayName || p.userId)} · ${escapeAttr(p.approvalStatus)}
-              </button>`,
-          )
-          .join("");
-        listEl.querySelectorAll("button[data-promoter-id]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            selectedPromoterId =
-              (btn as HTMLButtonElement).dataset.promoterId ?? null;
+        listEl.className = "admin-list admin-list--table";
+        if (!promoters.length) {
+          listEl.innerHTML = `<p class="admin-note">No promoters loaded.</p>`;
+        } else {
+          const rows = promoters
+            .map((p) => {
+              const active = p.id === selectedPromoterId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-promoter-id="${escapeAttr(p.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(adminDisplayTruncate(p.displayName || p.userId, 32))}</td>
+                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(p.approvalStatus)}">${escapeAttr(p.approvalStatus)}</span></td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Promoter</th>
+              <th scope="col">Approval</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-promoter-id]", (row) => {
+            selectedPromoterId = row.dataset.promoterId ?? null;
             void reloadPromoters().then(() => renderDashboard());
           });
-        });
+        }
       } else if (view === "financials") {
+        listEl.className = "admin-list";
         listEl.innerHTML = `<p class="admin-note">Financial reporting is generated from \`financial_transactions\`.</p>`;
       } else if (view === "flyers") {
+        listEl.className = "admin-list admin-list--table";
         const activeIndex = selectedFlyer;
-        listEl.innerHTML = flyers
-          .map(
-            (f, i) =>
-              `<button type="button" data-i="${i}" class="${i === activeIndex ? "is-active" : ""}">${escapeAttr(`${f.clubSlug} · ${f.eventDate}`)}</button>`,
-          )
-          .join("");
-        listEl.querySelectorAll("button[data-i]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            selectedFlyer = Number((btn as HTMLButtonElement).dataset.i ?? "0");
+        if (!flyers.length) {
+          listEl.innerHTML = `<p class="admin-note">No flyers. Add one below.</p>`;
+        } else {
+          const rows = flyers
+            .map((f, i) => {
+              const active = i === activeIndex ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-i="${i}" tabindex="0" role="button">
+                <td>${escapeAttr(adminDisplayTruncate(f.clubSlug, 24))}</td>
+                <td>${escapeAttr(f.eventDate)}</td>
+                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(f.title, 36))}</td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Club</th>
+              <th scope="col">Event date</th>
+              <th scope="col">Title</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-i]", (row) => {
+            selectedFlyer = Number(row.dataset.i ?? "0");
             renderDashboard();
           });
-        });
+        }
       } else {
         const isClubs = view === "clubs";
         const items = isClubs ? clubEntries : carEntries;
         const activeIndex = isClubs ? selectedClub : selectedCar;
-        listEl.innerHTML = items
-          .map((entry, i) => {
-            const label = isClubs
-              ? `${(entry as ClubEntry).club.slug} · ${(entry as ClubEntry).club.name}`
-              : `${(entry as CarEntry).car.slug} · ${(entry as CarEntry).car.name}`;
-            return `<button type="button" data-i="${i}" class="${i === activeIndex ? "is-active" : ""}">${escapeAttr(label)}</button>`;
-          })
-          .join("");
-        listEl.querySelectorAll("button[data-i]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const i = Number((btn as HTMLButtonElement).dataset.i ?? "0");
+        listEl.className = "admin-list admin-list--table";
+        if (!items.length) {
+          listEl.innerHTML = `<p class="admin-note">No items yet.</p>`;
+        } else {
+          const rows = items
+            .map((entry, i) => {
+              const slug = isClubs
+                ? (entry as ClubEntry).club.slug
+                : (entry as CarEntry).car.slug;
+              const name = isClubs
+                ? (entry as ClubEntry).club.name
+                : (entry as CarEntry).car.name;
+              const active = i === activeIndex ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-i="${i}" tabindex="0" role="button">
+                <td><code class="admin-list-code">${escapeAttr(slug)}</code></td>
+                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(name, 40))}</td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(
+            `<thead><tr>
+              <th scope="col">Slug</th>
+              <th scope="col">Name</th>
+            </tr></thead><tbody>${rows}</tbody>`,
+          );
+          bindAdminListRows(listEl, "tr[data-i]", (row) => {
+            const i = Number(row.dataset.i ?? "0");
             if (isClubs) selectedClub = i;
             else selectedCar = i;
             renderDashboard();
           });
-        });
+        }
       }
     }
 
