@@ -11,6 +11,12 @@
   --cc-cream: #f5f4f1;
   --cc-muted: #6b7280;
   --cc-text: #e8e6e1;
+  --cc-header-bg: rgba(10, 10, 10, 0.72);
+  --cc-nav-toggle-bg: rgba(29, 32, 36, 0.5);
+  --cc-mobile-drawer-bg: rgba(10, 10, 10, 0.97);
+  --cc-modal-scrim: rgba(0, 0, 0, 0.78);
+  --cc-lux-card-shine: rgba(255, 255, 255, 0.04);
+  --cc-lux-card-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
   --cc-font-sans: "Inter", system-ui, sans-serif;
   --cc-font-serif: "Playfair Display", "Times New Roman", serif;
   --cc-space-xs: 0.35rem;
@@ -22,6 +28,222 @@
   --cc-radius-lg: 26px;
   --cc-header-h: 4.25rem;
   --cc-max: 1200px;
+
+  /* Home: featured strip, services bento, invitation form.
+     Override in `html[data-cc-theme="light"]` / `ocean` below; dark uses :root. */
+  --cc-home-featured-bg: #121212;
+  --cc-home-featured-title: #ffffff;
+  --cc-home-featured-muted: #9ca3af;
+  --cc-home-featured-mode-active-border: rgba(212, 196, 168, 0.65);
+  --cc-home-featured-chev-border: rgba(255, 255, 255, 0.12);
+  --cc-home-featured-chev-bg: rgba(18, 18, 18, 0.9);
+  --cc-home-featured-date-text: #ffffff;
+  --cc-home-featured-details-fg: #fafaf9;
+  --cc-home-featured-details-border: rgba(255, 255, 255, 0.14);
+  --cc-home-featured-details-bg: rgba(40, 38, 36, 0.65);
+  --cc-home-featured-details-hover-bg: rgba(212, 196, 168, 0.08);
+
+  --cc-home-lead-bg: #0d0d0d;
+  --cc-home-lead-glow-inner: rgba(212, 196, 168, 0.08);
+  --cc-home-lead-chip-bg: rgba(29, 32, 36, 0.35);
+  --cc-home-lead-input-bg: transparent;
+  --cc-home-lead-input-border: rgba(255, 255, 255, 0.14);
+  --cc-home-lead-placeholder: #6b7280;
+
+  --cc-bento-border: rgba(255, 255, 255, 0.08);
+  --cc-bento-shade-mid: rgba(10, 10, 10, 0.55);
+  --cc-bento-shade-bottom: rgba(10, 10, 10, 0.92);
+  --cc-bento-on-photo-title: #fafaf9;
+  --cc-bento-on-photo-kicker: rgba(232, 228, 218, 0.88);
+  --cc-bento-on-photo-lede: rgba(240, 236, 228, 0.92);
+  --cc-bento-solid-bg: linear-gradient(145deg, #1d2024 0%, #141518 100%);
+  --cc-bento-solid-title: var(--cc-cream);
+  --cc-bento-solid-kicker: rgba(232, 228, 218, 0.88);
+  --cc-bento-circle-bg: rgba(10, 10, 11, 0.35);
+  --cc-testimonial-border: rgba(255, 255, 255, 0.05);
+
+  /* Service pages: nightlife hero, club cards, chauffeur/security heroes */
+  --cc-nightlife-hero-surface: var(--cc-bg-deep);
+  --cc-nightlife-hero-wash: linear-gradient(transparent, transparent);
+  --cc-club-card-border: var(--cc-lux-card-shine);
+  --cc-club-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  --cc-club-card-shadow-hover: 0 28px 56px rgba(0, 0, 0, 0.45);
+  --cc-club-known-list: rgba(232, 228, 218, 0.9);
+  --cc-club-tag-best-fg: rgba(232, 228, 218, 0.88);
+  --cc-club-tag-best-border: rgba(255, 255, 255, 0.12);
+  --cc-club-pricing-border: rgba(255, 255, 255, 0.08);
+  --cc-club-split-bottom-rest-fg: var(--cc-bg-deep);
+  --cc-club-split-hover-fg: var(--cc-bg-deep);
+  --cc-club-map-pin-bg: rgba(0, 0, 0, 0.22);
+  --cc-club-media-solid-bg: linear-gradient(145deg, #252a31 0%, #15171a 100%);
+  --cc-club-img-nav-bg: rgba(10, 10, 11, 0.72);
+  --cc-club-img-nav-border: rgba(255, 255, 255, 0.2);
+  --cc-club-tag-pill-bg: rgba(10, 10, 11, 0.65);
+  --cc-club-tag-pill-border: rgba(255, 255, 255, 0.1);
+  --cc-nl-lead-bg: var(--cc-bg-deep);
+  --cc-nl-lead-moon-opacity: 0.35;
+  --cc-form-minimal-rule: rgba(255, 255, 255, 0.18);
+  --cc-nightlife-mode-btn-bg: rgba(0, 0, 0, 0.2);
+  --cc-chauffeur-hero-overlay: linear-gradient(
+    180deg,
+    rgba(10, 10, 11, 0.88),
+    rgba(10, 10, 11, 0.95)
+  );
+  --cc-security-hero-overlay: linear-gradient(
+    180deg,
+    rgba(10, 10, 10, 0.22) 0%,
+    rgba(10, 10, 10, 0.45) 100%
+  );
+  --cc-hero-photo-title: #ffffff;
+  --cc-hero-photo-text: rgba(248, 246, 242, 0.92);
+  --cc-fleet-tile-fade: rgba(10, 10, 11, 0.92);
+  --cc-fleet-tile-hover-text: rgba(200, 198, 192, 0.95);
+}
+
+/* Explicit dark bucket (matches :root — set from JS for consistency) */
+html[data-cc-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-cc-theme="light"] {
+  color-scheme: light;
+  /* Warm paper tones — avoid flat #fff */
+  --cc-bg-deep: #f3f0ea;
+  --cc-bg-raised: #ebe7df;
+  --cc-bg-card: #f7f4ee;
+  --cc-surface: #f7f4ee;
+  --cc-border: rgba(41, 37, 36, 0.14);
+  --cc-gold: #9a734c;
+  --cc-gold-dim: #7d5e3c;
+  --cc-gold-soft: rgba(154, 115, 76, 0.14);
+  --cc-cream: #1c1917;
+  --cc-muted: #57534e;
+  --cc-text: #292524;
+  --cc-header-bg: rgba(247, 244, 238, 0.9);
+  --cc-nav-toggle-bg: rgba(235, 231, 223, 0.95);
+  --cc-mobile-drawer-bg: rgba(243, 240, 234, 0.98);
+  --cc-modal-scrim: rgba(28, 25, 23, 0.4);
+  --cc-lux-card-shine: rgba(41, 37, 36, 0.08);
+  --cc-lux-card-shadow: 0 18px 40px rgba(41, 37, 36, 0.1);
+
+  --cc-home-featured-bg: #e0d9ce;
+  --cc-home-featured-title: #1c1917;
+  --cc-home-featured-muted: #57534e;
+  --cc-home-featured-mode-active-border: rgba(90, 74, 52, 0.45);
+  --cc-home-featured-chev-border: rgba(41, 37, 36, 0.18);
+  --cc-home-featured-chev-bg: rgba(255, 252, 247, 0.9);
+  --cc-home-featured-date-text: #292524;
+  --cc-home-featured-details-fg: #fafaf9;
+  --cc-home-featured-details-border: rgba(41, 37, 36, 0.22);
+  --cc-home-featured-details-bg: rgba(41, 37, 36, 0.88);
+  --cc-home-featured-details-hover-bg: rgba(154, 115, 76, 0.15);
+
+  --cc-home-lead-bg: #d4cdc2;
+  --cc-home-lead-glow-inner: rgba(154, 115, 76, 0.14);
+  --cc-home-lead-chip-bg: rgba(255, 252, 247, 0.65);
+  --cc-home-lead-input-bg: rgba(255, 252, 247, 0.75);
+  --cc-home-lead-input-border: rgba(41, 37, 36, 0.2);
+  --cc-home-lead-placeholder: #78716c;
+
+  --cc-bento-border: rgba(41, 37, 36, 0.14);
+  --cc-bento-shade-mid: rgba(10, 10, 10, 0.42);
+  --cc-bento-shade-bottom: rgba(10, 10, 10, 0.88);
+  --cc-bento-on-photo-title: #fafaf9;
+  --cc-bento-on-photo-kicker: rgba(255, 252, 247, 0.9);
+  --cc-bento-on-photo-lede: rgba(255, 252, 247, 0.92);
+  --cc-bento-solid-bg: linear-gradient(145deg, #cfc7b8 0%, #b8ae9e 100%);
+  --cc-bento-solid-title: #1c1917;
+  --cc-bento-solid-kicker: #44403c;
+  --cc-bento-circle-bg: rgba(255, 252, 247, 0.45);
+  --cc-testimonial-border: rgba(41, 37, 36, 0.1);
+
+  --cc-nightlife-hero-surface: var(--cc-bg-raised);
+  --cc-nightlife-hero-wash: linear-gradient(
+    180deg,
+    rgba(255, 252, 247, 0.94),
+    rgba(235, 231, 223, 0.98)
+  );
+  --cc-club-card-border: var(--cc-border);
+  --cc-club-card-shadow: var(--cc-lux-card-shadow);
+  --cc-club-card-shadow-hover: 0 22px 48px rgba(41, 37, 36, 0.14);
+  --cc-club-known-list: var(--cc-text);
+  --cc-club-tag-best-fg: #44403c;
+  --cc-club-tag-best-border: rgba(41, 37, 36, 0.14);
+  --cc-club-pricing-border: var(--cc-border);
+  --cc-club-split-bottom-rest-fg: #1c1917;
+  --cc-club-split-hover-fg: #fafaf7;
+  --cc-club-map-pin-bg: rgba(255, 252, 247, 0.92);
+  --cc-club-media-solid-bg: linear-gradient(145deg, #e8e4dc 0%, #d4cfc5 100%);
+  --cc-club-img-nav-bg: rgba(255, 252, 247, 0.92);
+  --cc-club-img-nav-border: rgba(41, 37, 36, 0.2);
+  --cc-club-tag-pill-bg: rgba(255, 252, 247, 0.85);
+  --cc-club-tag-pill-border: rgba(41, 37, 36, 0.12);
+  --cc-nl-lead-bg: var(--cc-home-lead-bg);
+  --cc-nl-lead-moon-opacity: 0.08;
+  --cc-form-minimal-rule: rgba(41, 37, 36, 0.35);
+  --cc-nightlife-mode-btn-bg: rgba(255, 252, 247, 0.75);
+  --cc-chauffeur-hero-overlay: linear-gradient(
+    180deg,
+    rgba(250, 248, 244, 0.82),
+    rgba(235, 231, 223, 0.94)
+  );
+  --cc-security-hero-overlay: linear-gradient(
+    180deg,
+    rgba(250, 248, 244, 0.78),
+    rgba(235, 231, 223, 0.92)
+  );
+  --cc-hero-photo-title: var(--cc-text);
+  --cc-hero-photo-text: var(--cc-muted);
+  --cc-fleet-tile-fade: rgba(235, 231, 223, 0.9);
+  --cc-fleet-tile-hover-text: #57534e;
+}
+
+html[data-cc-theme="ocean"] {
+  color-scheme: dark;
+  --cc-bg-deep: #0a1118;
+  --cc-bg-raised: #111a24;
+  --cc-bg-card: #152232;
+  --cc-surface: #152232;
+  --cc-border: rgba(125, 211, 252, 0.14);
+  --cc-gold: #7dd3fc;
+  --cc-gold-dim: #38bdf8;
+  --cc-gold-soft: rgba(125, 211, 252, 0.16);
+  --cc-cream: #e8f4fc;
+  --cc-muted: #94a3b8;
+  --cc-text: #e2e8f0;
+  --cc-header-bg: rgba(10, 17, 24, 0.78);
+  --cc-nav-toggle-bg: rgba(21, 34, 50, 0.65);
+  --cc-mobile-drawer-bg: rgba(10, 17, 24, 0.98);
+  --cc-modal-scrim: rgba(0, 8, 15, 0.82);
+  --cc-lux-card-shine: rgba(125, 211, 252, 0.1);
+  --cc-lux-card-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+
+  --cc-home-featured-bg: #0f1724;
+  --cc-home-featured-title: #f0f9ff;
+  --cc-home-featured-muted: #94a3b8;
+  --cc-home-featured-mode-active-border: rgba(125, 211, 252, 0.55);
+  --cc-home-featured-chev-border: rgba(125, 211, 252, 0.2);
+  --cc-home-featured-chev-bg: rgba(15, 23, 36, 0.92);
+  --cc-home-featured-date-text: #e2e8f0;
+  --cc-home-featured-details-fg: #f0f9ff;
+  --cc-home-featured-details-border: rgba(125, 211, 252, 0.25);
+  --cc-home-featured-details-bg: rgba(30, 58, 90, 0.55);
+  --cc-home-featured-details-hover-bg: rgba(125, 211, 252, 0.1);
+
+  --cc-home-lead-bg: #080d14;
+  --cc-home-lead-glow-inner: rgba(125, 211, 252, 0.1);
+  --cc-home-lead-chip-bg: rgba(21, 34, 50, 0.55);
+  --cc-home-lead-input-bg: rgba(10, 17, 24, 0.45);
+  --cc-home-lead-input-border: rgba(125, 211, 252, 0.2);
+  --cc-home-lead-placeholder: #64748b;
+
+  --cc-bento-border: rgba(125, 211, 252, 0.12);
+  --cc-bento-shade-mid: rgba(10, 10, 10, 0.5);
+  --cc-bento-shade-bottom: rgba(10, 10, 10, 0.9);
+  --cc-bento-solid-bg: linear-gradient(145deg, #152232 0%, #0f1724 100%);
+  --cc-bento-solid-kicker: rgba(226, 232, 240, 0.88);
+  --cc-bento-circle-bg: rgba(15, 23, 36, 0.5);
+  --cc-testimonial-border: rgba(125, 211, 252, 0.1);
 }
 
 *,
@@ -34,6 +256,7 @@ html {
   scroll-behavior: smooth;
   background-color: var(--cc-bg-deep);
   overflow-x: clip;
+  color-scheme: dark;
 }
 
 body {
@@ -121,7 +344,7 @@ p {
   top: 0;
   z-index: 50;
   height: var(--cc-header-h);
-  background: rgba(10, 10, 10, 0.72);
+  background: var(--cc-header-bg);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--cc-border);
 }
@@ -237,6 +460,29 @@ p {
   white-space: nowrap;
 }
 
+.cc-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-nav-toggle-bg);
+  color: var(--cc-cream);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cc-theme-toggle:hover {
+  border-color: var(--cc-gold);
+  color: var(--cc-gold);
+}
+
 .cc-btn {
   display: inline-flex;
   align-items: center;
@@ -285,7 +531,7 @@ p {
   width: 44px;
   height: 44px;
   border: 1px solid var(--cc-border);
-  background: rgba(29, 32, 36, 0.5);
+  background: var(--cc-nav-toggle-bg);
   border-radius: var(--cc-radius);
   color: var(--cc-cream);
   cursor: pointer;
@@ -300,7 +546,7 @@ p {
 .mobile-drawer {
   position: fixed;
   inset: var(--cc-header-h) 0 0 0;
-  background: rgba(10, 10, 10, 0.97);
+  background: var(--cc-mobile-drawer-bg);
   padding: var(--cc-space-lg);
   display: none;
   flex-direction: column;
@@ -458,7 +704,7 @@ p {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
+  background: var(--cc-modal-scrim);
   display: none;
   align-items: center;
   justify-content: center;
@@ -647,6 +893,6 @@ p {
 .lux-card {
   background: var(--cc-bg-card);
   border-radius: var(--cc-radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--cc-lux-card-shine);
+  box-shadow: var(--cc-lux-card-shadow);
 }

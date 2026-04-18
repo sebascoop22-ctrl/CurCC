@@ -85,6 +85,19 @@ export interface PromoterProfile {
   approvalNotes: string;
 }
 
+/** Row in `public.promoter_signup_requests` */
+export interface PromoterSignupRequest {
+  id: string;
+  fullName: string;
+  email: string;
+  status: "pending" | "approved" | "denied";
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  denialReason: string | null;
+  authUserId: string | null;
+}
+
 export interface PromoterAvailabilitySlot {
   id: string;
   promoterId: string;

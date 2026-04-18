@@ -37,7 +37,9 @@ import {
   type PromoterRevisionRow,
   loadPromotersForAdmin,
   loadPromoterRevisionsForAdmin,
+  loadPromoterSignupRequestsForAdmin,
 } from "../admin/promoters";
+import { adminPromoterRequestDecision } from "../lib/promoter-request-edge";
 import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
@@ -49,6 +51,7 @@ import type {
   PromoterInvoice,
   PromoterJob,
   PromoterProfile,
+  PromoterSignupRequest,
 } from "../types";
 import "../styles/pages/admin.css";
 
@@ -56,6 +59,7 @@ import "../styles/pages/admin.css";
 type AdminView =
   | "enquiries"
   | "clients"
+  | "promoter_requests"
   | "promoters"
   | "jobs"
   | "invoices"
@@ -372,6 +376,8 @@ export async function initAdminPortal(): Promise<void> {
   let enquiries: EnquiryRow[] = [];
   let enquiryGuests: EnquiryGuestRow[] = [];
   let clients: ClientRow[] = [];
+  let promoterSignupRequests: PromoterSignupRequest[] = [];
+  let selectedPromoterRequestId: string | null = null;
   let promoters: PromoterProfile[] = [];
   let promoterRevisions: PromoterRevisionRow[] = [];
   let promoterAvailability: PromoterAvailabilitySlot[] = [];
@@ -453,6 +459,17 @@ export async function initAdminPortal(): Promise<void> {
     if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
   }
 
+  async function reloadPromoterSignupRequests(): Promise<void> {
+    const r = await loadPromoterSignupRequestsForAdmin(supabase);
+    if (r.ok) promoterSignupRequests = r.rows;
+    if (
+      !selectedPromoterRequestId ||
+      !promoterSignupRequests.some((x) => x.id === selectedPromoterRequestId)
+    ) {
+      selectedPromoterRequestId = promoterSignupRequests[0]?.id ?? null;
+    }
+  }
+
   async function reloadPromoters(): Promise<void> {
     const r = await loadPromotersForAdmin(supabase);
     if (r.ok) promoters = r.rows;
@@ -501,6 +518,7 @@ export async function initAdminPortal(): Promise<void> {
     await reloadFlyers();
     await reloadEnquiries();
     await reloadClients();
+    await reloadPromoterSignupRequests();
     await reloadPromoters();
     await reloadFinancialReport();
     selectedClub = Math.min(selectedClub, Math.max(0, clubEntries.length - 1));
@@ -642,6 +660,7 @@ export async function initAdminPortal(): Promise<void> {
           <div class="admin-section-group">
             <span class="admin-section-label">Promoters</span>
             <div class="admin-tabs">
+              <button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button>
               <button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button>
               <button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button>
               <button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button>
@@ -683,7 +702,9 @@ export async function initAdminPortal(): Promise<void> {
                 ? "Select an enquiry."
                 : view === "clients"
                   ? "Client records (from enquiries and imports)."
-                  : view === "promoters"
+                  : view === "promoter_requests"
+                    ? "Access requests from the promoter portal. Approve or deny via Edge Function (emails require Resend)."
+                    : view === "promoters"
                     ? "Promoter profiles and revision approvals."
                     : view === "jobs"
                       ? "Assign and complete promoter jobs."
@@ -803,7 +824,46 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="flyer-save-db">${flyer.id ? "Update flyer" : "Create flyer"}</button>
               </div>
             </form>`
-                    : view === "promoters"
+                    : view === "promoter_requests"
+                      ? (() => {
+                          const req = promoterSignupRequests.find(
+                            (x) => x.id === selectedPromoterRequestId,
+                          );
+                          if (!req) {
+                            return `<p class="admin-note full">No promoter access requests yet.</p>`;
+                          }
+                          const pending = req.status === "pending";
+                          return `
+            <div class="admin-form">
+              <h4 class="full">Request</h4>
+              <div class="cc-field"><label>Name</label><input value="${escapeAttr(req.fullName)}" readonly /></div>
+              <div class="cc-field"><label>Email</label><input value="${escapeAttr(req.email)}" readonly /></div>
+              <div class="cc-field"><label>Status</label><input value="${escapeAttr(req.status)}" readonly /></div>
+              <div class="cc-field full"><label>Submitted</label><input value="${escapeAttr(req.createdAt)}" readonly /></div>
+              ${
+                req.reviewedAt
+                  ? `<div class="cc-field full"><label>Reviewed</label><input value="${escapeAttr(req.reviewedAt)}" readonly /></div>`
+                  : ""
+              }
+              ${
+                req.denialReason
+                  ? `<div class="cc-field full"><label>Denial notes</label><textarea readonly>${escapeAttr(req.denialReason)}</textarea></div>`
+                  : ""
+              }
+              ${
+                pending
+                  ? `<div class="cc-field full"><label>Denial message (sent if you deny)</label><textarea id="promoter-request-deny-notes" placeholder="Optional message to include in the denial email"></textarea></div>
+              <div class="admin-actions full">
+                <button class="cc-btn cc-btn--gold" type="button" id="promoter-request-approve">Approve &amp; create login</button>
+                <button class="cc-btn cc-btn--ghost" type="button" id="promoter-request-deny">Deny</button>
+                <button class="cc-btn cc-btn--ghost" type="button" id="promoter-request-compose-email">Send email (copy address &amp; open mail)</button>
+              </div>
+              <p class="admin-note full">Approving creates a Supabase Auth user, promoter profile, and sends emails (requires deployed <code>admin-promoter-request</code> function + <code>RESEND_API_KEY</code>). See <code>edge/README.md</code>.</p>`
+                  : `<p class="admin-note full">This request has already been ${escapeAttr(req.status)}.</p>`
+              }
+            </div>`;
+                        })()
+                      : view === "promoters"
                       ? `
             <div class="admin-form">
               <h4 class="full">Promoter profile</h4>
@@ -955,6 +1015,8 @@ export async function initAdminPortal(): Promise<void> {
         view = v;
         if (v === "enquiries") void reloadEnquiries().then(() => renderDashboard());
         else if (v === "clients") void reloadClients().then(() => renderDashboard());
+        else if (v === "promoter_requests")
+          void reloadPromoterSignupRequests().then(() => renderDashboard());
         else if (v === "promoters" || v === "jobs" || v === "invoices")
           void reloadPromoters().then(() => renderDashboard());
         else if (v === "financials")
@@ -1124,6 +1186,24 @@ export async function initAdminPortal(): Promise<void> {
           btn.addEventListener("click", () => {
             selectedClientId =
               (btn as HTMLButtonElement).dataset.clientId ?? null;
+            renderDashboard();
+          });
+        });
+      } else if (view === "promoter_requests") {
+        listEl.innerHTML = promoterSignupRequests.length
+          ? promoterSignupRequests
+              .map(
+                (q) =>
+                  `<button type="button" data-promoter-request-id="${escapeAttr(q.id)}" class="${q.id === selectedPromoterRequestId ? "is-active" : ""}">
+                ${escapeAttr(q.status)} · ${escapeAttr(q.fullName)} · ${escapeAttr(q.email)} · ${escapeAttr(q.createdAt.slice(0, 10))}
+              </button>`,
+              )
+              .join("")
+          : `<p class="admin-note">No requests.</p>`;
+        listEl.querySelectorAll("button[data-promoter-request-id]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            selectedPromoterRequestId =
+              (btn as HTMLButtonElement).dataset.promoterRequestId ?? null;
             renderDashboard();
           });
         });
@@ -1536,6 +1616,91 @@ export async function initAdminPortal(): Promise<void> {
         flash("Revision rejected.");
         renderDashboard();
       })();
+    });
+
+    adminRoot.querySelector("#promoter-request-approve")?.addEventListener("click", () => {
+      const req = promoterSignupRequests.find((x) => x.id === selectedPromoterRequestId);
+      if (!req || req.status !== "pending") return;
+      void (async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          flash("Session expired. Sign in again.", "error");
+          return;
+        }
+        const url = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
+        const anon =
+          String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim() ||
+          String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
+        if (!url || !anon) {
+          flash("Missing Supabase URL or anon key.", "error");
+          return;
+        }
+        const res = await adminPromoterRequestDecision(url, anon, session.access_token, {
+          requestId: req.id,
+          action: "approve",
+        });
+        if (!res.ok) {
+          flash(`Approve failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoterSignupRequests();
+        await reloadPromoters();
+        flash(
+          "Promoter approved. Auth account created; applicant should receive email with password (configure Resend + Edge Function).",
+        );
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-request-deny")?.addEventListener("click", () => {
+      const req = promoterSignupRequests.find((x) => x.id === selectedPromoterRequestId);
+      if (!req || req.status !== "pending") return;
+      const denialReason = String(
+        (adminRoot.querySelector("#promoter-request-deny-notes") as HTMLTextAreaElement | null)
+          ?.value || "",
+      ).trim();
+      void (async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          flash("Session expired. Sign in again.", "error");
+          return;
+        }
+        const url = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
+        const anon =
+          String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim() ||
+          String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
+        if (!url || !anon) {
+          flash("Missing Supabase URL or anon key.", "error");
+          return;
+        }
+        const res = await adminPromoterRequestDecision(url, anon, session.access_token, {
+          requestId: req.id,
+          action: "deny",
+          denialReason: denialReason || undefined,
+        });
+        if (!res.ok) {
+          flash(`Deny failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadPromoterSignupRequests();
+        flash("Request denied. Applicant notified if email is configured.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#promoter-request-compose-email")?.addEventListener("click", () => {
+      const req = promoterSignupRequests.find((x) => x.id === selectedPromoterRequestId);
+      if (!req) return;
+      void navigator.clipboard.writeText(req.email).catch(() => {});
+      const subj = encodeURIComponent(`Cooper Concierge – promoter access (${req.fullName})`);
+      const body = encodeURIComponent(
+        `Hi ${req.fullName},\n\n\n\n—\n(Email address copied to clipboard.)`,
+      );
+      window.location.href = `mailto:${req.email}?subject=${subj}&body=${body}`;
     });
 
     adminRoot.querySelector("#promoter-job-create")?.addEventListener("click", () => {

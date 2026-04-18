@@ -39,14 +39,38 @@ async function ensurePromoterRows(
     { onConflict: "id" },
   );
   if (profileError) return { ok: false, message: profileError.message };
+
+  const { data: existing, error: selErr } = await supabase
+    .from("promoters")
+    .select("bio, profile_image_url, approval_status, is_approved")
+    .eq("user_id", input.userId)
+    .maybeSingle();
+  if (selErr) return { ok: false, message: selErr.message };
+
+  const isNew = !existing;
+  const bio = isNew
+    ? (input.bio || "").trim()
+    : input.bio !== undefined
+      ? (input.bio || "").trim()
+      : String(existing.bio ?? "");
+  const profileImageUrl = isNew
+    ? (input.profileImageUrl || "").trim()
+    : input.profileImageUrl !== undefined
+      ? (input.profileImageUrl || "").trim()
+      : String(existing.profile_image_url ?? "");
+  const approvalStatus = isNew
+    ? "pending"
+    : (String(existing.approval_status ?? "pending") as "pending" | "approved" | "rejected");
+  const isApproved = isNew ? false : Boolean(existing.is_approved);
+
   const { error: promoterError } = await supabase.from("promoters").upsert(
     {
       user_id: input.userId,
       display_name: displayName,
-      bio: (input.bio || "").trim(),
-      profile_image_url: (input.profileImageUrl || "").trim(),
-      approval_status: "pending",
-      is_approved: false,
+      bio,
+      profile_image_url: profileImageUrl,
+      approval_status: approvalStatus,
+      is_approved: isApproved,
     },
     { onConflict: "user_id" },
   );
@@ -179,6 +203,10 @@ export async function signInPromoter(
   return { ok: true };
 }
 
+/**
+ * Legacy self-signup with password on the client.
+ * The promoter portal now uses `promoter_signup_requests` + admin approval; this remains for scripts or emergencies.
+ */
 export async function signUpPromoter(
   supabase: SupabaseClient,
   input: {

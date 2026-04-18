@@ -10,11 +10,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 10, 11, 0.88),
-    rgba(10, 10, 11, 0.95)
-  );
+  background: var(--cc-chauffeur-hero-overlay);
 }
 
 .chauffeur-hero .cc-container {
@@ -23,7 +19,15 @@
 }
 
 .chauffeur-hero h1 {
-  color: var(--cc-cream);
+  color: var(--cc-hero-photo-title);
+}
+
+.chauffeur-hero p {
+  color: var(--cc-hero-photo-text);
+  max-width: 42rem;
+  margin-inline: auto;
+  font-size: 1.05rem;
+  line-height: 1.65;
 }
 
 .fleet-bento {
@@ -64,7 +68,7 @@
   background: linear-gradient(
     180deg,
     transparent 20%,
-    rgba(10, 10, 11, 0.92) 100%
+    var(--cc-fleet-tile-fade) 100%
   );
   z-index: 0;
 }
@@ -101,7 +105,7 @@
   transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.2s ease;
   font-size: 0.85rem;
   line-height: 1.5;
-  color: rgba(200, 198, 192, 0.95);
+  color: var(--cc-fleet-tile-hover-text);
   margin: 0;
 }
 
@@ -153,8 +157,8 @@
   max-width: 480px;
   margin-inline: auto;
   padding: var(--cc-space-lg);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--cc-border);
   border-radius: var(--cc-radius-lg);
   background: var(--cc-bg-card);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--cc-lux-card-shadow);
 }

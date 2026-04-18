@@ -1,4 +1,4 @@
-import { gatePromoterUser, signInPromoter, signOutAdmin, signUpPromoter } from "../admin/auth";
+import { gatePromoterUser, signInPromoter, signOutAdmin } from "../admin/auth";
 import {
   loadPromoterAvailability,
   loadPromoterByUser,
@@ -10,6 +10,7 @@ import {
   submitPromoterRevision,
 } from "../admin/promoters";
 import { fetchClubs } from "../data/fetch-data";
+import { notifyPromoterRequestSubmitted } from "../lib/promoter-request-edge";
 import { getSupabaseClient } from "../lib/supabase";
 import type { Club, PromoterAvailabilitySlot, PromoterClubPreference, PromoterInvoice, PromoterJob, PromoterProfile } from "../types";
 import "../styles/pages/promoter.css";
@@ -92,18 +93,17 @@ export async function initPromoterPortal(): Promise<void> {
         <div class="promoter-auth-grid">
           <form id="promoter-login-form" class="admin-form">
             <h3>Sign in</h3>
-            <div class="cc-field full"><label>Email</label><input name="email" type="email" required /></div>
-            <div class="cc-field full"><label>Password</label><input name="password" type="password" required /></div>
+            <p class="promoter-auth-hint">Use the email and password you received when your access request was approved.</p>
+            <div class="cc-field full"><label>Email</label><input name="email" type="email" required autocomplete="username" /></div>
+            <div class="cc-field full"><label>Password</label><input name="password" type="password" required autocomplete="current-password" /></div>
             <button class="cc-btn cc-btn--gold" type="submit">Sign in</button>
           </form>
-          <form id="promoter-signup-form" class="admin-form">
-            <h3>Create promoter account</h3>
-            <div class="cc-field"><label>Email</label><input name="email" type="email" required /></div>
-            <div class="cc-field"><label>Password</label><input name="password" type="password" minlength="8" required /></div>
-            <div class="cc-field full"><label>Display name</label><input name="displayName" required /></div>
-            <div class="cc-field full"><label>Short bio</label><textarea name="bio"></textarea></div>
-            <div class="cc-field full"><label>Profile image URL (optional)</label><input name="profileImageUrl" placeholder="https://..." /></div>
-            <button class="cc-btn cc-btn--ghost" type="submit">Create account</button>
+          <form id="promoter-access-request-form" class="admin-form">
+            <h3>Request promoter access</h3>
+            <p class="promoter-auth-hint">Submit your name and email. We will confirm by email and notify our team. If approved, you will receive login details to complete your profile.</p>
+            <div class="cc-field full"><label>Full name</label><input name="fullName" type="text" required autocomplete="name" /></div>
+            <div class="cc-field full"><label>Email</label><input name="email" type="email" required autocomplete="email" /></div>
+            <button class="cc-btn cc-btn--ghost" type="submit">Submit request</button>
           </form>
         </div>
         <div class="admin-flash" id="promoter-flash"></div>
@@ -123,22 +123,45 @@ export async function initPromoterPortal(): Promise<void> {
         await loadAndRender();
       })();
     });
-    root.querySelector("#promoter-signup-form")?.addEventListener("submit", (e) => {
+    root.querySelector("#promoter-access-request-form")?.addEventListener("submit", (e) => {
       e.preventDefault();
       const fd = new FormData(e.target as HTMLFormElement);
+      const fullName = String(fd.get("fullName") || "").trim();
+      const email = String(fd.get("email") || "").trim().toLowerCase();
       void (async () => {
-        const r = await signUpPromoter(supabase, {
-          email: String(fd.get("email") || ""),
-          password: String(fd.get("password") || ""),
-          displayName: String(fd.get("displayName") || ""),
-          bio: String(fd.get("bio") || ""),
-          profileImageUrl: String(fd.get("profileImageUrl") || ""),
-        });
-        if (!r.ok) {
-          flash(r.message, true);
+        if (!fullName || !email) {
+          flash("Please enter your name and email.", true);
           return;
         }
-        flash("Account created. If email confirmation is enabled, verify your email then sign in.");
+        // Client-supplied id + no `.select()`: INSERT ... RETURNING would require a SELECT
+        // policy for anon, but only admins may read this table (see promoter_signup_requests.sql).
+        const id = crypto.randomUUID();
+        const { error } = await supabase.from("promoter_signup_requests").insert({
+          id,
+          full_name: fullName,
+          email,
+          status: "pending",
+        });
+        if (error) {
+          flash(error.message, true);
+          return;
+        }
+        const key =
+          (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
+          (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
+          "";
+        let emailed = false;
+        if (key) {
+          const n = await notifyPromoterRequestSubmitted(key, id);
+          emailed = n.ok;
+        }
+        flash(
+          emailed
+            ? "Request received. Check your email for a confirmation message. We will be in touch after review."
+            : "Request received. We could not send the confirmation email (deploy the notify-promoter-request Edge Function and set RESEND_API_KEY in function secrets, or check the browser Network tab). Your request is still saved for admin review.",
+          !emailed,
+        );
+        (e.target as HTMLFormElement).reset();
       })();
     });
   }

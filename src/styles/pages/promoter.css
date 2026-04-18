@@ -26,6 +26,31 @@
   gap: 1rem;
 }
 
+.promoter-page .admin-card:has(.promoter-auth-grid) {
+  padding: 1.35rem 1.5rem;
+}
+
+.promoter-auth-grid .admin-form {
+  margin: 0;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.promoter-auth-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: #475467;
+}
+
+html[data-cc-theme="dark"] .promoter-auth-hint,
+html[data-cc-theme="ocean"] .promoter-auth-hint {
+  color: var(--cc-muted);
+}
+
 @media (max-width: 900px) {
   .promoter-auth-grid {
     grid-template-columns: 1fr;
@@ -150,4 +175,105 @@
 .promoter-page .cc-field textarea:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* Dark & Ocean themes — match site tokens */
+html[data-cc-theme="dark"] .promoter-page,
+html[data-cc-theme="ocean"] .promoter-page {
+  background: linear-gradient(180deg, var(--cc-bg-raised) 0%, var(--cc-bg-deep) 100%);
+}
+
+html[data-cc-theme="dark"] .promoter-page h1,
+html[data-cc-theme="ocean"] .promoter-page h1 {
+  color: var(--cc-cream);
+}
+
+html[data-cc-theme="dark"] .promoter-note,
+html[data-cc-theme="ocean"] .promoter-note {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-page .admin-card,
+html[data-cc-theme="ocean"] .promoter-page .admin-card {
+  background: var(--cc-bg-card);
+  border: 1px solid var(--cc-border);
+  box-shadow: var(--cc-lux-card-shadow);
+}
+
+html[data-cc-theme="dark"] .promoter-auth-grid .admin-form,
+html[data-cc-theme="ocean"] .promoter-auth-grid .admin-form {
+  border-color: var(--cc-border);
+  background: var(--cc-bg-deep);
+}
+
+html[data-cc-theme="dark"] .promoter-status,
+html[data-cc-theme="ocean"] .promoter-status {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-kpi-grid article,
+html[data-cc-theme="ocean"] .promoter-kpi-grid article {
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+}
+
+html[data-cc-theme="dark"] .promoter-kpi-grid p,
+html[data-cc-theme="ocean"] .promoter-kpi-grid p {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-kpi-grid strong,
+html[data-cc-theme="ocean"] .promoter-kpi-grid strong {
+  color: var(--cc-cream);
+}
+
+html[data-cc-theme="dark"] .promoter-list p,
+html[data-cc-theme="ocean"] .promoter-list p {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-table-wrap,
+html[data-cc-theme="ocean"] .promoter-table-wrap {
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-card);
+}
+
+html[data-cc-theme="dark"] .promoter-table-wrap th,
+html[data-cc-theme="dark"] .promoter-table-wrap td,
+html[data-cc-theme="ocean"] .promoter-table-wrap th,
+html[data-cc-theme="ocean"] .promoter-table-wrap td {
+  border-bottom: 1px solid var(--cc-border);
+  color: var(--cc-text);
+}
+
+html[data-cc-theme="dark"] .promoter-table-wrap th,
+html[data-cc-theme="ocean"] .promoter-table-wrap th {
+  color: var(--cc-muted);
+  background: var(--cc-bg-raised);
+}
+
+html[data-cc-theme="dark"] .promoter-page .cc-field label,
+html[data-cc-theme="ocean"] .promoter-page .cc-field label {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-page .cc-field input,
+html[data-cc-theme="dark"] .promoter-page .cc-field select,
+html[data-cc-theme="dark"] .promoter-page .cc-field textarea,
+html[data-cc-theme="ocean"] .promoter-page .cc-field input,
+html[data-cc-theme="ocean"] .promoter-page .cc-field select,
+html[data-cc-theme="ocean"] .promoter-page .cc-field textarea {
+  background: var(--cc-bg-deep);
+  color: var(--cc-cream);
+  border: 1px solid var(--cc-border);
+}
+
+html[data-cc-theme="dark"] .promoter-page .cc-field input:focus,
+html[data-cc-theme="dark"] .promoter-page .cc-field select:focus,
+html[data-cc-theme="dark"] .promoter-page .cc-field textarea:focus,
+html[data-cc-theme="ocean"] .promoter-page .cc-field input:focus,
+html[data-cc-theme="ocean"] .promoter-page .cc-field select:focus,
+html[data-cc-theme="ocean"] .promoter-page .cc-field textarea:focus {
+  border-color: var(--cc-gold);
+  box-shadow: 0 0 0 3px var(--cc-gold-soft);
 }

@@ -243,23 +243,44 @@
   min-height: 38px;
 }
 
-/* Sleek workspace/admin skin */
-.admin-page {
+/* Dark / Ocean: admin workspace uses site tokens */
+html[data-cc-theme="dark"] .admin-page,
+html[data-cc-theme="ocean"] .admin-page {
+  background: var(--cc-bg-deep);
+  min-height: 100vh;
+}
+
+html[data-cc-theme="dark"] .admin-page h1,
+html[data-cc-theme="ocean"] .admin-page h1 {
+  color: var(--cc-cream);
+}
+
+html[data-cc-theme="dark"] .admin-note,
+html[data-cc-theme="dark"] .admin-hint,
+html[data-cc-theme="dark"] .admin-section-label,
+html[data-cc-theme="ocean"] .admin-note,
+html[data-cc-theme="ocean"] .admin-hint,
+html[data-cc-theme="ocean"] .admin-section-label {
+  color: var(--cc-muted);
+}
+
+/* Sleek workspace/admin skin — light theme */
+html[data-cc-theme="light"] .admin-page {
   background: linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
 }
 
-.admin-page h1 {
+html[data-cc-theme="light"] .admin-page h1 {
   color: #0f172a;
   letter-spacing: -0.01em;
 }
 
-.admin-note,
-.admin-hint,
-.admin-section-label {
+html[data-cc-theme="light"] .admin-note,
+html[data-cc-theme="light"] .admin-hint,
+html[data-cc-theme="light"] .admin-section-label {
   color: #667085;
 }
 
-.admin-card {
+html[data-cc-theme="light"] .admin-card {
   background: #ffffff;
   border: 1px solid #e4e7ec;
   border-radius: 16px;
@@ -267,73 +288,73 @@
   padding: 1rem;
 }
 
-.admin-list {
+html[data-cc-theme="light"] .admin-list {
   max-height: 65vh;
 }
 
-.admin-list button,
-.admin-list .admin-list-item {
+html[data-cc-theme="light"] .admin-list button,
+html[data-cc-theme="light"] .admin-list .admin-list-item {
   background: #f8fafc;
   color: #0f172a;
   border-color: #e4e7ec;
   border-radius: 12px;
 }
 
-.admin-list button:hover,
-.admin-list .admin-list-item:hover {
+html[data-cc-theme="light"] .admin-list button:hover,
+html[data-cc-theme="light"] .admin-list .admin-list-item:hover {
   border-color: #cbd5e1;
   background: #f1f5f9;
 }
 
-.admin-list button.is-active,
-.admin-list .admin-list-item.is-active {
+html[data-cc-theme="light"] .admin-list button.is-active,
+html[data-cc-theme="light"] .admin-list .admin-list-item.is-active {
   border-color: #94a3b8;
   color: #0f172a;
   background: #e2e8f0;
 }
 
-.admin-tabs button {
+html[data-cc-theme="light"] .admin-tabs button {
   background: #f8fafc;
   color: #475467;
   border-color: #d0d5dd;
   padding: 0.35rem 0.9rem;
 }
 
-.admin-tabs button.is-active {
+html[data-cc-theme="light"] .admin-tabs button.is-active {
   background: #0f172a;
   color: #fff;
   border-color: #0f172a;
 }
 
-.admin-form .cc-field label {
+html[data-cc-theme="light"] .admin-form .cc-field label {
   color: #667085;
   font-weight: 600;
   letter-spacing: 0.08em;
 }
 
-.admin-form input,
-.admin-form select,
-.admin-form textarea,
-.cc-field input,
-.cc-field select,
-.cc-field textarea {
+html[data-cc-theme="light"] .admin-form input,
+html[data-cc-theme="light"] .admin-form select,
+html[data-cc-theme="light"] .admin-form textarea,
+html[data-cc-theme="light"] .cc-field input,
+html[data-cc-theme="light"] .cc-field select,
+html[data-cc-theme="light"] .cc-field textarea {
   background: #fff;
   color: #101828;
   border: 1px solid #d0d5dd;
   border-radius: 12px;
 }
 
-.admin-form input:focus,
-.admin-form select:focus,
-.admin-form textarea:focus,
-.cc-field input:focus,
-.cc-field select:focus,
-.cc-field textarea:focus {
+html[data-cc-theme="light"] .admin-form input:focus,
+html[data-cc-theme="light"] .admin-form select:focus,
+html[data-cc-theme="light"] .admin-form textarea:focus,
+html[data-cc-theme="light"] .cc-field input:focus,
+html[data-cc-theme="light"] .cc-field select:focus,
+html[data-cc-theme="light"] .cc-field textarea:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-.admin-table {
+html[data-cc-theme="light"] .admin-table {
   width: 100%;
   border-collapse: collapse;
   background: #fff;
@@ -342,15 +363,15 @@
   overflow: hidden;
 }
 
-.admin-table th,
-.admin-table td {
+html[data-cc-theme="light"] .admin-table th,
+html[data-cc-theme="light"] .admin-table td {
   border-bottom: 1px solid #eaecf0;
   color: #101828;
   padding: 0.62rem 0.7rem;
   font-size: 0.84rem;
 }
 
-.admin-table th {
+html[data-cc-theme="light"] .admin-table th {
   color: #667085;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -358,11 +379,11 @@
   background: #f8fafc;
 }
 
-.admin-flash {
+html[data-cc-theme="light"] .admin-flash {
   color: #0b5ed7;
   font-weight: 500;
 }
 
-.admin-flash--error {
+html[data-cc-theme="light"] .admin-flash--error {
   color: #b42318;
 }

@@ -5,6 +5,7 @@ import type {
   PromoterInvoice,
   PromoterJob,
   PromoterProfile,
+  PromoterSignupRequest,
 } from "../types";
 
 type Raw = Record<string, unknown>;
@@ -12,6 +13,40 @@ type Raw = Record<string, unknown>;
 function asNumber(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+export async function loadPromoterSignupRequestsForAdmin(
+  supabase: SupabaseClient,
+): Promise<{ ok: true; rows: PromoterSignupRequest[] } | { ok: false; message: string }> {
+  const { data, error } = await supabase
+    .from("promoter_signup_requests")
+    .select(
+      "id,full_name,email,status,created_at,reviewed_at,reviewed_by,denial_reason,auth_user_id",
+    )
+    .order("created_at", { ascending: false });
+  if (error) return { ok: false, message: error.message };
+  const rows: PromoterSignupRequest[] = (data ?? []).map((raw) => {
+    const r = raw as Raw;
+    return {
+      id: String(r.id ?? ""),
+      fullName: String(r.full_name ?? ""),
+      email: String(r.email ?? ""),
+      status: String(r.status ?? "pending") as PromoterSignupRequest["status"],
+      createdAt: String(r.created_at ?? ""),
+      reviewedAt: r.reviewed_at != null ? String(r.reviewed_at) : null,
+      reviewedBy: r.reviewed_by != null ? String(r.reviewed_by) : null,
+      denialReason: r.denial_reason != null ? String(r.denial_reason) : null,
+      authUserId: r.auth_user_id != null ? String(r.auth_user_id) : null,
+    };
+  });
+  rows.sort((a, b) => {
+    const pri = (s: PromoterSignupRequest["status"]) =>
+      s === "pending" ? 0 : s === "approved" ? 1 : 2;
+    const d = pri(a.status) - pri(b.status);
+    if (d !== 0) return d;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return { ok: true, rows };
 }
 
 export async function loadPromotersForAdmin(

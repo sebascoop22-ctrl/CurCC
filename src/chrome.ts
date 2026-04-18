@@ -1,11 +1,20 @@
 import { inject } from "@vercel/analytics";
 import { injectSpeedInsights } from '@vercel/speed-insights';
 import { getSocialLinkItems, whatsappHref } from "./site-config";
+import {
+  cycleTheme,
+  getCurrentThemeId,
+  initThemeFromStorage,
+  themeIcon,
+  themeLabel,
+} from "./theme";
 import "./styles/global.css";
 
 /** Vite/static sites use `inject()` — not `@vercel/analytics/next` (Next.js only). */
 inject();
 injectSpeedInsights();
+
+initThemeFromStorage();
 
 export type ActivePage =
   | "home"
@@ -58,6 +67,7 @@ export function initChrome(active: ActivePage): void {
       <div class="site-header__actions">
         <button type="button" class="nav-toggle" id="cc-nav-toggle" aria-expanded="false" aria-controls="cc-drawer" aria-label="Open menu">☰</button>
         <button type="button" class="cc-btn cc-btn--ghost cc-btn--header" id="cc-contact-open">Contact</button>
+        <button type="button" class="cc-theme-toggle" id="cc-theme-toggle" aria-label="Switch color theme" title="Theme">☾</button>
       </div>
     </div>`;
 
@@ -114,6 +124,22 @@ export function initChrome(active: ActivePage): void {
   const openBtn = document.getElementById("cc-contact-open");
   const closeBtn = document.getElementById("cc-modal-close");
   const toggle = document.getElementById("cc-nav-toggle");
+  const themeBtn = document.getElementById("cc-theme-toggle");
+
+  function refreshThemeToggle(): void {
+    if (!themeBtn) return;
+    const id = getCurrentThemeId();
+    themeBtn.textContent = themeIcon(id);
+    const name = themeLabel(id);
+    themeBtn.title = `Theme: ${name} — click for next`;
+    themeBtn.setAttribute("aria-label", `Color theme: ${name}. Click to switch theme.`);
+  }
+
+  refreshThemeToggle();
+  themeBtn?.addEventListener("click", () => {
+    cycleTheme();
+    refreshThemeToggle();
+  });
 
   function setModal(open: boolean): void {
     modal?.classList.toggle("is-open", open);

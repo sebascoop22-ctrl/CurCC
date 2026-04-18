@@ -10,11 +10,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 10, 10, 0.22) 0%,
-    rgba(10, 10, 10, 0.45) 100%
-  );
+  background: var(--cc-security-hero-overlay);
   pointer-events: none;
 }
 
@@ -24,18 +20,23 @@
 }
 
 .security-hero h1 {
-  color: #ffffff;
+  color: var(--cc-hero-photo-title);
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
 }
 
 .security-hero p {
-  color: rgba(248, 246, 242, 0.98);
+  color: var(--cc-hero-photo-text);
   max-width: 42rem;
   margin-left: auto;
   margin-right: auto;
   font-size: 1.05rem;
   line-height: 1.65;
   text-shadow: 0 1px 18px rgba(0, 0, 0, 0.65);
+}
+
+html[data-cc-theme="light"] .security-hero h1,
+html[data-cc-theme="light"] .security-hero p {
+  text-shadow: none;
 }
 
 .protocol {
@@ -57,10 +58,10 @@
 .protocol__card {
   text-align: center;
   padding: var(--cc-space-md);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--cc-border);
   border-radius: var(--cc-radius-lg);
   background: var(--cc-bg-card);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--cc-lux-card-shadow);
 }
 
 .protocol__icon {
@@ -83,10 +84,10 @@
 
 .feature-box {
   background: var(--cc-bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--cc-border);
   border-radius: var(--cc-radius-lg);
   padding: var(--cc-space-lg);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--cc-lux-card-shadow);
 }
 
 .feature-box ul {

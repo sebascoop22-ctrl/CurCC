@@ -2,7 +2,12 @@
   position: relative;
   padding-block: var(--cc-space-xl);
   text-align: center;
-  background: var(--cc-bg-deep) url(/media/nightlife/hero-atmosphere.svg) center / cover no-repeat;
+  background-color: var(--cc-nightlife-hero-surface);
+  background-image: var(--cc-nightlife-hero-wash),
+    url(/media/nightlife/hero-atmosphere.svg);
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
+  background-position: center, center;
   border-bottom: 1px solid var(--cc-border);
   overflow: hidden;
 }
@@ -75,7 +80,7 @@
   min-height: 30px;
   border-radius: 999px;
   border: 1px solid var(--cc-border);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--cc-nightlife-mode-btn-bg);
   color: var(--cc-muted);
   padding: 0.25rem 0.65rem;
   font-size: 0.6rem;
@@ -146,17 +151,17 @@
   border-radius: var(--cc-radius-lg);
   overflow: hidden;
   background: var(--cc-bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--cc-club-card-border);
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--cc-club-card-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .club-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--cc-club-card-shadow-hover);
 }
 
 .club-card__media {
@@ -167,7 +172,7 @@
 }
 
 .club-card__media--solid {
-  background: linear-gradient(145deg, #252a31 0%, #15171a 100%);
+  background: var(--cc-club-media-solid-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -187,8 +192,8 @@
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(10, 10, 11, 0.72);
+  border: 1px solid var(--cc-club-img-nav-border);
+  background: var(--cc-club-img-nav-bg);
   color: var(--cc-cream);
   cursor: pointer;
   display: inline-flex;
@@ -225,8 +230,8 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 10, 11, 0.65);
+  border: 1px solid var(--cc-club-tag-pill-border);
+  background: var(--cc-club-tag-pill-bg);
   color: var(--cc-muted);
 }
 
@@ -250,8 +255,8 @@
 
 .club-card__tag--best {
   letter-spacing: 0.14em;
-  color: rgba(232, 228, 218, 0.88);
-  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--cc-club-tag-best-fg);
+  border-color: var(--cc-club-tag-best-border);
 }
 
 .club-card__best-nights {
@@ -319,7 +324,7 @@
 .club-card__known-list {
   margin: 0;
   padding-left: 1.15rem;
-  color: rgba(232, 228, 218, 0.9);
+  color: var(--cc-club-known-list);
   line-height: 1.55;
   font-size: 0.9rem;
 }
@@ -333,7 +338,7 @@
 }
 
 .club-card__pricing-details {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--cc-club-pricing-border);
   padding-top: 0.65rem;
 }
 
@@ -523,7 +528,7 @@
   color: var(--cc-muted);
   border-radius: var(--cc-radius);
   border: 1px solid var(--cc-border);
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--cc-club-map-pin-bg);
   text-decoration: none;
   transition:
     color 0.15s ease,
@@ -570,7 +575,7 @@
 
 .club-card__split-book-bottom {
   background: rgba(212, 196, 168, 0.22);
-  color: var(--cc-bg-deep);
+  color: var(--cc-club-split-bottom-rest-fg);
 }
 
 .club-card__split-book-top:hover {
@@ -579,7 +584,7 @@
 
 .club-card__split-book-bottom:hover {
   background: var(--cc-gold);
-  color: var(--cc-bg-deep);
+  color: var(--cc-club-split-hover-fg);
 }
 
 .club-card__split-book-label {
@@ -654,7 +659,7 @@
 .nl-lead {
   position: relative;
   padding-block: var(--cc-space-xl);
-  background: var(--cc-bg-deep);
+  background: var(--cc-nl-lead-bg);
   overflow: hidden;
 }
 
@@ -666,7 +671,7 @@
   width: min(55vw, 420px);
   height: min(55vw, 420px);
   background: url(/media/nightlife/lead-gen-moon-graphic.svg) center / contain no-repeat;
-  opacity: 0.35;
+  opacity: var(--cc-nl-lead-moon-opacity);
   pointer-events: none;
 }
 
@@ -690,11 +695,14 @@
 .lead-split__graphic {
   max-width: 400px;
   margin-inline: auto;
-  opacity: 0.85;
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  background: transparent;
 }
 
 .lead-split__graphic img {
   width: 100%;
+  display: block;
 }
 
 .nl-form--minimal .cc-field label {
@@ -708,7 +716,7 @@
 .nl-form--minimal input {
   border: none;
   border-radius: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 1px solid var(--cc-form-minimal-rule);
   background: transparent;
   padding: 0.85rem 0;
   color: var(--cc-cream);
