@@ -1,4 +1,4 @@
-import { clubTonightHint } from "../lib/club-hours";
+import { clubTonightHint } from "../lib/club-hours.js";
 import type { Club, PromoterShiftAssignment } from "../types";
 
 function esc(s: string | undefined | null): string {
