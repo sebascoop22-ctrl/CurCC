@@ -6,7 +6,7 @@ import {
   bestVisitKeys,
   clubTonightHint,
   currentWeekdayKey,
-} from "../lib/club-hours";
+} from "../lib/club-hours.js";
 
 export function initNightlifeDiscoverHover(): void {
   if (typeof document === "undefined") return;
@@ -21,6 +21,14 @@ export function initNightlifeDiscoverHover(): void {
 
   let hideT = 0;
   let activeArticle: HTMLElement | null = null;
+  let touchArmedArticle: HTMLElement | null = null;
+  let touchArmedUntil = 0;
+  const supportsHover =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  const touchLike =
+    !supportsHover ||
+    (typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0);
 
   function clearHide(): void {
     window.clearTimeout(hideT);
@@ -33,6 +41,8 @@ export function initNightlifeDiscoverHover(): void {
       tip.hidden = true;
       tip.innerHTML = "";
       activeArticle = null;
+      touchArmedArticle = null;
+      touchArmedUntil = 0;
     }, 140);
   }
 
@@ -231,27 +241,53 @@ export function initNightlifeDiscoverHover(): void {
 
   function bindRegion(root: Element | null | undefined): void {
     if (!root) return;
-    root.addEventListener(
-      "pointerenter",
-      (ev) => {
-        const a = (ev.target as HTMLElement).closest(
-          "article.nl-card",
-        ) as HTMLElement | null;
-        if (!a || !root.contains(a)) return;
-        show(a);
-      },
-      true,
-    );
-    root.addEventListener(
-      "pointerleave",
-      (ev) => {
-        const related = ev.relatedTarget as Node | null;
-        if (related && (tip.contains(related) || root.contains(related)))
-          return;
-        hideSoon();
-      },
-      true,
-    );
+    if (supportsHover) {
+      root.addEventListener(
+        "pointerenter",
+        (ev) => {
+          const a = (ev.target as HTMLElement).closest(
+            "article.nl-card",
+          ) as HTMLElement | null;
+          if (!a || !root.contains(a)) return;
+          show(a);
+        },
+        true,
+      );
+      root.addEventListener(
+        "pointerleave",
+        (ev) => {
+          const related = ev.relatedTarget as Node | null;
+          if (related && (tip.contains(related) || root.contains(related)))
+            return;
+          hideSoon();
+        },
+        true,
+      );
+    }
+    if (touchLike) {
+      root.addEventListener(
+        "click",
+        (ev) => {
+          const t = ev.target as HTMLElement | null;
+          const link = t?.closest("a.nl-card__link") as HTMLAnchorElement | null;
+          const article = t?.closest("article.nl-card") as HTMLElement | null;
+          if (!link || !article || !root.contains(article)) return;
+          const now = Date.now();
+          const armed =
+            touchArmedArticle === article && now < touchArmedUntil && !tip.hidden;
+          if (armed) {
+            touchArmedArticle = null;
+            touchArmedUntil = 0;
+            return;
+          }
+          ev.preventDefault();
+          show(article);
+          touchArmedArticle = article;
+          touchArmedUntil = now + 7000;
+        },
+        true,
+      );
+    }
   }
 
   tip.addEventListener("pointerenter", clearHide);
@@ -267,6 +303,18 @@ export function initNightlifeDiscoverHover(): void {
     },
     { passive: true, capture: true },
   );
+  if (touchLike) {
+    document.addEventListener(
+      "click",
+      (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (tip.contains(t) || (activeArticle && activeArticle.contains(t))) return;
+        hideSoon();
+      },
+      true,
+    );
+  }
 }
 
 function escapeText(s: string): string {

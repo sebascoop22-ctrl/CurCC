@@ -3,14 +3,14 @@
  */
 export const ssrAssetHashes = {
   "nightlife": {
-    "js": "/assets/nightlife-CiCpazas.js",
+    "js": "/assets/nightlife-t8K1LklQ.js",
     "css": [
       "/assets/chrome-6Hokc4zM.css",
       "/assets/nightlife-DyqvxUsY.css"
     ]
   },
   "clubDetail": {
-    "js": "/assets/clubDetail-fBRx2jZt.js",
+    "js": "/assets/clubDetail-CloWeN6c.js",
     "css": [
       "/assets/chrome-6Hokc4zM.css",
       "/assets/venue-request-modal-Dcpx4a3a.css",
