@@ -1,4 +1,4 @@
-import embedded from "./ssr-asset-hashes.json";
+import { ssrAssetHashes } from "./ssr-asset-hashes.js";
 
 export type SsrAssetBundle = { js: string; css: string[] };
 
@@ -17,7 +17,7 @@ let cached: SsrAssetMap | null = null;
  */
 export function loadSsrAssetMap(): SsrAssetMap {
   if (cached) return cached;
-  cached = embedded as SsrAssetMap;
+  cached = ssrAssetHashes as SsrAssetMap;
   return cached;
 }
 
