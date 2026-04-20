@@ -239,6 +239,16 @@ export function initNightlifeDiscoverHover(): void {
     requestAnimationFrame(() => layout(article));
   }
 
+  function openActiveArticle(): void {
+    const href =
+      activeArticle
+        ?.querySelector("a.nl-card__link")
+        ?.getAttribute("href")
+        ?.trim() || "";
+    if (!href) return;
+    window.location.href = href;
+  }
+
   function bindRegion(root: Element | null | undefined): void {
     if (!root) return;
     if (supportsHover) {
@@ -292,6 +302,21 @@ export function initNightlifeDiscoverHover(): void {
 
   tip.addEventListener("pointerenter", clearHide);
   tip.addEventListener("pointerleave", hideSoon);
+  if (touchLike) {
+    tip.addEventListener(
+      "click",
+      (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest(".nl-discover-hovercard__gal-btn")) return;
+        if (t.closest("a.nl-discover-hovercard__cta")) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openActiveArticle();
+      },
+      true,
+    );
+  }
 
   bindRegion(document.getElementById("nl-carousel-track"));
   bindRegion(document.getElementById("clubs-grid"));

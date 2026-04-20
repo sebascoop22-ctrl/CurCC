@@ -1,4 +1,5 @@
 import type { Club } from "../types";
+import { bestVisitKeys, currentWeekdayKey } from "../lib/club-hours.js";
 
 export function escapeHtml(s: string): string {
   const text = String(s ?? "");
@@ -21,8 +22,15 @@ export function smallClubCardHtml(
     club.images?.[0]?.trim() ||
     "/media/nightlife/hero-atmosphere.svg";
   const cardTitle = club.discoveryCardTitle?.trim() || club.name;
-  const cardBlurb =
-    club.discoveryCardBlurb?.trim() || club.shortDescription || "";
+  const peakKeys = bestVisitKeys(club.bestVisitDays || []);
+  const isPeakTonight = peakKeys.includes(currentWeekdayKey());
+  const peakLabel = peakKeys.length
+    ? isPeakTonight
+      ? "Peak night tonight"
+      : "Not peak tonight"
+    : "Peak schedule not listed";
+  const locationLabel = (club.locationTag || "").trim() || "Location on file";
+  const cardBlurb = `${locationLabel} · ${peakLabel}`;
   const locationTag = (club.locationTag || "").trim();
   const daysOpen = (club.daysOpen || "").trim();
   const entryWomen = (club.entryPricingWomen || "").trim();
