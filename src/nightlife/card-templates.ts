@@ -1,7 +1,8 @@
 import type { Club } from "../types";
 
 export function escapeHtml(s: string): string {
-  return s
+  const text = String(s ?? "");
+  return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
