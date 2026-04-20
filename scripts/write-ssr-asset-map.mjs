@@ -19,13 +19,28 @@ function toAbs(href) {
   return href.startsWith("/") ? href : `/${href}`;
 }
 
+function collectCssFromChunk(manifest, key, seen = new Set(), out = []) {
+  if (!key || seen.has(key)) return out;
+  seen.add(key);
+  const chunk = manifest[key];
+  if (!chunk) return out;
+  for (const dep of chunk.imports ?? []) {
+    collectCssFromChunk(manifest, dep, seen, out);
+  }
+  for (const href of chunk.css ?? []) {
+    const abs = toAbs(href);
+    if (abs && !out.includes(abs)) out.push(abs);
+  }
+  return out;
+}
+
 function bundleForHtmlKey(manifest, htmlFile) {
   const key = Object.keys(manifest).find((k) => k === htmlFile || k.endsWith(`/${htmlFile}`));
   if (!key) return null;
   const chunk = manifest[key];
   if (!chunk?.file) return null;
   const js = toAbs(chunk.file);
-  const css = (chunk.css ?? []).map(toAbs);
+  const css = collectCssFromChunk(manifest, key);
   return { js, css };
 }
 
