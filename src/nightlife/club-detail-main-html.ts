@@ -46,6 +46,15 @@ export function buildClubDetailMainHtml(
   const directionsBtn = navDest
     ? `<a class="cc-btn cc-btn--ghost" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(navDest)}" target="_blank" rel="noopener noreferrer">Directions</a>`
     : "";
+  const websiteRaw = c.website?.trim() ?? "";
+  const websiteHref = websiteRaw
+    ? /^https?:\/\//i.test(websiteRaw)
+      ? websiteRaw
+      : `https://${websiteRaw}`
+    : "";
+  const websiteBtn = websiteHref
+    ? `<a class="cc-btn cc-btn--ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">Visit website</a>`
+    : "";
 
   const hasMapCoords = Boolean(c.lat && c.lng);
   const heroClass = `club-detail__hero cc-container${hasMapCoords ? " club-detail__hero--has-map" : ""}`;
@@ -238,7 +247,7 @@ export function buildClubDetailMainHtml(
     ? `<button type="button" class="cc-btn cc-btn--gold" data-vr-kind="venue_access" data-club-slug="${esc(c.slug)}">Request club access</button>`
     : "";
 
-  const heroCtas = [ctaGuestlist, ctaTable, ctaAccess, directionsBtn]
+  const heroCtas = [ctaGuestlist, ctaTable, ctaAccess, websiteBtn, directionsBtn]
     .filter(Boolean)
     .join("");
   const heroCtaRow = heroCtas
@@ -252,7 +261,18 @@ export function buildClubDetailMainHtml(
       </section>`
     : "";
 
-  const footerCtas = [ctaGuestlist, ctaTable, ctaAccess].filter(Boolean).join("");
+  const websiteSection = websiteHref
+    ? `<section class="club-detail__website cc-container">
+        <h2>Website</h2>
+        <p class="club-detail__website-link">
+          <a href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">${esc(websiteRaw)}</a>
+        </p>
+      </section>`
+    : "";
+
+  const footerCtas = [ctaGuestlist, ctaTable, ctaAccess, websiteBtn]
+    .filter(Boolean)
+    .join("");
   const footerSection = footerCtas
     ? `<section class="club-detail__footer-cta cc-container">
         <div class="club-detail__cta-row" data-club-slug="${esc(c.slug)}">${footerCtas}</div>
@@ -277,6 +297,8 @@ export function buildClubDetailMainHtml(
       ${pricesSection}
 
       ${aboutSection}
+
+      ${websiteSection}
 
       ${promotersSection}
 
