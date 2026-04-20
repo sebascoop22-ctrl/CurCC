@@ -1,13 +1,13 @@
-import { renderTopFlyerHostHtml } from "../src/nightlife/flyer-rank";
+import { renderTopFlyerHostHtml } from "../src/nightlife/flyer-rank.js";
 import {
   featuredClubsSorted,
   sortClubsForDiscovery,
   type ClubWithSortMeta,
-} from "../src/data/club-sort";
-import { carouselSlideHtml, smallClubCardHtml } from "../src/nightlife/card-templates";
-import { escapeAttr } from "./html-escape";
-import { loadSsrAssetMap, linkTagsFor } from "./ssr-assets";
-import { siteOrigin } from "./site-base";
+} from "../src/data/club-sort.js";
+import { carouselSlideHtml, smallClubCardHtml } from "../src/nightlife/card-templates.js";
+import { escapeAttr } from "./html-escape.js";
+import { loadSsrAssetMap, linkTagsFor } from "./ssr-assets.js";
+import { siteOrigin } from "./site-base.js";
 import type { ClubRow } from "./catalog-fetch";
 
 export function buildNightlifeSsrHtml(opts: {

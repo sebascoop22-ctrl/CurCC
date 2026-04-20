@@ -1,8 +1,8 @@
-import { buildClubDetailMainHtml } from "../src/nightlife/club-detail-main-html";
+import { buildClubDetailMainHtml } from "../src/nightlife/club-detail-main-html.js";
 import type { Club, PromoterShiftAssignment } from "../src/types";
-import { escapeAttr } from "./html-escape";
-import { loadSsrAssetMap, linkTagsFor } from "./ssr-assets";
-import { siteOrigin } from "./site-base";
+import { escapeAttr } from "./html-escape.js";
+import { loadSsrAssetMap, linkTagsFor } from "./ssr-assets.js";
+import { siteOrigin } from "./site-base.js";
 
 export function buildClubSsrHtml(opts: {
   club: Club;

@@ -4,8 +4,8 @@ import {
   findClubRowBySlug,
   groupAssignmentsByClub,
   loadClubCatalog,
-} from "../../server/catalog-fetch";
-import { buildClubSsrHtml } from "../../server/render-club-ssr";
+} from "../../server/catalog-fetch.js";
+import { buildClubSsrHtml } from "../../server/render-club-ssr.js";
 
 export default async function handler(
   req: VercelRequest,

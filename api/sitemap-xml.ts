@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { loadClubCatalog } from "../server/catalog-fetch";
-import { siteOrigin } from "../server/site-base";
+import { loadClubCatalog } from "../server/catalog-fetch.js";
+import { siteOrigin } from "../server/site-base.js";
 
 const STATIC_PATHS = [
   "/classic",

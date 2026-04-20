@@ -4,10 +4,10 @@ import type {
   GuestlistEventContext,
   PromoterShiftAssignment,
 } from "../src/types";
-import { parseGuestlistHostsFromRpc } from "../src/lib/guestlist-hosts";
-import { normalizeClubPayload } from "./normalize-club";
-import { createServerSupabase } from "./supabase-server";
-import { siteOrigin } from "./site-base";
+import { parseGuestlistHostsFromRpc } from "../src/lib/guestlist-hosts.js";
+import { normalizeClubPayload } from "./normalize-club.js";
+import { createServerSupabase } from "./supabase-server.js";
+import { siteOrigin } from "./site-base.js";
 
 type CatalogRow = { payload: unknown; sort_order: number | null };
 
