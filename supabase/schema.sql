@@ -69,6 +69,8 @@ create table if not exists public.clubs (
   name text not null,
   sort_order integer not null default 0,
   is_active boolean not null default true,
+  payment_details jsonb not null default '{}'::jsonb,
+  tax_details jsonb not null default '{}'::jsonb,
   payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -113,12 +115,76 @@ create table if not exists public.promoters (
   display_name text not null default '',
   bio text not null default '',
   profile_image_url text not null default '',
+  profile_image_urls jsonb not null default '[]'::jsonb,
+  portfolio_club_slugs text[] not null default '{}',
+  payment_details jsonb not null default '{}'::jsonb,
+  tax_details jsonb not null default '{}'::jsonb,
   is_approved boolean not null default false,
   approval_status text not null default 'pending' check (approval_status in ('pending', 'approved', 'rejected')),
   approval_notes text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.promoters
+  add column if not exists profile_image_urls jsonb;
+alter table public.promoters
+  add column if not exists portfolio_club_slugs text[];
+update public.promoters
+set profile_image_urls = '[]'::jsonb
+where profile_image_urls is null;
+update public.promoters
+set portfolio_club_slugs = '{}'::text[]
+where portfolio_club_slugs is null;
+update public.promoters
+set profile_image_urls = jsonb_build_array(trim(both from profile_image_url))
+where coalesce(nullif(trim(both from profile_image_url), ''), '') <> ''
+  and jsonb_array_length(coalesce(profile_image_urls, '[]'::jsonb)) = 0;
+alter table public.promoters
+  alter column profile_image_urls set default '[]'::jsonb;
+alter table public.promoters
+  alter column profile_image_urls set not null;
+alter table public.promoters
+  alter column portfolio_club_slugs set default '{}'::text[];
+alter table public.promoters
+  alter column portfolio_club_slugs set not null;
+alter table public.promoters
+  add column if not exists payment_details jsonb;
+alter table public.promoters
+  add column if not exists tax_details jsonb;
+update public.promoters
+set payment_details = '{}'::jsonb
+where payment_details is null;
+update public.promoters
+set tax_details = '{}'::jsonb
+where tax_details is null;
+alter table public.promoters
+  alter column payment_details set default '{}'::jsonb;
+alter table public.promoters
+  alter column payment_details set not null;
+alter table public.promoters
+  alter column tax_details set default '{}'::jsonb;
+alter table public.promoters
+  alter column tax_details set not null;
+
+alter table public.clubs
+  add column if not exists payment_details jsonb;
+alter table public.clubs
+  add column if not exists tax_details jsonb;
+update public.clubs
+set payment_details = '{}'::jsonb
+where payment_details is null;
+update public.clubs
+set tax_details = '{}'::jsonb
+where tax_details is null;
+alter table public.clubs
+  alter column payment_details set default '{}'::jsonb;
+alter table public.clubs
+  alter column payment_details set not null;
+alter table public.clubs
+  alter column tax_details set default '{}'::jsonb;
+alter table public.clubs
+  alter column tax_details set not null;
 
 create table if not exists public.promoter_profile_revisions (
   id uuid primary key default gen_random_uuid(),
@@ -155,6 +221,31 @@ create table if not exists public.promoter_club_preferences (
   unique (promoter_id, club_slug)
 );
 
+-- One-off availability overrides for specific calendar nights (promoter submits → admin approves).
+create table if not exists public.promoter_night_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  promoter_id uuid not null references public.promoters (id) on delete cascade,
+  night_date date not null,
+  available_override boolean not null,
+  start_time time,
+  end_time time,
+  notes text not null default '',
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users (id) on delete set null,
+  review_notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (promoter_id, night_date)
+);
+
+create index if not exists promoter_night_adj_pending_idx
+on public.promoter_night_adjustments (created_at desc)
+where status = 'pending';
+
+create index if not exists promoter_night_adj_promoter_date_idx
+on public.promoter_night_adjustments (promoter_id, night_date desc);
+
 create table if not exists public.promoter_jobs (
   id uuid primary key default gen_random_uuid(),
   promoter_id uuid not null references public.promoters (id) on delete cascade,
@@ -175,8 +266,47 @@ create table if not exists public.promoter_guestlist_entries (
   promoter_job_id uuid not null references public.promoter_jobs (id) on delete cascade,
   guest_name text not null default '',
   guest_contact text not null default '',
+  approval_status text not null default 'pending',
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users (id) on delete set null,
+  review_notes text not null default '',
   created_at timestamptz not null default now()
 );
+
+-- Upgrade path: older DBs without approval columns (treat legacy rows as approved).
+alter table public.promoter_guestlist_entries
+  add column if not exists approval_status text;
+alter table public.promoter_guestlist_entries
+  add column if not exists reviewed_at timestamptz;
+alter table public.promoter_guestlist_entries
+  add column if not exists reviewed_by uuid references auth.users (id) on delete set null;
+alter table public.promoter_guestlist_entries
+  add column if not exists review_notes text;
+update public.promoter_guestlist_entries
+set approval_status = 'approved'
+where approval_status is null;
+update public.promoter_guestlist_entries
+set review_notes = ''
+where review_notes is null;
+alter table public.promoter_guestlist_entries
+  alter column review_notes set default '';
+alter table public.promoter_guestlist_entries
+  alter column review_notes set not null;
+alter table public.promoter_guestlist_entries
+  alter column approval_status set default 'pending';
+alter table public.promoter_guestlist_entries
+  alter column approval_status set not null;
+alter table public.promoter_guestlist_entries
+  drop constraint if exists promoter_guestlist_entries_approval_status_check;
+alter table public.promoter_guestlist_entries
+  drop constraint if exists promoter_guestlist_entries_approval_status_chk;
+alter table public.promoter_guestlist_entries
+  add constraint promoter_guestlist_entries_approval_status_chk
+  check (approval_status in ('pending', 'approved', 'rejected'));
+
+create index if not exists promoter_guestlist_entries_pending_idx
+on public.promoter_guestlist_entries (created_at desc)
+where approval_status = 'pending';
 
 create table if not exists public.promoter_earnings (
   id uuid primary key default gen_random_uuid(),
@@ -215,16 +345,212 @@ create table if not exists public.promoter_invoice_lines (
   created_at timestamptz not null default now()
 );
 
+-- Phase 6: email delivery metadata (Edge Function + Resend updates these).
+alter table public.promoter_invoices add column if not exists sent_at timestamptz;
+alter table public.promoter_invoices add column if not exists sent_to_email text not null default '';
+alter table public.promoter_invoices add column if not exists emailed_via text not null default '';
+
 create table if not exists public.financial_transactions (
   id uuid primary key default gen_random_uuid(),
   tx_date date not null,
   category text not null default '',
   direction text not null check (direction in ('income', 'expense')),
+  status text not null default 'pending' check (status in ('pending', 'paid', 'cancelled', 'failed')),
+  payment_tag text not null default '',
   amount numeric(12,2) not null default 0,
   currency text not null default 'GBP',
+  convert_foreign boolean not null default false,
   source_type text not null default 'manual',
   source_ref uuid,
+  payee_id uuid,
+  payee_label text not null default '',
   notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table public.financial_transactions add column if not exists status text;
+alter table public.financial_transactions add column if not exists payment_tag text;
+alter table public.financial_transactions add column if not exists convert_foreign boolean;
+alter table public.financial_transactions add column if not exists payee_id uuid;
+alter table public.financial_transactions add column if not exists payee_label text;
+update public.financial_transactions set status = 'pending' where status is null;
+update public.financial_transactions set payment_tag = '' where payment_tag is null;
+update public.financial_transactions set convert_foreign = false where convert_foreign is null;
+update public.financial_transactions set payee_label = '' where payee_label is null;
+alter table public.financial_transactions
+  alter column status set default 'pending';
+alter table public.financial_transactions
+  alter column payment_tag set default '';
+alter table public.financial_transactions
+  alter column convert_foreign set default false;
+alter table public.financial_transactions
+  alter column payee_label set default '';
+alter table public.financial_transactions
+  alter column status set not null;
+alter table public.financial_transactions
+  alter column payment_tag set not null;
+alter table public.financial_transactions
+  alter column convert_foreign set not null;
+alter table public.financial_transactions
+  alter column payee_label set not null;
+alter table public.financial_transactions
+  drop constraint if exists financial_transactions_status_check;
+alter table public.financial_transactions
+  add constraint financial_transactions_status_check
+  check (status in ('pending', 'paid', 'cancelled', 'failed'));
+
+-- Recurring ledger templates used to auto-create entries in financial_transactions.
+create table if not exists public.financial_recurring_templates (
+  id uuid primary key default gen_random_uuid(),
+  label text not null default '',
+  category text not null default '',
+  direction text not null check (direction in ('income', 'expense')),
+  default_status text not null default 'pending' check (default_status in ('pending', 'paid', 'cancelled', 'failed')),
+  payment_tag text not null default '',
+  amount numeric(12,2) not null default 0,
+  currency text not null default 'GBP',
+  convert_foreign boolean not null default false,
+  payee_id uuid,
+  payee_label text not null default '',
+  notes text not null default '',
+  interval_days integer not null check (interval_days >= 1),
+  recurrence_unit text not null default 'monthly' check (recurrence_unit in ('monthly', 'quarterly', 'annual', 'custom_days')),
+  recurrence_every integer not null default 1 check (recurrence_every >= 1 and recurrence_every <= 24),
+  next_due_date date not null,
+  is_active boolean not null default true,
+  last_generated_on date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.financial_recurring_templates add column if not exists default_status text;
+alter table public.financial_recurring_templates add column if not exists payment_tag text;
+alter table public.financial_recurring_templates add column if not exists convert_foreign boolean;
+alter table public.financial_recurring_templates add column if not exists payee_id uuid;
+alter table public.financial_recurring_templates add column if not exists payee_label text;
+alter table public.financial_recurring_templates add column if not exists recurrence_unit text;
+alter table public.financial_recurring_templates add column if not exists recurrence_every integer;
+update public.financial_recurring_templates set default_status = 'pending' where default_status is null;
+update public.financial_recurring_templates set payment_tag = '' where payment_tag is null;
+update public.financial_recurring_templates set convert_foreign = false where convert_foreign is null;
+update public.financial_recurring_templates set payee_label = '' where payee_label is null;
+update public.financial_recurring_templates set recurrence_unit = 'custom_days' where recurrence_unit is null;
+update public.financial_recurring_templates set recurrence_every = 1 where recurrence_every is null;
+alter table public.financial_recurring_templates
+  alter column default_status set default 'pending';
+alter table public.financial_recurring_templates
+  alter column payment_tag set default '';
+alter table public.financial_recurring_templates
+  alter column convert_foreign set default false;
+alter table public.financial_recurring_templates
+  alter column payee_label set default '';
+alter table public.financial_recurring_templates
+  alter column recurrence_unit set default 'monthly';
+alter table public.financial_recurring_templates
+  alter column recurrence_every set default 1;
+alter table public.financial_recurring_templates
+  alter column default_status set not null;
+alter table public.financial_recurring_templates
+  alter column payment_tag set not null;
+alter table public.financial_recurring_templates
+  alter column convert_foreign set not null;
+alter table public.financial_recurring_templates
+  alter column payee_label set not null;
+alter table public.financial_recurring_templates
+  alter column recurrence_unit set not null;
+alter table public.financial_recurring_templates
+  alter column recurrence_every set not null;
+alter table public.financial_recurring_templates
+  drop constraint if exists financial_recurring_templates_default_status_check;
+alter table public.financial_recurring_templates
+  add constraint financial_recurring_templates_default_status_check
+  check (default_status in ('pending', 'paid', 'cancelled', 'failed'));
+alter table public.financial_recurring_templates
+  drop constraint if exists financial_recurring_templates_recurrence_unit_check;
+alter table public.financial_recurring_templates
+  add constraint financial_recurring_templates_recurrence_unit_check
+  check (recurrence_unit in ('monthly', 'quarterly', 'annual', 'custom_days'));
+alter table public.financial_recurring_templates
+  drop constraint if exists financial_recurring_templates_recurrence_every_check;
+alter table public.financial_recurring_templates
+  add constraint financial_recurring_templates_recurrence_every_check
+  check (recurrence_every >= 1 and recurrence_every <= 24);
+
+create table if not exists public.financial_payees (
+  id uuid primary key default gen_random_uuid(),
+  name text not null default '',
+  default_payment_tag text not null default '',
+  default_currency text not null default 'GBP',
+  payment_details jsonb not null default '{}'::jsonb,
+  tax_details jsonb not null default '{}'::jsonb,
+  notes text not null default '',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.financial_payees
+  add column if not exists payment_details jsonb;
+alter table public.financial_payees
+  add column if not exists tax_details jsonb;
+update public.financial_payees
+set payment_details = '{}'::jsonb
+where payment_details is null;
+update public.financial_payees
+set tax_details = '{}'::jsonb
+where tax_details is null;
+alter table public.financial_payees
+  alter column payment_details set default '{}'::jsonb;
+alter table public.financial_payees
+  alter column payment_details set not null;
+alter table public.financial_payees
+  alter column tax_details set default '{}'::jsonb;
+alter table public.financial_payees
+  alter column tax_details set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'financial_transactions_payee_fk'
+  ) then
+    alter table public.financial_transactions
+      add constraint financial_transactions_payee_fk
+      foreign key (payee_id) references public.financial_payees (id) on delete set null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'financial_recurring_templates_payee_fk'
+  ) then
+    alter table public.financial_recurring_templates
+      add constraint financial_recurring_templates_payee_fk
+      foreign key (payee_id) references public.financial_payees (id) on delete set null;
+  end if;
+end $$;
+
+-- Table / min-spend bookings: promoter-submitted rows are pending until admin approves;
+-- office can log the same nights independently (entry_channel = admin, approved immediately).
+create table if not exists public.promoter_table_sales (
+  id uuid primary key default gen_random_uuid(),
+  promoter_id uuid not null references public.promoters (id) on delete cascade,
+  club_slug text not null references public.clubs (slug) on delete restrict,
+  sale_date date not null,
+  promoter_job_id uuid references public.promoter_jobs (id) on delete set null,
+  entry_channel text not null check (entry_channel in ('promoter', 'admin')),
+  tier text not null default 'other' check (tier in ('standard', 'luxury', 'vip', 'other')),
+  table_count integer not null default 1 check (table_count >= 1 and table_count <= 99),
+  total_min_spend numeric(12,2) not null default 0 check (total_min_spend >= 0),
+  notes text not null default '',
+  approval_status text not null default 'pending' check (approval_status in ('pending', 'approved', 'rejected')),
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users (id) on delete set null,
+  review_notes text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -234,6 +560,18 @@ create index if not exists promoter_jobs_promoter_date_idx on public.promoter_jo
 create index if not exists promoter_earnings_promoter_date_idx on public.promoter_earnings (promoter_id, earning_date desc);
 create index if not exists promoter_invoices_promoter_period_idx on public.promoter_invoices (promoter_id, period_start, period_end);
 create index if not exists financial_transactions_period_idx on public.financial_transactions (tx_date desc, direction);
+create index if not exists financial_transactions_status_idx on public.financial_transactions (status, tx_date desc);
+create index if not exists financial_transactions_tag_idx on public.financial_transactions (payment_tag, tx_date desc);
+create index if not exists financial_transactions_payee_idx on public.financial_transactions (payee_id, tx_date desc);
+create index if not exists financial_recurring_templates_due_idx
+on public.financial_recurring_templates (next_due_date asc)
+where is_active = true;
+create index if not exists financial_payees_name_idx on public.financial_payees (name);
+create index if not exists promoter_table_sales_date_idx on public.promoter_table_sales (sale_date desc);
+create index if not exists promoter_table_sales_promoter_date_idx on public.promoter_table_sales (promoter_id, sale_date desc);
+create index if not exists promoter_table_sales_pending_idx
+on public.promoter_table_sales (created_at desc)
+where approval_status = 'pending';
 
 -- RLS defaults.
 alter table public.profiles enable row level security;
@@ -247,12 +585,16 @@ alter table public.promoters enable row level security;
 alter table public.promoter_profile_revisions enable row level security;
 alter table public.promoter_availability enable row level security;
 alter table public.promoter_club_preferences enable row level security;
+alter table public.promoter_night_adjustments enable row level security;
 alter table public.promoter_jobs enable row level security;
 alter table public.promoter_guestlist_entries enable row level security;
 alter table public.promoter_earnings enable row level security;
 alter table public.promoter_invoices enable row level security;
 alter table public.promoter_invoice_lines enable row level security;
 alter table public.financial_transactions enable row level security;
+alter table public.financial_recurring_templates enable row level security;
+alter table public.financial_payees enable row level security;
+alter table public.promoter_table_sales enable row level security;
 
 -- Profiles: each user can read their own row (needed for admin role check in the browser).
 drop policy if exists profiles_self_read on public.profiles;
@@ -715,6 +1057,33 @@ with check (
   )
 );
 
+drop policy if exists promoter_night_adj_admin on public.promoter_night_adjustments;
+create policy promoter_night_adj_admin
+on public.promoter_night_adjustments
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists promoter_night_adj_promoter_select on public.promoter_night_adjustments;
+create policy promoter_night_adj_promoter_select
+on public.promoter_night_adjustments
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.promoters pr where pr.id = promoter_id and pr.user_id = auth.uid()
+  )
+);
+
 drop policy if exists promoter_jobs_admin on public.promoter_jobs;
 create policy promoter_jobs_admin
 on public.promoter_jobs
@@ -884,6 +1253,65 @@ with check (
   )
 );
 
+drop policy if exists financial_recurring_templates_admin on public.financial_recurring_templates;
+create policy financial_recurring_templates_admin
+on public.financial_recurring_templates
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists financial_payees_admin on public.financial_payees;
+create policy financial_payees_admin
+on public.financial_payees
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists promoter_table_sales_admin on public.promoter_table_sales;
+create policy promoter_table_sales_admin
+on public.promoter_table_sales
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+drop policy if exists promoter_table_sales_promoter_select on public.promoter_table_sales;
+create policy promoter_table_sales_promoter_select
+on public.promoter_table_sales
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.promoters pr where pr.id = promoter_id and pr.user_id = auth.uid()
+  )
+);
+
 create or replace function public.approve_promoter_profile_revision(
   p_revision_id uuid,
   p_approve boolean,
@@ -897,6 +1325,11 @@ declare
   v_promoter_id uuid;
   v_payload jsonb;
   v_status text := case when p_approve then 'approved' else 'rejected' end;
+  v_imgs jsonb;
+  v_primary text;
+  v_portfolio text[];
+  v_payment_details jsonb := '{}'::jsonb;
+  v_tax_details jsonb := '{}'::jsonb;
 begin
   if not exists (
     select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
@@ -918,10 +1351,79 @@ begin
   end if;
 
   if p_approve then
+    select coalesce(
+      (
+        select jsonb_agg(to_jsonb(t.u) order by t.ord)
+        from (
+          select trim(both from e.value) as u,
+            row_number() over () as ord
+          from jsonb_array_elements_text(
+            case
+              when jsonb_typeof(coalesce(v_payload->'profile_image_urls', '[]'::jsonb)) = 'array'
+                then coalesce(v_payload->'profile_image_urls', '[]'::jsonb)
+              else '[]'::jsonb
+            end
+          ) as e(value)
+          where length(trim(both from e.value)) > 0
+        ) t
+        where t.ord <= 12
+      ),
+      '[]'::jsonb
+    )
+    into v_imgs;
+
+    if coalesce(jsonb_array_length(v_imgs), 0) = 0
+      and length(trim(both from coalesce(v_payload->>'profile_image_url', ''))) > 0 then
+      v_imgs := jsonb_build_array(trim(v_payload->>'profile_image_url'));
+    end if;
+
+    v_primary := case
+      when coalesce(jsonb_array_length(v_imgs), 0) > 0 then trim(both from (v_imgs->>0))
+      else ''
+    end;
+
+    select coalesce(
+      array(
+        select distinct q.slug
+        from (
+          select trim(both from e.value) as slug
+          from jsonb_array_elements_text(
+            case
+              when jsonb_typeof(coalesce(v_payload->'portfolio_club_slugs', '[]'::jsonb)) = 'array'
+                then coalesce(v_payload->'portfolio_club_slugs', '[]'::jsonb)
+              else '[]'::jsonb
+            end
+          ) as e(value)
+          where length(trim(both from e.value)) > 0
+          limit 24
+        ) q
+      ),
+      '{}'::text[]
+    )
+    into v_portfolio;
+
+    v_payment_details := case
+      when jsonb_typeof(v_payload->'payment_details') = 'object'
+        then coalesce(v_payload->'payment_details', '{}'::jsonb)
+      else '{}'::jsonb
+    end;
+    v_tax_details := case
+      when jsonb_typeof(v_payload->'tax_details') = 'object'
+        then coalesce(v_payload->'tax_details', '{}'::jsonb)
+      else '{}'::jsonb
+    end;
+
     update public.promoters
     set display_name = coalesce(nullif(trim(v_payload->>'display_name'), ''), display_name),
         bio = coalesce(v_payload->>'bio', bio),
-        profile_image_url = coalesce(v_payload->>'profile_image_url', profile_image_url),
+        profile_image_urls = coalesce(v_imgs, '[]'::jsonb),
+        profile_image_url = case
+          when coalesce(jsonb_array_length(v_imgs), 0) > 0 then trim(both from (v_imgs->>0))
+          else ''
+        end,
+        portfolio_club_slugs = coalesce(v_portfolio, '{}'::text[]),
+        payment_details = coalesce(v_payment_details, '{}'::jsonb),
+        tax_details = coalesce(v_tax_details, '{}'::jsonb),
         is_approved = true,
         approval_status = 'approved',
         approval_notes = coalesce(p_review_notes, ''),
@@ -1011,10 +1513,16 @@ begin
 end;
 $$;
 
+drop function if exists public.get_financial_report(text, date, date);
+drop function if exists public.get_financial_report(text, date, date, text, text, text, uuid);
 create or replace function public.get_financial_report(
   p_period_type text,
   p_from date,
-  p_to date
+  p_to date,
+  p_direction text default null,
+  p_status text default null,
+  p_payment_tag text default null,
+  p_payee_id uuid default null
 ) returns table (
   period_label text,
   income numeric,
@@ -1035,6 +1543,10 @@ as $$
       amount
     from public.financial_transactions
     where tx_date between p_from and p_to
+      and (p_direction is null or p_direction = '' or direction = p_direction)
+      and (p_status is null or p_status = '' or status = p_status)
+      and (p_payment_tag is null or p_payment_tag = '' or payment_tag = p_payment_tag)
+      and (p_payee_id is null or payee_id = p_payee_id)
   )
   select
     period_label,
@@ -1046,10 +1558,134 @@ as $$
   order by period_label;
 $$;
 
+drop function if exists public.apply_recurring_financial_transactions(date);
+create or replace function public.apply_recurring_financial_transactions(
+  p_through date default current_date
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  t record;
+  v_due date;
+  v_created int := 0;
+  v_next date;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  for t in
+    select *
+    from public.financial_recurring_templates
+    where is_active = true
+      and next_due_date <= p_through
+    order by next_due_date asc
+  loop
+    v_due := t.next_due_date;
+    while v_due <= p_through loop
+      insert into public.financial_transactions (
+        tx_date,
+        category,
+        direction,
+        status,
+        payment_tag,
+        amount,
+        currency,
+        convert_foreign,
+        source_type,
+        source_ref,
+        payee_id,
+        payee_label,
+        notes
+      ) values (
+        v_due,
+        t.category,
+        t.direction,
+        t.default_status,
+        t.payment_tag,
+        t.amount,
+        t.currency,
+        t.convert_foreign,
+        'recurring_template',
+        t.id,
+        t.payee_id,
+        t.payee_label,
+        t.notes
+      );
+      v_created := v_created + 1;
+      if t.recurrence_unit = 'monthly' then
+        v_next := (v_due + make_interval(months => t.recurrence_every))::date;
+      elsif t.recurrence_unit = 'quarterly' then
+        v_next := (v_due + make_interval(months => (3 * t.recurrence_every)))::date;
+      elsif t.recurrence_unit = 'annual' then
+        v_next := (v_due + make_interval(years => t.recurrence_every))::date;
+      else
+        v_next := (v_due + make_interval(days => greatest(1, t.interval_days)))::date;
+      end if;
+      v_due := v_next;
+    end loop;
+
+    update public.financial_recurring_templates
+    set
+      next_due_date = v_due,
+      last_generated_on = (
+        case
+          when t.recurrence_unit = 'monthly' then (v_due - make_interval(months => t.recurrence_every))::date
+          when t.recurrence_unit = 'quarterly' then (v_due - make_interval(months => (3 * t.recurrence_every)))::date
+          when t.recurrence_unit = 'annual' then (v_due - make_interval(years => t.recurrence_every))::date
+          else (v_due - make_interval(days => greatest(1, t.interval_days)))::date
+        end
+      ),
+      updated_at = now()
+    where id = t.id;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'createdRows', v_created);
+end;
+$$;
+
+drop function if exists public.get_financial_period_summary(date, date);
+drop function if exists public.get_financial_period_summary(date, date, text, text, text, uuid);
+create or replace function public.get_financial_period_summary(
+  p_from date,
+  p_to date,
+  p_direction text default null,
+  p_status text default null,
+  p_payment_tag text default null,
+  p_payee_id uuid default null
+) returns table (
+  income numeric,
+  expense numeric,
+  net numeric,
+  tx_count integer
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    coalesce(sum(case when direction = 'income' then amount else 0 end), 0)::numeric as income,
+    coalesce(sum(case when direction = 'expense' then amount else 0 end), 0)::numeric as expense,
+    coalesce(sum(case when direction = 'income' then amount else -amount end), 0)::numeric as net,
+    count(*)::int as tx_count
+  from public.financial_transactions
+  where tx_date between p_from and p_to
+  and (p_direction is null or p_direction = '' or direction = p_direction)
+  and (p_status is null or p_status = '' or status = p_status)
+  and (p_payment_tag is null or p_payment_tag = '' or payment_tag = p_payment_tag)
+  and (p_payee_id is null or payee_id = p_payee_id);
+$$;
+
 grant execute on function public.approve_promoter_profile_revision(uuid, boolean, text) to authenticated;
 grant execute on function public.calculate_promoter_earnings(uuid, date, date) to authenticated;
 grant execute on function public.generate_promoter_invoice(uuid, date, date) to authenticated;
-grant execute on function public.get_financial_report(text, date, date) to authenticated;
+grant execute on function public.get_financial_report(text, date, date, text, text, text, uuid) to authenticated;
+grant execute on function public.apply_recurring_financial_transactions(date) to authenticated;
+grant execute on function public.get_financial_period_summary(date, date, text, text, text, uuid) to authenticated;
 
 -- Guest intelligence domain (signups, attendance, demographics, campaigns).
 create table if not exists public.guest_profiles (
@@ -1640,3 +2276,646 @@ with check (
       and p.role = 'admin'
   )
 );
+
+-- Admin: delete a promoter job and completion side-effects in one transaction.
+drop function if exists public.delete_promoter_job_safe(uuid);
+create or replace function public.delete_promoter_job_safe(p_job_id uuid)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  n_tx int := 0;
+  n_earn int := 0;
+begin
+  if not exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  if not exists (select 1 from public.promoter_jobs where id = p_job_id) then
+    return jsonb_build_object('ok', false, 'error', 'Job not found.');
+  end if;
+
+  delete from public.financial_transactions
+  where source_type = 'promoter_job'
+    and source_ref = p_job_id;
+  get diagnostics n_tx = row_count;
+
+  delete from public.promoter_earnings
+  where promoter_job_id = p_job_id;
+  get diagnostics n_earn = row_count;
+
+  delete from public.promoter_jobs
+  where id = p_job_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'clearedFinancialTx', n_tx,
+    'clearedEarnings', n_earn
+  );
+end;
+$$;
+
+grant execute on function public.delete_promoter_job_safe(uuid) to authenticated;
+
+-- Promoter adds a guestlist name (pending until admin approves). Billing uses approved rows only.
+drop function if exists public.insert_promoter_guestlist_entry(uuid, text, text);
+create or replace function public.insert_promoter_guestlist_entry(
+  p_job_id uuid,
+  p_guest_name text,
+  p_guest_contact text
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new uuid;
+  v_ok boolean;
+begin
+  if trim(coalesce(p_guest_name, '')) = '' then
+    raise exception 'Guest name is required.';
+  end if;
+
+  select exists (
+    select 1
+    from public.promoter_jobs j
+    join public.promoters pr on pr.id = j.promoter_id
+    where j.id = p_job_id
+      and pr.user_id = auth.uid()
+      and j.status = 'assigned'
+      and coalesce(nullif(trim(both from j.service), ''), 'guestlist') = 'guestlist'
+  ) into v_ok;
+
+  if not coalesce(v_ok, false) then
+    raise exception 'Job not found, not an assigned guestlist shift, or not yours.';
+  end if;
+
+  insert into public.promoter_guestlist_entries (
+    promoter_job_id, guest_name, guest_contact, approval_status
+  ) values (
+    p_job_id,
+    trim(coalesce(p_guest_name, '')),
+    trim(coalesce(p_guest_contact, '')),
+    'pending'
+  )
+  returning id into v_new;
+
+  return v_new;
+end;
+$$;
+
+drop function if exists public.admin_review_guestlist_entry(uuid, boolean, text);
+create or replace function public.admin_review_guestlist_entry(
+  p_entry_id uuid,
+  p_approve boolean,
+  p_review_notes text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_job_id uuid;
+  v_status text;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  select e.promoter_job_id, e.approval_status
+  into v_job_id, v_status
+  from public.promoter_guestlist_entries e
+  where e.id = p_entry_id;
+
+  if v_job_id is null then
+    return jsonb_build_object('ok', false, 'error', 'Entry not found.');
+  end if;
+
+  if v_status is distinct from 'pending' then
+    return jsonb_build_object('ok', false, 'error', 'Entry already reviewed.');
+  end if;
+
+  update public.promoter_guestlist_entries
+  set
+    approval_status = case when p_approve then 'approved' else 'rejected' end,
+    reviewed_at = now(),
+    reviewed_by = auth.uid(),
+    review_notes = trim(coalesce(p_review_notes, ''))
+  where id = p_entry_id;
+
+  update public.promoter_jobs j
+  set
+    guests_count = (
+      select count(*)::int
+      from public.promoter_guestlist_entries e
+      where e.promoter_job_id = j.id
+        and e.approval_status = 'approved'
+    ),
+    updated_at = now()
+  where j.id = v_job_id;
+
+  return jsonb_build_object('ok', true, 'promoterJobId', v_job_id);
+end;
+$$;
+
+grant execute on function public.insert_promoter_guestlist_entry(uuid, text, text) to authenticated;
+grant execute on function public.admin_review_guestlist_entry(uuid, boolean, text) to authenticated;
+
+-- Promoter: log table / min-spend for a night (pending until admin approves).
+drop function if exists public.insert_promoter_table_sale(date, text, uuid, text, integer, numeric, text);
+create or replace function public.insert_promoter_table_sale(
+  p_sale_date date,
+  p_club_slug text,
+  p_promoter_job_id uuid,
+  p_tier text,
+  p_table_count integer,
+  p_total_min_spend numeric,
+  p_notes text
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pid uuid;
+  v_new uuid;
+  v_tier text;
+  v_slug text := trim(both from coalesce(p_club_slug, ''));
+  v_spend numeric(12,2) := coalesce(p_total_min_spend, 0);
+begin
+  select pr.id into v_pid
+  from public.promoters pr
+  where pr.user_id = auth.uid();
+
+  if v_pid is null then
+    raise exception 'Not signed in as a promoter.';
+  end if;
+
+  if v_slug = '' then
+    raise exception 'Club is required.';
+  end if;
+
+  if not exists (select 1 from public.clubs c where c.slug = v_slug) then
+    raise exception 'Unknown club slug.';
+  end if;
+
+  if p_table_count is null or p_table_count < 1 or p_table_count > 99 then
+    raise exception 'Table count must be between 1 and 99.';
+  end if;
+
+  if v_spend < 0 then
+    raise exception 'Total min spend cannot be negative.';
+  end if;
+
+  v_tier := lower(trim(both from coalesce(p_tier, 'other')));
+  if v_tier not in ('standard', 'luxury', 'vip', 'other') then
+    v_tier := 'other';
+  end if;
+
+  if p_promoter_job_id is not null then
+    if not exists (
+      select 1
+      from public.promoter_jobs j
+      where j.id = p_promoter_job_id
+        and j.promoter_id = v_pid
+        and j.job_date = p_sale_date
+        and coalesce(j.club_slug, '') = v_slug
+    ) then
+      raise exception 'Selected job must match promoter, club, and date.';
+    end if;
+  end if;
+
+  insert into public.promoter_table_sales (
+    promoter_id,
+    club_slug,
+    sale_date,
+    promoter_job_id,
+    entry_channel,
+    tier,
+    table_count,
+    total_min_spend,
+    notes,
+    approval_status
+  ) values (
+    v_pid,
+    v_slug,
+    p_sale_date,
+    p_promoter_job_id,
+    'promoter',
+    v_tier,
+    p_table_count,
+    v_spend,
+    trim(coalesce(p_notes, '')),
+    'pending'
+  )
+  returning id into v_new;
+
+  return v_new;
+end;
+$$;
+
+-- Admin: office-side table log (approved immediately for dual-entry reconciliation).
+drop function if exists public.admin_insert_table_sale(uuid, date, text, uuid, text, integer, numeric, text);
+create or replace function public.admin_insert_table_sale(
+  p_promoter_id uuid,
+  p_sale_date date,
+  p_club_slug text,
+  p_promoter_job_id uuid,
+  p_tier text,
+  p_table_count integer,
+  p_total_min_spend numeric,
+  p_notes text
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new uuid;
+  v_tier text;
+  v_slug text := trim(both from coalesce(p_club_slug, ''));
+  v_spend numeric(12,2) := coalesce(p_total_min_spend, 0);
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    raise exception 'Admin only.';
+  end if;
+
+  if not exists (select 1 from public.promoters pr where pr.id = p_promoter_id) then
+    raise exception 'Promoter not found.';
+  end if;
+
+  if v_slug = '' then
+    raise exception 'Club is required.';
+  end if;
+
+  if not exists (select 1 from public.clubs c where c.slug = v_slug) then
+    raise exception 'Unknown club slug.';
+  end if;
+
+  if p_table_count is null or p_table_count < 1 or p_table_count > 99 then
+    raise exception 'Table count must be between 1 and 99.';
+  end if;
+
+  if v_spend < 0 then
+    raise exception 'Total min spend cannot be negative.';
+  end if;
+
+  v_tier := lower(trim(both from coalesce(p_tier, 'other')));
+  if v_tier not in ('standard', 'luxury', 'vip', 'other') then
+    v_tier := 'other';
+  end if;
+
+  if p_promoter_job_id is not null then
+    if not exists (
+      select 1
+      from public.promoter_jobs j
+      where j.id = p_promoter_job_id
+        and j.promoter_id = p_promoter_id
+        and j.job_date = p_sale_date
+        and coalesce(j.club_slug, '') = v_slug
+    ) then
+      raise exception 'Selected job must match promoter, club, and date.';
+    end if;
+  end if;
+
+  insert into public.promoter_table_sales (
+    promoter_id,
+    club_slug,
+    sale_date,
+    promoter_job_id,
+    entry_channel,
+    tier,
+    table_count,
+    total_min_spend,
+    notes,
+    approval_status,
+    reviewed_at,
+    reviewed_by,
+    review_notes
+  ) values (
+    p_promoter_id,
+    v_slug,
+    p_sale_date,
+    p_promoter_job_id,
+    'admin',
+    v_tier,
+    p_table_count,
+    v_spend,
+    trim(coalesce(p_notes, '')),
+    'approved',
+    now(),
+    auth.uid(),
+    ''
+  )
+  returning id into v_new;
+
+  return v_new;
+end;
+$$;
+
+drop function if exists public.admin_review_table_sale(uuid, boolean, text);
+create or replace function public.admin_review_table_sale(
+  p_entry_id uuid,
+  p_approve boolean,
+  p_review_notes text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_status text;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  select s.approval_status into v_status
+  from public.promoter_table_sales s
+  where s.id = p_entry_id;
+
+  if v_status is null then
+    return jsonb_build_object('ok', false, 'error', 'Entry not found.');
+  end if;
+
+  if v_status is distinct from 'pending' then
+    return jsonb_build_object('ok', false, 'error', 'Entry already reviewed.');
+  end if;
+
+  update public.promoter_table_sales
+  set
+    approval_status = case when p_approve then 'approved' else 'rejected' end,
+    reviewed_at = now(),
+    reviewed_by = auth.uid(),
+    review_notes = trim(coalesce(p_review_notes, ''))
+  where id = p_entry_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.insert_promoter_table_sale(date, text, uuid, text, integer, numeric, text) to authenticated;
+grant execute on function public.admin_insert_table_sale(uuid, date, text, uuid, text, integer, numeric, text) to authenticated;
+grant execute on function public.admin_review_table_sale(uuid, boolean, text) to authenticated;
+
+-- Promoter: request a one-off change for a specific calendar night (admin approves).
+drop function if exists public.upsert_promoter_night_adjustment(date, boolean, time, time, text);
+create or replace function public.upsert_promoter_night_adjustment(
+  p_night_date date,
+  p_available_override boolean,
+  p_start_time time,
+  p_end_time time,
+  p_notes text
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_pid uuid;
+  v_id uuid;
+begin
+  select pr.id into v_pid
+  from public.promoters pr
+  where pr.user_id = auth.uid();
+
+  if v_pid is null then
+    raise exception 'Not signed in as a promoter.';
+  end if;
+
+  insert into public.promoter_night_adjustments (
+    promoter_id,
+    night_date,
+    available_override,
+    start_time,
+    end_time,
+    notes,
+    status
+  ) values (
+    v_pid,
+    p_night_date,
+    p_available_override,
+    p_start_time,
+    p_end_time,
+    trim(coalesce(p_notes, '')),
+    'pending'
+  )
+  on conflict (promoter_id, night_date) do update
+  set
+    available_override = excluded.available_override,
+    start_time = excluded.start_time,
+    end_time = excluded.end_time,
+    notes = excluded.notes,
+    status = 'pending',
+    reviewed_at = null,
+    reviewed_by = null,
+    review_notes = '',
+    updated_at = now()
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+drop function if exists public.admin_review_night_adjustment(uuid, boolean, text);
+create or replace function public.admin_review_night_adjustment(
+  p_adjustment_id uuid,
+  p_approve boolean,
+  p_review_notes text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_stat text;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  select a.status into v_stat
+  from public.promoter_night_adjustments a
+  where a.id = p_adjustment_id;
+
+  if v_stat is null then
+    return jsonb_build_object('ok', false, 'error', 'Row not found.');
+  end if;
+
+  if v_stat is distinct from 'pending' then
+    return jsonb_build_object('ok', false, 'error', 'Already reviewed.');
+  end if;
+
+  update public.promoter_night_adjustments
+  set
+    status = case when p_approve then 'approved' else 'rejected' end,
+    reviewed_at = now(),
+    reviewed_by = auth.uid(),
+    review_notes = trim(coalesce(p_review_notes, '')),
+    updated_at = now()
+  where id = p_adjustment_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.upsert_promoter_night_adjustment(date, boolean, time, time, text) to authenticated;
+grant execute on function public.admin_review_night_adjustment(uuid, boolean, text) to authenticated;
+
+-- Normalize a club weekday token to sun..sat (matches TS normalizeClubDayToken).
+create or replace function public._club_day_key(raw text)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  select case
+    when raw is null or btrim(raw) = '' then null
+    else (
+      select case v
+        when 'sun' then 'sun'
+        when 'sunday' then 'sun'
+        when 'mon' then 'mon'
+        when 'monday' then 'mon'
+        when 'tue' then 'tue'
+        when 'tues' then 'tue'
+        when 'tuesday' then 'tue'
+        when 'wed' then 'wed'
+        when 'wednesday' then 'wed'
+        when 'thu' then 'thu'
+        when 'thur' then 'thu'
+        when 'thurs' then 'thu'
+        when 'thursday' then 'thu'
+        when 'fri' then 'fri'
+        when 'friday' then 'fri'
+        when 'sat' then 'sat'
+        when 'saturday' then 'sat'
+        else case left(v, 3)
+          when 'sun' then 'sun'
+          when 'mon' then 'mon'
+          when 'tue' then 'tue'
+          when 'wed' then 'wed'
+          when 'thu' then 'thu'
+          when 'fri' then 'fri'
+          when 'sat' then 'sat'
+          else null
+        end
+      end
+      from (
+        select lower(regexp_replace(trim(both from raw), '\.$', '')) as v
+      ) s
+    )
+  end;
+$$;
+
+-- True if any normalized weekday in p_weekdays matches PostgreSQL DOW for p_date (0=Sun .. 6=Sat).
+create or replace function public._pref_weekdays_include_dow(p_weekdays text[], p_date date)
+returns boolean
+language sql
+stable
+parallel safe
+as $$
+  select exists (
+    select 1
+    from unnest(coalesce(p_weekdays, '{}'::text[])) as u(tok)
+    where public._club_day_key(u.tok) is not null
+      and public._club_day_key(u.tok) = (
+        (array['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])[
+          (extract(dow from p_date)::int + 1)
+        ]
+      )
+  );
+$$;
+
+-- Guestlist hosts for a calendar night: assigned/completed jobs plus approved club preferences
+-- (weekday match) when no job exists for the same promoter+club. Readable by anon for public UI.
+drop function if exists public.guestlist_hosts_for_date(date);
+create or replace function public.guestlist_hosts_for_date(p_date date)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with job_rows as (
+    select
+      pj.id::text as job_id,
+      pj.promoter_id,
+      coalesce(nullif(trim(both from p.display_name), ''), 'Promoter') as promoter_name,
+      pj.club_slug,
+      pj.job_date,
+      pj.status,
+      'job'::text as source
+    from public.promoter_jobs pj
+    join public.promoters p on p.id = pj.promoter_id
+    where pj.job_date = p_date
+      and pj.club_slug is not null
+      and pj.status in ('assigned', 'completed')
+      and p.approval_status = 'approved'
+      and coalesce(p.is_approved, false) = true
+  ),
+  pref_rows as (
+    select
+      ('pref:' || pcp.promoter_id::text || ':' || pcp.club_slug) as job_id,
+      pcp.promoter_id,
+      coalesce(nullif(trim(both from p.display_name), ''), 'Promoter') as promoter_name,
+      pcp.club_slug,
+      p_date as job_date,
+      'assigned'::text as status,
+      'preference'::text as source
+    from public.promoter_club_preferences pcp
+    join public.promoters p on p.id = pcp.promoter_id
+    where pcp.status = 'approved'
+      and pcp.club_slug is not null
+      and public._pref_weekdays_include_dow(pcp.weekdays, p_date)
+      and p.approval_status = 'approved'
+      and coalesce(p.is_approved, false) = true
+  ),
+  merged as (
+    select * from job_rows
+    union all
+    select pr.*
+    from pref_rows pr
+    where not exists (
+      select 1
+      from job_rows j
+      where j.promoter_id = pr.promoter_id
+        and j.club_slug = pr.club_slug
+    )
+  )
+  select coalesce(
+    (
+      select jsonb_agg(
+        jsonb_build_object(
+          'jobId', m.job_id,
+          'promoterId', m.promoter_id,
+          'promoterName', m.promoter_name,
+          'clubSlug', m.club_slug,
+          'jobDate', m.job_date,
+          'status', m.status,
+          'source', m.source
+        )
+        order by m.club_slug asc, m.promoter_name asc, m.promoter_id asc
+      )
+      from merged m
+    ),
+    '[]'::jsonb
+  );
+$$;
+
+grant execute on function public.guestlist_hosts_for_date(date) to anon, authenticated;

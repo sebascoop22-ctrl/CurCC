@@ -7,6 +7,8 @@ export type ClubRow = {
   name: string;
   sort_order: number;
   is_active: boolean;
+  payment_details: Club["paymentDetails"];
+  tax_details: Club["taxDetails"];
   payload: Club;
 };
 
@@ -32,7 +34,7 @@ export async function loadClubsForAdmin(
 ): Promise<{ ok: true; rows: ClubRow[] } | { ok: false; message: string }> {
   const { data, error } = await supabase
     .from("clubs")
-    .select("id, slug, name, sort_order, is_active, payload")
+    .select("id, slug, name, sort_order, is_active, payment_details, tax_details, payload")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) return { ok: false, message: error.message };
@@ -47,6 +49,16 @@ export async function loadClubsForAdmin(
         name: String(r.name ?? "").trim(),
         sort_order: Number(r.sort_order) || 0,
         is_active: Boolean(r.is_active),
+        payment_details:
+          payload.paymentDetails ??
+          (r.payment_details && typeof r.payment_details === "object"
+            ? (r.payment_details as Club["paymentDetails"])
+            : undefined),
+        tax_details:
+          payload.taxDetails ??
+          (r.tax_details && typeof r.tax_details === "object"
+            ? (r.tax_details as Club["taxDetails"])
+            : undefined),
         payload,
       };
     })
@@ -93,6 +105,8 @@ export async function upsertClubToDb(
     name: club.name.trim() || slug,
     sort_order: opts.sortOrder,
     is_active: opts.isActive,
+    payment_details: club.paymentDetails ?? {},
+    tax_details: club.taxDetails ?? {},
     payload: club,
     updated_at: new Date().toISOString(),
   };

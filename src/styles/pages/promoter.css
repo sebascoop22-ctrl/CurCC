@@ -739,3 +739,71 @@ html[data-cc-theme="ocean"] .promoter-page .cc-field textarea:focus {
   border-color: var(--cc-gold);
   box-shadow: 0 0 0 3px var(--cc-gold-soft);
 }
+
+/* Guestlist name submissions per assigned shift */
+.promoter-gl-wrap {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e4e7ec;
+}
+
+.promoter-gl-wrap__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.promoter-gl-job {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.promoter-gl-job__title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.promoter-gl-status {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background: #e4e7ec;
+  color: #344054;
+}
+
+.promoter-gl-status--approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.promoter-gl-status--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.promoter-gl-status--rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.promoter-profile-img-row {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.promoter-profile-img-row:last-of-type {
+  border-bottom: none;
+}
+
+.promoter-portfolio-select {
+  width: 100%;
+  max-width: 32rem;
+  min-height: 10rem;
+}

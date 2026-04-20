@@ -35,30 +35,53 @@
     <div id="cc-drawer" class="mobile-drawer"></div>
 
     <main>
-      <section class="nightlife-hero">
-        <div class="cc-container nightlife-hero__stack">
-          <p class="nightlife-hero__eyebrow">Private access arranged</p>
-          <h1>Nightlife</h1>
-          <p class="nightlife-hero__lede">
-            Member rooms, private tables, and guestlist.
-          </p>
-          <div class="nightlife-actions">
-            <a class="cc-btn cc-btn--gold" href="#nightlife-lead">Request access</a>
-            <a class="cc-btn cc-btn--ghost" href="/nightlife-map">Show venue map</a>
+      <section class="nl-landing-hero">
+        <div class="nl-landing-hero__inner cc-container">
+          <div class="nl-landing-hero__left">
+            <p class="nightlife-hero__eyebrow">Private access arranged</p>
+            <h1>Nightlife</h1>
+            <p class="nightlife-hero__lede">Member rooms, private tables, and guestlist.</p>
+            <div class="nightlife-actions">
+              <a class="cc-btn cc-btn--gold" href="#nightlife-lead">Request access</a>
+              <a class="cc-btn cc-btn--ghost" href="/nightlife-map">Full venue map</a>
+            </div>
+            <div class="nl-hero-flyer-wrap" id="nl-hero-flyer-host" aria-label="Featured flyer"></div>
+          </div>
+          <div class="nl-landing-hero__map-wrap">
+            <button type="button" class="nl-hero-map-toggle" id="nl-hero-map-toggle" aria-expanded="true" aria-controls="nl-hero-map-panel" title="Collapse map">
+              <span class="nl-hero-map-toggle__label">Map</span>
+              <span class="nl-hero-map-toggle__chev" aria-hidden="true">›</span>
+            </button>
+            <div class="nl-hero-map-panel" id="nl-hero-map-panel">
+              <div id="nightlife-hero-map" class="nl-hero-map" role="region" aria-label="Venue map"></div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="cc-section cc-container">
+      <section class="cc-section cc-container nl-featured-section">
         <div class="elite-venues-head">
-          <p class="cc-eyebrow">Elite venues</p>
+          <p class="cc-eyebrow">Featured</p>
           <h2>Signature destinations</h2>
         </div>
+        <div class="nl-carousel" data-nl-carousel>
+          <div class="nl-carousel__track" id="nl-carousel-track"></div>
+        </div>
+      </section>
+
+      <section class="cc-section cc-container nl-all-clubs">
+        <div class="elite-venues-head">
+          <p class="cc-eyebrow">All venues</p>
+          <h2>London clubs</h2>
+        </div>
+        <div class="nl-card-grid" id="clubs-grid"></div>
+      </section>
+
+      <section class="cc-section cc-container">
         <div class="featured-banner__mode nightlife-content-toggle" role="tablist" aria-label="Nightlife content mode">
           <button type="button" class="featured-banner__mode-btn is-active" id="nightlife-mode-featured" role="tab" aria-selected="true">Featured</button>
           <button type="button" class="featured-banner__mode-btn" id="nightlife-mode-flyers" role="tab" aria-selected="false">Flyers</button>
         </div>
-        <div class="clubs-grid" id="clubs-grid"></div>
         <section class="nightlife-flyers" id="nightlife-flyers-panel" hidden>
           <div class="nightlife-flyers__head">
             <h3 id="nightlife-flyers-title">Club flyers</h3>
@@ -80,17 +103,17 @@
             <form id="nightlife-lead-form" class="nl-form--minimal" novalidate>
               <div class="cc-field">
                 <label for="nl-full-name">Full name</label>
-                <input id="nl-full-name" name="full_name" type="text" autocomplete="name" required placeholder="Full name" />
+                <input id="nl-full-name" name="full_name" type="text" autocomplete="name" required />
               </div>
               <div class="cc-field">
-                <label for="nl-email">Email address</label>
-                <input id="nl-email" name="email" type="email" autocomplete="email" required placeholder="Email address" />
+                <label for="nl-email">Email</label>
+                <input id="nl-email" name="email" type="email" autocomplete="email" required />
               </div>
               <div class="cc-field">
-                <label for="nl-when">Preferred date &amp; location</label>
-                <input id="nl-when" name="when_where" type="text" required placeholder="Preferred date & location" />
+                <label for="nl-when">When &amp; where</label>
+                <textarea id="nl-when" name="when_where" rows="3" required placeholder="Date, group size, preferred venues"></textarea>
               </div>
-              <button type="submit" class="cc-btn cc-btn--gold">Request inquiry <span class="btn-arrow" aria-hidden="true">→</span></button>
+              <button type="submit" class="cc-btn cc-btn--gold">Submit</button>
             </form>
             <div class="cc-form-error" id="nightlife-lead-error" role="alert"></div>
             <div class="cc-form-success" id="nightlife-lead-success" role="status">Your inquiry has been logged. A concierge will respond shortly.</div>

@@ -6,19 +6,19 @@ const STORAGE_KEY = "cc-theme";
 
 export function normalizeThemeId(raw: string | null | undefined): CcThemeId {
   if (raw === "light" || raw === "ocean" || raw === "dark") return raw;
-  return "dark";
+  return "ocean";
 }
 
 export function getStoredThemeId(): CcThemeId {
   try {
     return normalizeThemeId(localStorage.getItem(STORAGE_KEY));
   } catch {
-    return "dark";
+    return "ocean";
   }
 }
 
 export function getCurrentThemeId(): CcThemeId {
-  if (typeof document === "undefined") return "dark";
+  if (typeof document === "undefined") return "ocean";
   const fromDom = document.documentElement.dataset.ccTheme;
   if (fromDom) return normalizeThemeId(fromDom);
   return getStoredThemeId();

@@ -45,6 +45,8 @@ export async function initNightlifeMap(): Promise<void> {
   const mapEl = document.getElementById("venue-map");
   if (!mapEl) return;
 
+  const requestHost = document.getElementById("cc-venue-request-root");
+
   const sidebar = document.getElementById("map-sidebar");
   const toggle = document.getElementById("map-sidebar-toggle");
   toggle?.addEventListener("click", () => {
@@ -284,7 +286,7 @@ export async function initNightlifeMap(): Promise<void> {
         promotersLines.innerHTML = rows
           .map(
             (row) =>
-              `<li><a href="/enquiry?context=${encodeURIComponent(`Nightlife promoter request: ${row.promoterName}`)}">${escapeHtml(row.promoterName)}</a></li>`,
+              `<li><button type="button" class="map-sidebar__promo-gl" data-promoter-gl data-promoter-name="${escapeHtml(row.promoterName)}"><span class="map-sidebar__promo-gl-name">${escapeHtml(row.promoterName)}</span><span class="map-sidebar__promo-gl-action">Join guestlist</span></button></li>`,
           )
           .join("");
       } else {
@@ -324,6 +326,23 @@ export async function initNightlifeMap(): Promise<void> {
   }
 
   let selectedClub: Club | null = null;
+
+  document.getElementById("sidebar-promoters-block")?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest(
+      "[data-promoter-gl]",
+    ) as HTMLButtonElement | null;
+    if (!btn || !selectedClub) return;
+    const promoterName = btn.dataset.promoterName?.trim();
+    if (!promoterName) return;
+    e.preventDefault();
+    openVenueRequestModal({
+      host: requestHost,
+      kind: "guestlist",
+      club: selectedClub,
+      promoterName,
+    });
+  });
+
   const modeFeaturedBtn = document.getElementById("map-mode-featured");
   const modeFlyersBtn = document.getElementById("map-mode-flyers");
   modeFeaturedBtn?.addEventListener("click", () => {
@@ -467,8 +486,6 @@ export async function initNightlifeMap(): Promise<void> {
       map.flyTo({ center: defaultMapCenter, zoom: defaultMapZoom });
     }
   });
-
-  const requestHost = document.getElementById("cc-venue-request-root");
 
   function wireVenueRequest(
     id: string,

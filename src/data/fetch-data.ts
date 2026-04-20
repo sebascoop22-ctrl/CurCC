@@ -6,6 +6,7 @@ import type {
   GuestlistEventContext,
   PromoterShiftAssignment,
 } from "../types";
+import { parseGuestlistHostsFromRpc } from "../lib/guestlist-hosts";
 import { getSupabaseClient } from "../lib/supabase";
 
 type CatalogRow = {
@@ -22,15 +23,6 @@ type FlyerRow = {
   image_url: string | null;
   is_active: boolean;
   sort_order: number | null;
-};
-
-type PromoterShiftRow = {
-  id: string;
-  promoter_id: string;
-  club_slug: string | null;
-  job_date: string;
-  status: string;
-  promoters: { id: string; display_name: string } | null;
 };
 
 type EventContextRow = {
@@ -197,27 +189,11 @@ export async function fetchPromoterAssignments(
   if (!supabase) return [];
   const date = dateIso?.trim() || new Date().toISOString().slice(0, 10);
   try {
-    const { data, error } = await supabase
-      .from("promoter_jobs")
-      .select("id,promoter_id,club_slug,job_date,status,promoters(id,display_name)")
-      .eq("job_date", date)
-      .in("status", ["assigned", "completed"]);
-    if (error || !Array.isArray(data)) return [];
-    return data
-      .map((raw) => {
-        const row = raw as unknown as PromoterShiftRow;
-        if (!row.club_slug) return null;
-        return {
-          jobId: String(row.id || ""),
-          promoterId: String(row.promoter_id || ""),
-          promoterName: String(row.promoters?.display_name || "Promoter"),
-          clubSlug: String(row.club_slug),
-          jobDate: String(row.job_date || ""),
-          status:
-            (String(row.status || "assigned") as PromoterShiftAssignment["status"]),
-        };
-      })
-      .filter((x): x is PromoterShiftAssignment => Boolean(x?.jobId && x.clubSlug));
+    const { data, error } = await supabase.rpc("guestlist_hosts_for_date", {
+      p_date: date,
+    });
+    if (error) return [];
+    return parseGuestlistHostsFromRpc(data);
   } catch {
     return [];
   }

@@ -9,6 +9,7 @@ const FORM_LABELS: Record<string, string> = {
   nightlife_lead: "Nightlife lead",
   nightlife_private_table: "Nightlife — private table",
   nightlife_guestlist: "Nightlife — guestlist",
+  nightlife_venue_access: "Nightlife — club access request",
   fleet_request: "Chauffeuring — fleet request",
   security_consult: "Security — consultation",
 };

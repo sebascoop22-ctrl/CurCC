@@ -1,0 +1,14 @@
+{
+  "nightlife": {
+    "js": "/assets/nightlife-BTuEtaoM.js",
+    "css": [
+      "/assets/nightlife-DyqvxUsY.css"
+    ]
+  },
+  "clubDetail": {
+    "js": "/assets/clubDetail-CRJfsxrW.js",
+    "css": [
+      "/assets/clubDetail-CKhnEwIG.css"
+    ]
+  }
+}

@@ -202,7 +202,7 @@ export async function initHome(): Promise<void> {
       promoBlurbEl.textContent =
         "Featured destinations appear when configured in each club’s CSV.";
       thumb.removeAttribute("src");
-      if (detailsLnk) detailsLnk.href = "/nightlife";
+      if (detailsLnk) detailsLnk.href = "/";
       itemLabel.textContent = "0 / 0";
       return;
     }
@@ -214,7 +214,7 @@ export async function initHome(): Promise<void> {
     thumb.alt = club.name;
     itemLabel.textContent = `${itemIndex + 1} / ${total}`;
     if (detailsLnk) {
-      detailsLnk.href = `/nightlife?venue=${encodeURIComponent(club.slug)}`;
+      detailsLnk.href = `/?venue=${encodeURIComponent(club.slug)}`;
     }
   }
 
@@ -224,7 +224,7 @@ export async function initHome(): Promise<void> {
       promoBlurbEl.textContent =
         "Flyers will appear here once nightlife promotions are uploaded.";
       thumb.removeAttribute("src");
-      if (detailsLnk) detailsLnk.href = "/nightlife";
+      if (detailsLnk) detailsLnk.href = "/";
       itemLabel.textContent = "0 / 0";
       return;
     }
@@ -240,7 +240,7 @@ export async function initHome(): Promise<void> {
     }
     itemLabel.textContent = `${itemIndex + 1} / ${total}`;
     if (detailsLnk) {
-      detailsLnk.href = `/nightlife?venue=${encodeURIComponent(flyer.clubSlug)}`;
+      detailsLnk.href = `/?venue=${encodeURIComponent(flyer.clubSlug)}`;
     }
   }
 

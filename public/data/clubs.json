@@ -36,6 +36,8 @@
     "images": [
       "/clubs/Gallery-Club/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -74,6 +76,8 @@
     "images": [
       "/clubs/Paloma-Chelsea/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -112,6 +116,8 @@
       "/clubs/Maddox-Club/01-cover.jpg",
       "/clubs/Maddox-Club/02-interior.png"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -151,6 +157,8 @@
       "/clubs/The-Rex-Rooms/01-cover.jpg",
       "/clubs/The-Rex-Rooms/02-interior.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -189,6 +197,8 @@
     "images": [
       "/clubs/Selene-Club/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -227,6 +237,8 @@
     "images": [
       "/clubs/Cirque-Le-Soir/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -265,6 +277,8 @@
     "images": [
       "/clubs/Tape-London/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -305,6 +319,8 @@
       "/clubs/Dear-Darling/01-cover.jpg",
       "/clubs/Dear-Darling/02-interior.png"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -343,6 +359,8 @@
     "images": [
       "/clubs/Tabu-London/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -380,6 +398,8 @@
     "images": [
       "/clubs/The-London-Reign/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -417,6 +437,8 @@
     "images": [
       "/clubs/The-Cuckoo-Club/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   },
   {
@@ -454,6 +476,8 @@
     "images": [
       "/clubs/77-London/01-cover.jpg"
     ],
+    "videos": [],
+    "hasPartnership": true,
     "guestlists": []
   }
 ]

@@ -15,6 +15,10 @@
  *
  * Guestlists: public/clubs/guestlists.csv — club_slug, days (pipe-separated, e.g. Fri|Sat),
  *   recurrence (one_off | weekly), optional notes. Merged into each club as guestlists[].
+ *
+ * Optional columns:
+ *   has_partnership — true/false (default true). When false, club is listed but non-partner flows apply.
+ *   video_urls — pipe-separated URLs (YouTube, Vimeo, or direct) → videos[] on club payload.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -157,6 +161,12 @@ function buildClubs() {
         ? "dining"
         : "lounge";
 
+    const hasPartnershipCol = row.has_partnership;
+    const hasPartnership =
+      hasPartnershipCol === undefined || hasPartnershipCol === ""
+        ? true
+        : bool(hasPartnershipCol);
+
     clubs.push({
       slug,
       name: row.name || slug,
@@ -182,6 +192,8 @@ function buildClubs() {
       knownFor: splitKnownFor(row.known_for || ""),
       amenities: splitPipe(row.amenities || ""),
       images: imgs,
+      videos: splitPipe(row.video_urls || ""),
+      hasPartnership,
       guestlists: guestBySlug.get(slug) ?? [],
     });
   }

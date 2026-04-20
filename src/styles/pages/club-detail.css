@@ -1,0 +1,358 @@
+.club-detail-body main.club-detail {
+  padding-bottom: var(--cc-space-xl);
+}
+
+.club-detail__hero {
+  display: grid;
+  gap: var(--cc-space-lg);
+  padding-top: var(--cc-space-xl);
+  padding-bottom: var(--cc-space-xl);
+  margin-bottom: var(--cc-space-lg);
+  align-items: start;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.club-detail__hero-copy {
+  min-width: 0;
+}
+
+.club-detail__title {
+  font-family: var(--cc-font-serif);
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: var(--cc-cream);
+  margin: 0 0 var(--cc-space-sm);
+}
+
+.club-detail__hero-map {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cc-space-sm);
+}
+
+.club-detail__lede {
+  max-width: 38rem;
+  color: var(--cc-muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  margin: 0 0 var(--cc-space-md);
+}
+
+.club-detail__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cc-space-sm);
+  margin: var(--cc-space-md) 0 0;
+}
+
+.club-detail__cta-row--top {
+  margin-top: var(--cc-space-sm);
+}
+
+.club-detail__map {
+  width: 100%;
+  min-height: 220px;
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-deep);
+}
+
+@media (min-width: 900px) {
+  .club-detail__hero--has-map {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 50%);
+    column-gap: var(--cc-space-xl);
+  }
+
+  .club-detail__hero--has-map .club-detail__hero-map .club-detail__map {
+    min-height: min(48vh, 400px);
+  }
+}
+
+main.club-detail > .club-detail__opening,
+main.club-detail > .club-detail__prices,
+main.club-detail > .club-detail__gallery,
+main.club-detail > .club-detail__about,
+main.club-detail > .club-detail__promoters {
+  padding-top: var(--cc-space-xl);
+  margin-top: var(--cc-space-md);
+}
+
+main.club-detail > .club-detail__hero + .club-detail__gallery {
+  margin-top: 0;
+  padding-top: var(--cc-space-md);
+}
+
+/* Stack “Pricing” above both tables in one centered column. */
+main.club-detail > .club-detail__prices {
+  display: grid;
+  justify-content: center;
+  grid-template-columns: min(100%, 56rem);
+}
+
+main.club-detail > .club-detail__prices > h2 {
+  grid-column: 1;
+  text-align: center;
+}
+
+main.club-detail > .club-detail__prices > .club-detail__price-blocks {
+  grid-column: 1;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+main.club-detail > .club-detail__opening h2,
+main.club-detail > .club-detail__prices h2,
+main.club-detail > .club-detail__gallery h2,
+main.club-detail > .club-detail__about h2,
+main.club-detail > .club-detail__promoters h2 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin: 0 0 var(--cc-space-md);
+}
+
+main.club-detail > .club-detail__prices h3.club-detail__price-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  margin: 0 0 var(--cc-space-sm);
+}
+
+.club-detail__amenities-title {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  margin: var(--cc-space-lg) 0 var(--cc-space-sm);
+}
+
+.club-detail__open-line {
+  margin: 0 0 var(--cc-space-sm);
+  color: var(--cc-text);
+  line-height: 1.55;
+  font-size: 1rem;
+}
+
+.club-detail__open-line strong {
+  color: var(--cc-cream);
+  font-weight: 600;
+}
+
+.club-detail__open-note {
+  margin: var(--cc-space-sm) 0 0;
+  font-size: 0.92rem;
+  color: var(--cc-muted);
+  line-height: 1.5;
+}
+
+.club-detail__price-blocks {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--cc-space-lg);
+}
+
+.club-detail__price-block {
+  flex: 1 1 min(22rem, 100%);
+  min-width: 0;
+  max-width: 28rem;
+}
+
+.club-detail__price-table-scroll {
+  overflow-x: auto;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+}
+
+.club-detail__price-table {
+  width: 100%;
+  min-width: 16rem;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.club-detail__price-table thead th {
+  text-align: left;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cc-gold-dim);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.club-detail__price-table tbody th {
+  width: 38%;
+  max-width: 10rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--cc-muted);
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--cc-border);
+  vertical-align: top;
+}
+
+.club-detail__price-table tbody td {
+  color: var(--cc-text);
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--cc-border);
+  vertical-align: top;
+}
+
+.club-detail__price-table tbody tr:last-child th,
+.club-detail__price-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Venue pin (matches nightlife hero markers; scoped to club page CSS bundle) */
+.club-detail-map__marker-root {
+  display: block;
+}
+
+.club-detail-map__marker-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.club-detail-map__marker-label {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  background: rgba(252, 250, 246, 0.98);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #141416;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transition: opacity 0.15s ease;
+}
+
+.club-detail-map__marker-wrap:hover .club-detail-map__marker-label,
+.club-detail-map__marker-wrap:focus-within .club-detail-map__marker-label {
+  opacity: 1;
+}
+
+.club-detail-map__marker-hit {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--cc-gold);
+  background: rgba(10, 10, 11, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5rem;
+  cursor: default;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  padding: 0;
+  line-height: 1;
+}
+
+.club-detail-map__marker-face {
+  display: block;
+}
+
+.club-detail__map-note {
+  color: var(--cc-muted);
+  font-size: 0.9rem;
+}
+
+.club-detail__gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 280px));
+  justify-content: center;
+  justify-items: center;
+  gap: var(--cc-space-md);
+  margin-top: var(--cc-space-sm);
+}
+
+.club-detail__gallery-grid > .club-detail__video {
+  justify-self: center;
+}
+
+.club-detail__fig {
+  margin: 0;
+  width: 100%;
+  max-width: 280px;
+  border-radius: var(--cc-radius);
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+}
+
+.club-detail__fig img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+}
+
+.club-detail__long {
+  color: var(--cc-text);
+  line-height: 1.65;
+  margin-bottom: var(--cc-space-md);
+}
+
+.club-detail__amenities {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--cc-muted);
+}
+
+.club-detail__promo-carousel {
+  display: flex;
+  gap: var(--cc-space-md);
+  overflow-x: auto;
+  padding-bottom: var(--cc-space-sm);
+  scroll-snap-type: x mandatory;
+}
+
+.club-detail__promo-slide {
+  flex: 0 0 220px;
+  scroll-snap-align: start;
+  padding: var(--cc-space-md);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  background: var(--cc-bg-card);
+}
+
+.club-detail__promo-name {
+  font-weight: 600;
+  margin: 0 0 var(--cc-space-sm);
+  color: var(--cc-cream);
+}
+
+.club-detail__footer-cta {
+  margin-top: var(--cc-space-xl);
+  padding-top: var(--cc-space-lg);
+  border-top: 1px solid var(--cc-border);
+}
+

@@ -742,3 +742,565 @@
 .nl-form--minimal button.cc-btn--gold .btn-arrow {
   font-size: 1.1em;
 }
+
+/* —— Landing hero (split map + flyer) —— */
+.nl-landing-hero {
+  padding-block: var(--cc-space-lg);
+  border-bottom: 1px solid var(--cc-border);
+  background: var(--cc-nightlife-hero-surface);
+}
+
+.nl-landing-hero__inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--cc-space-lg);
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .nl-landing-hero__inner {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 44%);
+    align-items: stretch;
+  }
+
+  /** Map collapsed: single column, hero copy + flyer centred */
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed {
+    grid-template-columns: minmax(0, 42rem);
+    justify-content: center;
+    margin-inline: auto;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-landing-hero__left {
+    text-align: center;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nightlife-actions {
+    justify-content: center;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-hero-flyer-wrap {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 36rem;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-landing-hero__map-wrap {
+    width: 100%;
+    max-width: 42rem;
+    margin-inline: auto;
+    min-height: 0;
+    align-items: flex-end;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-hero-map-toggle {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 959px) {
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-landing-hero__left {
+    text-align: center;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nightlife-actions {
+    justify-content: center;
+  }
+
+  .nl-landing-hero__inner.nl-landing-hero__inner--map-collapsed .nl-hero-flyer-wrap {
+    margin-inline: auto;
+    max-width: 36rem;
+  }
+}
+
+.nl-landing-hero__left .nightlife-hero__eyebrow {
+  margin-bottom: var(--cc-space-sm);
+}
+
+.nl-landing-hero__left h1 {
+  color: var(--cc-cream);
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  margin: 0 0 var(--cc-space-sm);
+}
+
+.nl-landing-hero__left .nightlife-hero__lede {
+  margin: 0 0 var(--cc-space-md);
+  max-width: 36rem;
+}
+
+.nl-landing-hero__left .nightlife-actions {
+  justify-content: flex-start;
+  margin-bottom: var(--cc-space-md);
+}
+
+.nl-hero-flyer-wrap {
+  margin-top: var(--cc-space-md);
+}
+
+.nl-hero-flyer {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--cc-space-md);
+  align-items: center;
+  padding: var(--cc-space-sm);
+  border-radius: var(--cc-radius-lg);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-card);
+}
+
+@media (max-width: 600px) {
+  .nl-hero-flyer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nl-hero-flyer img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: var(--cc-radius);
+}
+
+.nl-hero-flyer__eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  margin: 0 0 0.35rem;
+}
+
+.nl-hero-flyer__title {
+  margin: 0 0 0.25rem;
+  color: var(--cc-cream);
+  font-size: 1.15rem;
+}
+
+.nl-hero-flyer__club {
+  margin: 0;
+  color: var(--cc-muted);
+  font-size: 0.9rem;
+}
+
+.nl-hero-flyer__empty {
+  color: var(--cc-muted);
+  font-size: 0.95rem;
+}
+
+.nl-landing-hero__map-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+}
+
+.nl-hero-map-toggle {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-raised);
+  color: var(--cc-cream);
+  cursor: pointer;
+  font: inherit;
+}
+
+.nl-hero-map-toggle__chev {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.nl-hero-map-panel {
+  flex: 1;
+  min-height: 240px;
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--cc-border);
+}
+
+.nl-hero-map-panel.is-collapsed {
+  display: none;
+}
+
+.nl-hero-map {
+  width: 100%;
+  height: min(52vh, 420px);
+  min-height: 220px;
+}
+
+.nl-hero-map__empty {
+  padding: var(--cc-space-md);
+  color: var(--cc-muted);
+}
+
+/* Hero map: same pin affordance as full venue map; name on hover / focus */
+.nl-hero-map__marker-root {
+  display: block;
+}
+
+.nl-hero-map__marker-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.nl-hero-map__marker-label {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 4px;
+  padding: 5px 9px;
+  background: rgba(252, 250, 246, 0.99);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #0a0a0c;
+  white-space: nowrap;
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  transition: opacity 0.15s ease;
+}
+
+.nl-hero-map__marker-wrap:hover .nl-hero-map__marker-label,
+.nl-hero-map__marker-wrap:focus-within .nl-hero-map__marker-label {
+  opacity: 1;
+}
+
+.nl-hero-map__marker-hit {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--cc-gold);
+  background: rgba(10, 10, 11, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  padding: 0;
+  line-height: 1;
+}
+
+.nl-hero-map__marker-face {
+  display: block;
+}
+
+/* Club detail single-pin map reuses bullet styling */
+.nl-hero-map__pin {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 2.0rem;
+  line-height: 1;
+  color: var(--cc-gold);
+  cursor: pointer;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+.nl-featured-section,
+.nl-all-clubs {
+  padding-top: var(--cc-space-lg);
+}
+
+.nl-carousel {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scroll-snap-type: x mandatory;
+}
+
+.nl-carousel__track {
+  display: flex;
+  gap: var(--cc-space-md);
+}
+
+.nl-carousel__slide {
+  flex: 0 0 min(280px, 82vw);
+  scroll-snap-align: start;
+}
+
+.nl-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--cc-space-md);
+}
+
+.nl-card {
+  border-radius: var(--cc-radius-lg);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-card);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.nl-card:hover {
+  border-color: var(--cc-gold-soft);
+  box-shadow: var(--cc-lux-card-shadow);
+}
+
+.nl-card__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.nl-card__link:hover {
+  text-decoration: none;
+}
+
+.nl-card__media img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.nl-card__body {
+  padding: var(--cc-space-sm) var(--cc-space-md) var(--cc-space-md);
+}
+
+.nl-card__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+  color: var(--cc-cream);
+}
+
+.nl-card__desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--cc-muted);
+  line-height: 1.45;
+}
+
+.nl-card__hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--cc-gold-dim);
+}
+
+/* Discovery hover preview (carousel + grid only — not map pins) */
+.nl-discover-hovercard {
+  position: fixed;
+  z-index: 75;
+  width: min(320px, calc(100vw - 24px));
+  border-radius: var(--cc-radius-lg);
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-raised);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(212, 175, 55, 0.12);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.nl-discover-hovercard__media {
+  aspect-ratio: 16 / 9;
+  background: var(--cc-bg-deep);
+}
+
+.nl-discover-hovercard__gallery {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.nl-discover-hovercard__gal-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.nl-discover-hovercard__gallery-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.72),
+    rgba(0, 0, 0, 0.08)
+  );
+}
+
+.nl-discover-hovercard__gal-btn {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(10, 10, 11, 0.65);
+  color: var(--cc-cream);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nl-discover-hovercard__gal-btn:hover {
+  border-color: var(--cc-gold-soft);
+  color: var(--cc-gold);
+}
+
+.nl-discover-hovercard__gal-idx {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(252, 250, 246, 0.92);
+  min-width: 3.25rem;
+  text-align: center;
+}
+
+.nl-discover-hovercard__status-block {
+  margin: 0 0 0.5rem;
+}
+
+.nl-discover-hovercard__status {
+  margin: 0 0 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nl-discover-hovercard__status--peak {
+  color: var(--cc-gold);
+}
+
+.nl-discover-hovercard__status--off {
+  color: var(--cc-muted);
+}
+
+.nl-discover-hovercard__status--neutral {
+  color: var(--cc-gold-dim);
+}
+
+.nl-discover-hovercard__status-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--cc-muted);
+}
+
+.nl-discover-hovercard__entry {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.nl-discover-hovercard__entry-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cc-gold-dim);
+}
+
+.nl-discover-hovercard__entry-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-top: 0.2rem;
+}
+
+.nl-discover-hovercard__entry-row:first-of-type {
+  margin-top: 0;
+}
+
+.nl-discover-hovercard__entry-k {
+  color: var(--cc-muted);
+  flex: 0 0 auto;
+}
+
+.nl-discover-hovercard__entry-v {
+  color: var(--cc-cream);
+  text-align: right;
+}
+
+.nl-discover-hovercard__body {
+  padding: var(--cc-space-sm) var(--cc-space-md) var(--cc-space-md);
+}
+
+.nl-discover-hovercard__title {
+  margin: 0 0 0.35rem;
+  font-family: var(--cc-font-serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--cc-cream);
+}
+
+.nl-discover-hovercard__desc {
+  margin: 0 0 0.5rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--cc-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nl-discover-hovercard__meta {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  line-height: 1.45;
+}
+
+.nl-discover-hovercard__meta span {
+  white-space: nowrap;
+}
+
+.nl-discover-hovercard__known {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  color: var(--cc-muted);
+  line-height: 1.4;
+}
+
+.nl-discover-hovercard__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+  text-decoration: none;
+}
+
+.nl-discover-hovercard__cta:hover {
+  color: var(--cc-cream);
+  text-decoration: none;
+}

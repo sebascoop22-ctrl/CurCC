@@ -1,5 +1,6 @@
 {
   "redirects": [
+    { "source": "/clubs/:slug", "destination": "/club/:slug", "permanent": true },
     { "source": "/index.html", "destination": "/", "permanent": true },
     { "source": "/nightlife.html", "destination": "/nightlife", "permanent": true },
     { "source": "/nightlife-map.html", "destination": "/nightlife-map", "permanent": true },
@@ -12,6 +13,7 @@
     { "source": "/guest-checkin.html", "destination": "/guest-checkin", "permanent": true },
     { "source": "/privacy.html", "destination": "/privacy", "permanent": true },
     { "source": "/terms.html", "destination": "/terms", "permanent": true },
+    { "source": "/classic.html", "destination": "/classic", "permanent": true },
     { "source": "/go/instagram.html", "destination": "/go/instagram", "permanent": true },
     { "source": "/go/tiktok.html", "destination": "/go/tiktok", "permanent": true },
     { "source": "/go/facebook.html", "destination": "/go/facebook", "permanent": true },
@@ -19,7 +21,10 @@
     { "source": "/go/linkedin.html", "destination": "/go/linkedin", "permanent": true }
   ],
   "rewrites": [
-    { "source": "/nightlife", "destination": "/nightlife.html" },
+    { "source": "/nightlife", "destination": "/api/ssr/nightlanding?canonicalPath=/nightlife" },
+    { "source": "/club/:slug", "destination": "/api/club/:slug" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap-xml" },
+    { "source": "/classic", "destination": "/classic.html" },
     { "source": "/nightlife-map", "destination": "/nightlife-map.html" },
     { "source": "/security", "destination": "/security.html" },
     { "source": "/chauffeuring", "destination": "/chauffeuring.html" },

@@ -1,0 +1,44 @@
+/**
+ * After `vite build`, maps HTML entries to emitted JS/CSS for Vercel SSR HTML.
+ * Reads `dist/.vite/manifest.json` and writes `server/ssr-asset-hashes.json`
+ * (imported by `server/ssr-assets.ts` for Vercel SSR).
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, "..");
+const manifestPath = path.join(root, "dist", ".vite", "manifest.json");
+const outPath = path.join(root, "server", "ssr-asset-hashes.json");
+
+function toAbs(href) {
+  if (!href) return "";
+  return href.startsWith("/") ? href : `/${href}`;
+}
+
+function bundleForHtmlKey(manifest, htmlFile) {
+  const key = Object.keys(manifest).find((k) => k === htmlFile || k.endsWith(`/${htmlFile}`));
+  if (!key) return null;
+  const chunk = manifest[key];
+  if (!chunk?.file) return null;
+  const js = toAbs(chunk.file);
+  const css = (chunk.css ?? []).map(toAbs);
+  return { js, css };
+}
+
+function main() {
+  if (!fs.existsSync(manifestPath)) {
+    console.warn("write-ssr-asset-map: no dist/.vite/manifest.json — skip (run vite build first)");
+    process.exit(0);
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const nightlife = bundleForHtmlKey(manifest, "nightlife.html");
+  const clubDetail = bundleForHtmlKey(manifest, "club.html");
+  const payload = { nightlife, clubDetail };
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  console.log("write-ssr-asset-map:", outPath.replace(/\\/g, "/"), payload);
+}
+
+main();

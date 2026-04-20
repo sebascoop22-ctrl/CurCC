@@ -32,33 +32,68 @@ import {
   type ClientRow,
 } from "../admin/clients";
 import {
+  applyRecurringFinancialTransactions,
+  deleteFinancialRecurringTemplate,
+  getFinancialPeriodSummary,
+  getFinancialReport,
+  loadFinancialPayees,
+  loadFinancialRecurringTemplates,
+  loadFinancialTransactions,
+  upsertFinancialPayee,
+  upsertFinancialRecurringTemplate,
+  upsertFinancialTransaction,
+  adminInsertTableSale,
   approvePromoterRevision,
   completePromoterJob,
   createPromoterJob,
+  deletePromoterJob,
   generateInvoiceForPromoter,
-  getFinancialReport,
+  loadPendingGuestlistQueueForAdmin,
+  loadPendingNightAdjustmentsForAdmin,
+  loadPendingTableSalesQueueForAdmin,
   loadPromoterAvailability,
   loadPromoterInvoices,
   loadPromoterJobs,
+  loadPromoterJobsCalendar,
   loadPromoterPreferences,
   type PromoterRevisionRow,
   loadPromotersForAdmin,
   loadPromoterRevisionsForAdmin,
   loadPromoterSignupRequestsForAdmin,
+  loadTableSalesReportForAdmin,
+  reviewGuestlistEntryAsAdmin,
+  reviewNightAdjustmentAsAdmin,
+  reviewTableSaleAsAdmin,
+  setFinancialRecurringTemplateActive,
+  updatePromoterJob,
 } from "../admin/promoters";
+import {
+  callPromoterInvoiceEdge,
+  downloadPdfFromBase64,
+} from "../lib/promoter-invoice-edge";
 import { adminPromoterRequestDecision } from "../lib/promoter-request-edge";
 import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
+  FinancialPeriodSummary,
+  FinancialPayee,
+  FinancialStatus,
+  FinancialRecurringTemplate,
+  FinancialTransactionRow,
   Car,
   Club,
   ClubFlyer,
   GuestlistRecurrence,
   PromoterAvailabilitySlot,
   PromoterInvoice,
+  PromoterGuestlistQueueRow,
+  PromoterNightAdjustmentQueueRow,
   PromoterJob,
+  PromoterJobAdminRow,
   PromoterProfile,
   PromoterSignupRequest,
+  PromoterTableSaleQueueRow,
+  PromoterTableSaleReportRow,
 } from "../types";
 import "../styles/pages/admin.css";
 
@@ -69,6 +104,9 @@ type AdminView =
   | "promoter_requests"
   | "promoters"
   | "jobs"
+  | "guestlist_queue"
+  | "night_adjustments"
+  | "table_sales"
   | "invoices"
   | "financials"
   | "clubs"
@@ -95,15 +133,33 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
   },
   jobs: {
     title: "Promoter jobs",
-    subtitle: "Create jobs and mark work complete. Table shows history for the selected promoter.",
+    subtitle:
+      "Calendar and list for the visible month. Filter by promoter or club, create jobs, then edit, complete, or delete each row.",
+  },
+  guestlist_queue: {
+    title: "Guestlist review",
+    subtitle:
+      "Approve or reject names promoters submit for assigned guestlist jobs. Only approved guests update the job total and count toward payout when the job is completed.",
+  },
+  night_adjustments: {
+    title: "Night shift requests",
+    subtitle:
+      "One-off availability overrides promoters submit for specific dates. Approve or reject with notes.",
+  },
+  table_sales: {
+    title: "Tables sold",
+    subtitle:
+      "Dual entry: promoters log bookings pending review; office logs approved rows immediately. Use the report for totals by date range and club.",
   },
   invoices: {
     title: "Promoter invoices",
-    subtitle: "Generate period invoices and review totals.",
+    subtitle:
+      "Generate draft statements from earnings, download PDFs, and email them to the promoter’s login address via Resend (configure Edge Function + secrets). Set INVOICE_EMAIL_PROVIDER=disabled to block sends while keeping PDFs.",
   },
   financials: {
     title: "Financials",
-    subtitle: "Monthly summaries from financial_transactions.",
+    subtitle:
+      "Ledger entries, recurring templates, and period summaries from financial_transactions.",
   },
   clubs: {
     title: "Clubs",
@@ -118,6 +174,18 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
     subtitle: "Event flyers per club. Save clubs to the DB before linking.",
   },
 };
+
+const FINANCIAL_CATEGORY_PRESETS = [
+  "venue_income",
+  "concierge_income",
+  "promoter_payout",
+  "staff_cost",
+  "marketing",
+  "software",
+  "travel",
+  "office",
+  "tax",
+];
 
 type ClubEntry = { dbId: string | null; club: Club };
 type CarEntry = { dbId: string | null; car: Car };
@@ -171,6 +239,27 @@ function cloneClub(c?: Partial<Club>): Club {
     amenities: c?.amenities ?? [],
     images: c?.images ?? [],
     guestlists: c?.guestlists ?? [],
+    paymentDetails: {
+      method: c?.paymentDetails?.method ?? "",
+      beneficiaryName: c?.paymentDetails?.beneficiaryName ?? "",
+      accountNumber: c?.paymentDetails?.accountNumber ?? "",
+      sortCode: c?.paymentDetails?.sortCode ?? "",
+      iban: c?.paymentDetails?.iban ?? "",
+      swiftBic: c?.paymentDetails?.swiftBic ?? "",
+      reference: c?.paymentDetails?.reference ?? "",
+      payoutEmail: c?.paymentDetails?.payoutEmail ?? "",
+    },
+    taxDetails: {
+      registeredName: c?.taxDetails?.registeredName ?? "",
+      taxId: c?.taxDetails?.taxId ?? "",
+      vatNumber: c?.taxDetails?.vatNumber ?? "",
+      countryCode: c?.taxDetails?.countryCode ?? "",
+      isVatRegistered: c?.taxDetails?.isVatRegistered ?? false,
+      notes: c?.taxDetails?.notes ?? "",
+    },
+    discoveryCardTitle: c?.discoveryCardTitle,
+    discoveryCardBlurb: c?.discoveryCardBlurb,
+    discoveryCardImage: c?.discoveryCardImage,
   };
 }
 
@@ -323,6 +412,82 @@ function adminDisplayTruncate(s: string, max: number): string {
   return `${t.slice(0, Math.max(0, max - 1))}…`;
 }
 
+const ADMIN_JOB_SERVICES = [
+  "guestlist",
+  "private_table",
+  "venue_access",
+] as const;
+
+function jobServiceSelectHtml(value: string): string {
+  return ADMIN_JOB_SERVICES.map(
+    (s) =>
+      `<option value="${escapeAttr(s)}"${s === value ? " selected" : ""}>${escapeAttr(s)}</option>`,
+  ).join("");
+}
+
+function isoLocalYmd(y: number, m: number, d: number): string {
+  const p = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${y}-${p(m + 1)}-${p(d)}`;
+}
+
+function buildAdminJobsCalendarHtml(
+  year: number,
+  month: number,
+  rows: PromoterJobAdminRow[],
+): string {
+  const headers = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const byDay = new Map<number, PromoterJobAdminRow[]>();
+  for (const j of rows) {
+    const parts = j.jobDate.split("-");
+    if (parts.length < 3) continue;
+    const jy = Number(parts[0]);
+    const jm = Number(parts[1]);
+    const jd = Number(parts[2]);
+    if (jy === year && jm === month + 1) {
+      if (!byDay.has(jd)) byDay.set(jd, []);
+      byDay.get(jd)!.push(j);
+    }
+  }
+  const firstDow = new Date(year, month, 1).getDay();
+  const dim = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const isThisMonth =
+    today.getFullYear() === year && today.getMonth() === month;
+  const todayDay = today.getDate();
+  const head = headers
+    .map((h) => `<div class="admin-jobs__cal-hd">${escapeAttr(h)}</div>`)
+    .join("");
+  let cells = "";
+  for (let i = 0; i < firstDow; i++) {
+    cells += `<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`;
+  }
+  for (let d = 1; d <= dim; d++) {
+    const jobs = byDay.get(d) ?? [];
+    const isToday = isThisMonth && d === todayDay;
+    const pills = jobs
+      .slice(0, 4)
+      .map(
+        (j) =>
+          `<button type="button" class="admin-jobs__cal-pill admin-jobs__cal-pill--${escapeAttr(j.status)}" data-open-job-edit="${escapeAttr(j.id)}" title="${escapeAttr(`${j.promoterDisplayName} · ${j.clubSlug ?? "—"} · ${j.service}`)}">${escapeAttr(adminDisplayTruncate(j.promoterDisplayName, 11))}</button>`,
+      )
+      .join("");
+    const more =
+      jobs.length > 4
+        ? `<span class="admin-jobs__cal-more">+${jobs.length - 4}</span>`
+        : "";
+    cells += `<div class="admin-jobs__cal-cell${isToday ? " admin-jobs__cal-cell--today" : ""}">
+      <div class="admin-jobs__cal-daynum">${d}</div>
+      <div class="admin-jobs__cal-pills">${pills}${more}</div>
+    </div>`;
+  }
+  const totalCells = firstDow + dim;
+  const tail = (7 - (totalCells % 7)) % 7;
+  for (let i = 0; i < tail; i++) {
+    cells += `<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`;
+  }
+  return `<div class="admin-jobs__cal-grid">${head}${cells}</div>`;
+}
+
 function adminListTableWrap(tableInner: string): string {
   return `<div class="admin-list-table-wrap"><table class="admin-table admin-list-table">${tableInner}</table></div>`;
 }
@@ -367,6 +532,16 @@ function validateClubShape(club: Club): string[] {
     } catch {
       err.push("Website does not look like a valid URL.");
     }
+  }
+  const dImg = club.discoveryCardImage?.trim();
+  if (
+    dImg &&
+    !dImg.startsWith("/") &&
+    !/^https?:\/\//i.test(dImg)
+  ) {
+    err.push(
+      "Discovery card image must start with / or be a full http(s) URL.",
+    );
   }
   return err;
 }
@@ -539,8 +714,52 @@ export async function initAdminPortal(): Promise<void> {
   let promoterAvailability: PromoterAvailabilitySlot[] = [];
   let promoterPreferences: Array<{ clubSlug: string; weekdays: string[]; status: string }> = [];
   let promoterJobs: PromoterJob[] = [];
+  let jobsCalendarYear = new Date().getFullYear();
+  let jobsCalendarMonth = new Date().getMonth();
+  let jobsCalendarRows: PromoterJobAdminRow[] = [];
+  let jobsFilterPromoterId = "";
+  let jobsFilterClubSlug = "";
+  let editingJobId: string | null = null;
   let promoterInvoices: PromoterInvoice[] = [];
   let financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
+  let financialPeriodFrom = "";
+  let financialPeriodTo = "";
+  let financialCalendarYear = new Date().getFullYear();
+  let financialCalendarMonth = new Date().getMonth();
+  let financialViewMode: "calendar" | "table" = "calendar";
+  let financialFilterDirection: "" | "income" | "expense" = "";
+  let financialFilterStatus: "" | FinancialStatus = "";
+  let financialFilterTag = "";
+  let financialFilterPayeeId = "";
+  let financialSummary: FinancialPeriodSummary = {
+    income: 0,
+    expense: 0,
+    net: 0,
+    txCount: 0,
+  };
+  let financialTransactions: FinancialTransactionRow[] = [];
+  let financialRecurringTemplates: FinancialRecurringTemplate[] = [];
+  let financialPayees: FinancialPayee[] = [];
+  let financialEditingTemplateId: string | null = null;
+  let financialEditingTxId: string | null = null;
+  let financialBulkStatus: FinancialStatus = "paid";
+  let financialEntryOpen = false;
+  let financialEntryMode: "one_off" | "recurring" = "one_off";
+  let financialPayeeOpen = false;
+  let financialEditingPayeeId: string | null = null;
+  let financialDelegationBound = false;
+  let guestlistQueueRows: PromoterGuestlistQueueRow[] = [];
+  let guestlistQueueDelegationBound = false;
+  let nightAdjQueueRows: PromoterNightAdjustmentQueueRow[] = [];
+  let tableSalesQueueRows: PromoterTableSaleQueueRow[] = [];
+  let tableSalesReportRows: PromoterTableSaleReportRow[] = [];
+  let tableSalesReportFrom = "";
+  let tableSalesReportTo = "";
+  let tableSalesReportClub = "";
+  let tableSaleQueueDelegationBound = false;
+  let tableSaleFormDelegationBound = false;
+  let invoiceEdgeActionsBound = false;
+  let nightAdjDelegationBound = false;
   let loginError = "";
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
@@ -668,12 +887,129 @@ export async function initAdminPortal(): Promise<void> {
     }
   }
 
+  async function reloadJobsCalendar(): Promise<void> {
+    const from = isoLocalYmd(jobsCalendarYear, jobsCalendarMonth, 1);
+    const lastD = new Date(jobsCalendarYear, jobsCalendarMonth + 1, 0).getDate();
+    const to = isoLocalYmd(jobsCalendarYear, jobsCalendarMonth, lastD);
+    const r = await loadPromoterJobsCalendar(supabase, {
+      from,
+      to,
+      promoterId: jobsFilterPromoterId.trim() || undefined,
+      clubSlug: jobsFilterClubSlug.trim() || undefined,
+    });
+    jobsCalendarRows = r.ok ? r.rows : [];
+    if (editingJobId && !jobsCalendarRows.some((j) => j.id === editingJobId)) {
+      editingJobId = null;
+    }
+  }
+
   async function reloadFinancialReport(): Promise<void> {
     const now = new Date();
-    const from = `${now.getFullYear()}-01-01`;
-    const to = `${now.getFullYear()}-12-31`;
-    const r = await getFinancialReport(supabase, "month", from, to);
+    if (!financialPeriodFrom.trim()) {
+      financialPeriodFrom = `${now.getFullYear()}-01-01`;
+    }
+    if (!financialPeriodTo.trim()) {
+      financialPeriodTo = `${now.getFullYear()}-12-31`;
+    }
+    {
+      const p = financialPeriodFrom.trim().split("-");
+      const y = Number(p[0]);
+      const m = Number(p[1]);
+      if (Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12) {
+        financialCalendarYear = y;
+        financialCalendarMonth = m - 1;
+      }
+    }
+    const from = financialPeriodFrom;
+    const to = financialPeriodTo;
+    const filters = {
+      direction: financialFilterDirection || undefined,
+      status: financialFilterStatus || undefined,
+      paymentTag: financialFilterTag.trim() || undefined,
+      payeeId: financialFilterPayeeId.trim() || undefined,
+    };
+    const [r, summary, txRows, recurring] = await Promise.all([
+      getFinancialReport(supabase, "month", from, to, filters),
+      getFinancialPeriodSummary(supabase, from, to, filters),
+      loadFinancialTransactions(supabase, { from, to, ...filters }),
+      loadFinancialRecurringTemplates(supabase),
+    ]);
     financialRows = r.ok ? r.rows : [];
+    financialSummary = summary.ok
+      ? summary.row
+      : { income: 0, expense: 0, net: 0, txCount: 0 };
+    financialTransactions = txRows.ok ? txRows.rows : [];
+    financialRecurringTemplates = recurring.ok ? recurring.rows : [];
+    const payees = await loadFinancialPayees(supabase);
+    financialPayees = payees.ok ? payees.rows : [];
+  }
+
+  async function saveFinancialTxPatch(
+    txId: string,
+    patch: Partial<{
+      txDate: string;
+      status: FinancialStatus;
+    }>,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const base = financialTransactions.find((x) => x.id === txId);
+    if (!base) return { ok: false, message: "Transaction not found in current period." };
+    return upsertFinancialTransaction(supabase, {
+      id: base.id,
+      txDate: patch.txDate ?? base.txDate,
+      category: base.category,
+      direction: base.direction,
+      status: patch.status ?? base.status,
+      paymentTag: base.paymentTag,
+      amount: base.amount,
+      currency: base.currency,
+      convertForeign: base.convertForeign,
+      payeeId: base.payeeId,
+      payeeLabel: base.payeeLabel,
+      notes: base.notes,
+    });
+  }
+
+  async function reloadGuestlistQueue(): Promise<void> {
+    const r = await loadPendingGuestlistQueueForAdmin(supabase);
+    guestlistQueueRows = r.ok ? r.rows : [];
+    if (!r.ok) {
+      flash(`Guestlist queue: ${r.message}`, "error");
+    }
+  }
+
+  async function reloadNightAdjQueue(): Promise<void> {
+    const r = await loadPendingNightAdjustmentsForAdmin(supabase);
+    nightAdjQueueRows = r.ok ? r.rows : [];
+    if (!r.ok) {
+      flash(`Night requests: ${r.message}`, "error");
+    }
+  }
+
+  async function reloadTableSalesQueue(): Promise<void> {
+    const r = await loadPendingTableSalesQueueForAdmin(supabase);
+    tableSalesQueueRows = r.ok ? r.rows : [];
+    if (!r.ok) {
+      flash(`Table sales queue: ${r.message}`, "error");
+    }
+  }
+
+  async function reloadTableSalesReport(): Promise<void> {
+    const now = new Date();
+    if (!tableSalesReportFrom.trim()) {
+      tableSalesReportFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    }
+    if (!tableSalesReportTo.trim()) {
+      tableSalesReportTo = now.toISOString().slice(0, 10);
+    }
+    const r = await loadTableSalesReportForAdmin(supabase, {
+      from: tableSalesReportFrom,
+      to: tableSalesReportTo,
+      clubSlug: tableSalesReportClub.trim() || undefined,
+    });
+    tableSalesReportRows = r.ok ? r.rows : [];
+    if (!r.ok) {
+      flash(`Table sales report: ${r.message}`, "error");
+    }
   }
 
   async function reloadAllFromDb(): Promise<void> {
@@ -685,6 +1021,13 @@ export async function initAdminPortal(): Promise<void> {
     await reloadPromoterSignupRequests();
     await reloadPromoters();
     await reloadFinancialReport();
+    if (view === "jobs") await reloadJobsCalendar();
+    if (view === "guestlist_queue") await reloadGuestlistQueue();
+    if (view === "night_adjustments") await reloadNightAdjQueue();
+    if (view === "table_sales") {
+      await reloadTableSalesQueue();
+      await reloadTableSalesReport();
+    }
     selectedClub = Math.min(selectedClub, Math.max(0, clubEntries.length - 1));
     selectedCar = Math.min(selectedCar, Math.max(0, carEntries.length - 1));
   }
@@ -701,6 +1044,26 @@ export async function initAdminPortal(): Promise<void> {
         }
       }, 4200);
     }
+  }
+
+  function flashAfterJobDelete(res: {
+    clearedFinancialTx: number;
+    clearedEarnings: number;
+  }): void {
+    const parts: string[] = [];
+    if (res.clearedFinancialTx > 0) {
+      parts.push(
+        `${res.clearedFinancialTx} payout expense line(s) from completing this job`,
+      );
+    }
+    if (res.clearedEarnings > 0) {
+      parts.push(`${res.clearedEarnings} linked earning row(s)`);
+    }
+    flash(
+      parts.length
+        ? `Job deleted. Also removed ${parts.join(" and ")}. Guestlist rows on this job were removed.`
+        : "Job deleted. Guestlist rows on this job were removed.",
+    );
   }
 
   function renderLogin(): void {
@@ -785,6 +1148,635 @@ export async function initAdminPortal(): Promise<void> {
       </div>`;
   }
 
+  function renderGuestlistQueueDetailHtml(): string {
+    if (!guestlistQueueRows.length) {
+      return `<div class="admin-form">
+        <p class="admin-note full">No pending guestlist names. Promoters add guests from assigned guestlist jobs in their portal.</p>
+        <div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost" data-gl-refresh>Refresh queue</button></div>
+      </div>`;
+    }
+    const rows = guestlistQueueRows
+      .map(
+        (q) => `<tr data-gl-row data-entry-id="${escapeAttr(q.id)}">
+      <td>${escapeAttr(q.createdAt.slice(0, 16).replace("T", " "))}</td>
+      <td>${escapeAttr(q.promoterDisplayName)}</td>
+      <td>${escapeAttr(q.jobDate)}</td>
+      <td><code class="admin-list-code">${escapeAttr(q.clubSlug ?? "—")}</code></td>
+      <td class="admin-list-col--wide"><strong>${escapeAttr(q.guestName)}</strong><br /><span class="admin-note">${escapeAttr(q.guestContact || "—")}</span></td>
+      <td style="white-space:nowrap">
+        <input type="text" data-gl-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
+        <button type="button" class="cc-btn cc-btn--gold" data-gl-approve data-entry-id="${escapeAttr(q.id)}">Approve</button>
+        <button type="button" class="cc-btn cc-btn--ghost" data-gl-reject data-entry-id="${escapeAttr(q.id)}">Reject</button>
+      </td>
+    </tr>`,
+      )
+      .join("");
+    return `<div class="admin-form">
+      <p class="admin-note full">Approved names update the job guest total. When the job is marked complete, payout uses approved guests only (if the promoter added any names in the system; otherwise the manual guest count on the job still applies).</p>
+      <div class="admin-actions full" style="margin-bottom:0.75rem">
+        <button type="button" class="cc-btn cc-btn--ghost" data-gl-refresh>Refresh queue</button>
+      </div>
+      <div class="promoter-table-wrap full">
+        <table>
+          <thead><tr><th>Submitted</th><th>Promoter</th><th>Job date</th><th>Club</th><th>Guest</th><th>Review</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  function renderNightAdjustmentQueueDetailHtml(): string {
+    if (!nightAdjQueueRows.length) {
+      return `<div class="admin-form">
+        <p class="admin-note full">No pending night requests.</p>
+        <div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost" data-pna-refresh>Refresh queue</button></div>
+      </div>`;
+    }
+    const rows = nightAdjQueueRows
+      .map(
+        (q) => `<tr data-pna-row data-pna-id="${escapeAttr(q.id)}">
+      <td>${escapeAttr(q.promoterDisplayName)}</td>
+      <td>${escapeAttr(q.nightDate)}</td>
+      <td>${q.availableOverride ? "Available" : "Unavailable"}</td>
+      <td>${escapeAttr(q.startTime ?? "—")}</td>
+      <td>${escapeAttr(q.endTime ?? "—")}</td>
+      <td class="admin-list-col--wide">${escapeAttr(q.notes || "—")}</td>
+      <td style="white-space:nowrap">
+        <input type="text" data-pna-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
+        <button type="button" class="cc-btn cc-btn--gold" data-pna-approve data-pna-id="${escapeAttr(q.id)}">Approve</button>
+        <button type="button" class="cc-btn cc-btn--ghost" data-pna-reject data-pna-id="${escapeAttr(q.id)}">Reject</button>
+      </td>
+    </tr>`,
+      )
+      .join("");
+    return `<div class="admin-form">
+      <p class="admin-note full">Approved overrides are the record for that calendar night alongside weekly availability.</p>
+      <div class="admin-actions full" style="margin-bottom:0.75rem">
+        <button type="button" class="cc-btn cc-btn--ghost" data-pna-refresh>Refresh queue</button>
+      </div>
+      <div class="promoter-table-wrap full">
+        <table>
+          <thead><tr><th>Promoter</th><th>Night</th><th>Override</th><th>From</th><th>To</th><th>Notes</th><th>Review</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  function renderTableSalesViewHtml(): string {
+    const approvedRows = tableSalesReportRows.filter((r) => r.approvalStatus === "approved");
+    const sumTables = approvedRows.reduce((a, r) => a + r.tableCount, 0);
+    const sumSpend = approvedRows.reduce((a, r) => a + r.totalMinSpend, 0);
+    const clubFilterOpts = `<option value="">${escapeAttr("(all clubs)")}</option>${clubEntries
+      .map(
+        (e) =>
+          `<option value="${escapeAttr(e.club.slug)}"${tableSalesReportClub === e.club.slug ? " selected" : ""}>${escapeAttr(e.club.name)}</option>`,
+      )
+      .join("")}`;
+    const promoterOpts = promoters
+      .map(
+        (p) =>
+          `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
+      )
+      .join("");
+    const jobOpts = `<option value="">${escapeAttr("— None —")}</option>${promoterJobs
+      .filter((j) => j.status === "assigned" || j.status === "completed")
+      .map(
+        (j) =>
+          `<option value="${escapeAttr(j.id)}">${escapeAttr(`${j.jobDate} · ${j.clubSlug ?? "—"} · ${j.service}`)}</option>`,
+      )
+      .join("")}`;
+    const tierOpts = ["standard", "luxury", "vip", "other"]
+      .map((t) => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`)
+      .join("");
+    const today = new Date().toISOString().slice(0, 10);
+
+    const queueBlock =
+      tableSalesQueueRows.length === 0
+        ? `<div class="admin-form">
+        <p class="admin-note full">No pending table submissions.</p>
+        <div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost" data-ts-refresh>Refresh queue</button></div>
+      </div>`
+        : `<div class="admin-form">
+      <p class="admin-note full">Promoter-submitted rows stay pending until you approve or reject.</p>
+      <div class="admin-actions full" style="margin-bottom:0.75rem">
+        <button type="button" class="cc-btn cc-btn--ghost" data-ts-refresh>Refresh queue</button>
+      </div>
+      <div class="promoter-table-wrap full">
+        <table>
+          <thead><tr><th>Submitted</th><th>Promoter</th><th>Date</th><th>Club</th><th>Tier</th><th>Tables</th><th>Min spend</th><th>Notes</th><th>Review</th></tr></thead>
+          <tbody>${tableSalesQueueRows
+            .map(
+              (q) => `<tr data-ts-row data-entry-id="${escapeAttr(q.id)}">
+      <td>${escapeAttr(q.createdAt.slice(0, 16).replace("T", " "))}</td>
+      <td>${escapeAttr(q.promoterDisplayName)}</td>
+      <td>${escapeAttr(q.saleDate)}</td>
+      <td><code class="admin-list-code">${escapeAttr(q.clubSlug)}</code></td>
+      <td>${escapeAttr(q.tier)}</td>
+      <td>${q.tableCount}</td>
+      <td>${escapeAttr(`£${q.totalMinSpend.toFixed(2)}`)}</td>
+      <td class="admin-list-col--wide">${escapeAttr(q.notes || "—")}</td>
+      <td style="white-space:nowrap">
+        <input type="text" data-ts-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
+        <button type="button" class="cc-btn cc-btn--gold" data-ts-approve data-entry-id="${escapeAttr(q.id)}">Approve</button>
+        <button type="button" class="cc-btn cc-btn--ghost" data-ts-reject data-entry-id="${escapeAttr(q.id)}">Reject</button>
+      </td>
+    </tr>`,
+            )
+            .join("")}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+    const reportRows =
+      tableSalesReportRows.length === 0
+        ? `<tr><td colspan="10" class="admin-note">No rows in this range (or adjust filters).</td></tr>`
+        : tableSalesReportRows
+            .map(
+              (r) =>
+                `<tr>
+              <td>${escapeAttr(r.saleDate)}</td>
+              <td>${escapeAttr(adminDisplayTruncate(r.promoterDisplayName, 20))}</td>
+              <td><code class="admin-list-code">${escapeAttr(r.clubSlug)}</code></td>
+              <td>${escapeAttr(r.entryChannel)}</td>
+              <td>${escapeAttr(r.tier)}</td>
+              <td>${r.tableCount}</td>
+              <td>${escapeAttr(`£${r.totalMinSpend.toFixed(2)}`)}</td>
+              <td><span class="admin-list-badge admin-list-badge--${escapeAttr(r.approvalStatus)}">${escapeAttr(r.approvalStatus)}</span></td>
+              <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(r.notes, 40))}</td>
+              <td>${escapeAttr(r.createdAt.slice(0, 10))}</td>
+            </tr>`,
+            )
+            .join("");
+
+    return `${queueBlock}
+      <div class="admin-form" style="margin-top:1.5rem">
+        <h4 class="full">Office entry (approved immediately)</h4>
+        <p class="admin-note full">Logs the admin channel for the same reporting pipeline. Changing the promoter reloads their job list for the optional link field.</p>
+        <form id="admin-ts-insert-form" class="full" style="margin-top:0.5rem">
+          <div class="cc-field"><label for="admin-ts-promoter">Promoter</label>
+            <select name="promoterId" id="admin-ts-promoter" required>${promoterOpts || `<option value="">${escapeAttr("(no promoters)")}</option>`}</select>
+          </div>
+          <div class="cc-field"><label>Date</label><input name="saleDate" type="date" required value="${escapeAttr(today)}" /></div>
+          <div class="cc-field"><label>Club</label>
+            <select name="clubSlug" required>${clubEntries.map((e) => `<option value="${escapeAttr(e.club.slug)}">${escapeAttr(e.club.name)}</option>`).join("")}</select>
+          </div>
+          <div class="cc-field full"><label>Link job (optional)</label>
+            <select name="promoterJobId">${jobOpts}</select>
+          </div>
+          <div class="cc-field"><label>Tier</label><select name="tier">${tierOpts}</select></div>
+          <div class="cc-field"><label>Table count</label><input name="tableCount" type="number" min="1" max="99" value="1" required /></div>
+          <div class="cc-field"><label>Total min spend (£)</label><input name="totalMinSpend" type="number" min="0" step="0.01" value="0" /></div>
+          <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+          <div class="admin-actions full">
+            <button type="submit" class="cc-btn cc-btn--gold">Save office entry</button>
+          </div>
+        </form>
+      </div>
+      <div class="admin-form" style="margin-top:1.5rem">
+        <h4 class="full">Report</h4>
+        <p class="admin-note full">Totals below count <strong>approved</strong> rows only (both channels). Detail lists every row in range.</p>
+        <p class="admin-note full">Approved in range: <strong>${sumTables}</strong> tables · <strong>${escapeAttr(`£${sumSpend.toFixed(2)}`)}</strong> reported min spend · <strong>${tableSalesQueueRows.length}</strong> pending in queue.</p>
+        <form id="admin-ts-report-filters" class="full">
+          <div class="cc-field"><label>From</label><input name="from" type="date" value="${escapeAttr(tableSalesReportFrom)}" /></div>
+          <div class="cc-field"><label>To</label><input name="to" type="date" value="${escapeAttr(tableSalesReportTo)}" /></div>
+          <div class="cc-field"><label>Club</label><select name="clubFilter">${clubFilterOpts}</select></div>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--ghost" data-ts-report-apply>Apply filters</button>
+          </div>
+        </form>
+        <div class="promoter-table-wrap full" style="margin-top:0.75rem">
+          <table>
+            <thead><tr><th>Date</th><th>Promoter</th><th>Club</th><th>Channel</th><th>Tier</th><th>Tables</th><th>Min spend</th><th>Status</th><th>Notes</th><th>Logged</th></tr></thead>
+            <tbody>${reportRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  function renderJobsViewHtml(): string {
+    const monthLabel = new Date(
+      jobsCalendarYear,
+      jobsCalendarMonth,
+      1,
+    ).toLocaleString("en-GB", { month: "long", year: "numeric" });
+    const sortedJobs = [...jobsCalendarRows].sort((a, b) => {
+      const d = a.jobDate.localeCompare(b.jobDate);
+      if (d !== 0) return d;
+      return a.promoterDisplayName.localeCompare(b.promoterDisplayName);
+    });
+    const editJob = editingJobId
+      ? jobsCalendarRows.find((j) => j.id === editingJobId)
+      : undefined;
+    const calHtml = buildAdminJobsCalendarHtml(
+      jobsCalendarYear,
+      jobsCalendarMonth,
+      jobsCalendarRows,
+    );
+    const tableRows =
+      sortedJobs.length === 0
+        ? `<tr><td colspan="10" class="admin-note">No jobs in this month for the current filters.</td></tr>`
+        : sortedJobs
+            .map((j) => {
+              const completeBtn =
+                j.status === "assigned"
+                  ? `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-complete="${escapeAttr(j.id)}">Complete</button>`
+                  : "";
+              const editingCls = editingJobId === j.id ? " is-editing" : "";
+              return `<tr class="cc-row-editing${editingCls}">
+              <td>${escapeAttr(j.jobDate)}</td>
+              <td>${escapeAttr(adminDisplayTruncate(j.promoterDisplayName, 22))}</td>
+              <td>${escapeAttr(j.clubSlug ?? "—")}</td>
+              <td>${escapeAttr(j.service)}</td>
+              <td><span class="admin-list-badge admin-list-badge--${escapeAttr(j.status)}">${escapeAttr(j.status)}</span></td>
+              <td>${j.guestsCount}</td>
+              <td>${escapeAttr(`£${j.shiftFee.toFixed(2)}`)}</td>
+              <td>${escapeAttr(`£${j.guestlistFee.toFixed(2)}`)}</td>
+              <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(j.notes, 36))}</td>
+              <td class="admin-jobs__row-actions">
+                <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-open-job-edit="${escapeAttr(j.id)}">Edit</button>
+                ${completeBtn}
+                <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-delete="${escapeAttr(j.id)}">Delete</button>
+              </td>
+            </tr>`;
+            })
+            .join("");
+
+    const clubOptsFor = (slug: string | null) =>
+      `<option value="">${escapeAttr("(none)")}</option>${clubEntries
+        .map(
+          (c) =>
+            `<option value="${escapeAttr(c.club.slug)}"${(slug ?? "") === c.club.slug ? " selected" : ""}>${escapeAttr(c.club.name)}</option>`,
+        )
+        .join("")}`;
+
+    let editDialogHtml = "";
+    if (editJob) {
+      const readOnly = editJob.status === "completed";
+      if (readOnly) {
+        editDialogHtml = `<dialog class="admin-job-dialog" id="admin-job-edit-dialog">
+          <div class="admin-job-dialog__inner">
+            <h3 class="admin-job-dialog__title">Completed job</h3>
+            <p class="admin-note">${escapeAttr(editJob.promoterDisplayName)} · ${escapeAttr(editJob.jobDate)} · ${escapeAttr(editJob.clubSlug ?? "—")}</p>
+            <p class="admin-note">Recorded when marked complete. Delete only if you must undo (may fail if earnings are linked).</p>
+            <input type="hidden" id="admin-job-edit-id" value="${escapeAttr(editJob.id)}" />
+            <div class="admin-actions">
+              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-delete">Delete job</button>
+              <button type="button" class="cc-btn cc-btn--gold" id="admin-job-edit-dismiss">Close</button>
+            </div>
+          </div>
+        </dialog>`;
+      } else {
+        editDialogHtml = `<dialog class="admin-job-dialog" id="admin-job-edit-dialog">
+          <form class="admin-job-dialog__inner" id="admin-job-edit-form">
+            <h3 class="admin-job-dialog__title">Edit job</h3>
+            <p class="admin-note">${escapeAttr(editJob.promoterDisplayName)}</p>
+            <input type="hidden" name="jobId" value="${escapeAttr(editJob.id)}" />
+            <div class="cc-field"><label>Club</label><select name="clubSlug">${clubOptsFor(editJob.clubSlug)}</select></div>
+            <div class="cc-field"><label>Service</label><select name="service">${jobServiceSelectHtml(editJob.service)}</select></div>
+            <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${escapeAttr(editJob.jobDate)}" required /></div>
+            <div class="cc-field"><label>Status</label>
+              <select name="status">
+                <option value="assigned"${editJob.status === "assigned" ? " selected" : ""}>assigned</option>
+                <option value="cancelled"${editJob.status === "cancelled" ? " selected" : ""}>cancelled</option>
+              </select>
+            </div>
+            <div class="cc-field"><label>Shift fee (£)</label><input name="shiftFee" type="number" step="0.01" value="${editJob.shiftFee}" /></div>
+            <div class="cc-field"><label>Guestlist fee / guest (£)</label><input name="guestFee" type="number" step="0.01" value="${editJob.guestlistFee}" /></div>
+            <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="${editJob.guestsCount}" /></div>
+            <p class="admin-note full">If this promoter added guestlist names in the portal, <strong>approved</strong> rows set this count automatically. Manual count still applies when there are no submitted names.</p>
+            <div class="cc-field full"><label>Notes</label><textarea name="notes">${escapeHtmlText(editJob.notes)}</textarea></div>
+            <div class="admin-actions">
+              <button type="button" class="cc-btn cc-btn--gold" id="admin-job-edit-save">Save changes</button>
+              ${
+                editJob.status === "assigned"
+                  ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-complete">Mark completed</button>`
+                  : ""
+              }
+              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-delete">Delete</button>
+              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-dismiss">Close</button>
+            </div>
+          </form>
+        </dialog>`;
+      }
+    }
+
+    return `
+            <div class="admin-jobs">
+              <div class="admin-jobs__top">
+                <section class="admin-jobs__calendar" aria-label="Job calendar">
+                  <div class="admin-jobs__cal-toolbar">
+                    <button type="button" class="cc-btn cc-btn--ghost" id="jobs-cal-prev" aria-label="Previous month">←</button>
+                    <h4 class="admin-jobs__cal-title">${escapeAttr(monthLabel)}</h4>
+                    <button type="button" class="cc-btn cc-btn--ghost" id="jobs-cal-next" aria-label="Next month">→</button>
+                  </div>
+                  ${calHtml}
+                  <form class="admin-jobs__filters admin-form" id="jobs-calendar-filters">
+                    <div class="cc-field"><label for="jobs-filter-promoter">Promoter</label>
+                      <select id="jobs-filter-promoter" name="jobsFilterPromoter">
+                        <option value="">${escapeAttr("All promoters")}</option>
+                        ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === jobsFilterPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="cc-field"><label for="jobs-filter-club">Club</label>
+                      <select id="jobs-filter-club" name="jobsFilterClub">
+                        <option value="">${escapeAttr("All clubs")}</option>
+                        ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}"${c.club.slug === jobsFilterClubSlug ? " selected" : ""}>${escapeAttr(c.club.name)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="admin-actions admin-jobs__filter-actions">
+                      <button type="button" class="cc-btn cc-btn--gold" id="jobs-filter-apply">Apply filters</button>
+                      <button type="button" class="cc-btn cc-btn--ghost" id="jobs-filter-reset">Reset</button>
+                    </div>
+                  </form>
+                </section>
+                <section class="admin-jobs__create" aria-label="Create job">
+                  <h4 class="admin-jobs__create-title">Create job</h4>
+                  <form class="admin-form admin-jobs__create-form" id="promoter-job-form">
+                    <div class="cc-field"><label>Promoter</label>
+                      <select name="promoterId">
+                        ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="cc-field"><label>Club</label>
+                      <select name="clubSlug">
+                        <option value="">(none)</option>
+                        ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" required /></div>
+                    <div class="cc-field"><label>Service</label>
+                      <select name="service">${jobServiceSelectHtml("guestlist")}</select>
+                    </div>
+                    <div class="cc-field"><label>Shift fee (£)</label><input name="shiftFee" type="number" step="0.01" value="0" /></div>
+                    <div class="cc-field"><label>Guestlist fee / guest (£)</label><input name="guestFee" type="number" step="0.01" value="0" /></div>
+                    <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="0" /></div>
+                    <p class="admin-note full">Promoters can submit names in their portal; <strong>approved</strong> rows replace this count for billing when the job is completed. If they never use the portal, this number still applies.</p>
+                    <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="3" placeholder="Optional internal notes"></textarea></div>
+                    <div class="admin-actions">
+                      <button class="cc-btn cc-btn--gold" type="button" id="promoter-job-create">Create job</button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+              <section class="admin-jobs__table-block" aria-label="Jobs this month">
+                <h4 class="admin-jobs__table-title">Jobs this month</h4>
+                <div class="promoter-table-wrap">
+                  <table class="admin-table">
+                    <thead><tr>
+                      <th>Date</th><th>Promoter</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Shift</th><th>Per guest</th><th>Notes</th><th>Actions</th>
+                    </tr></thead>
+                    <tbody>${tableRows}</tbody>
+                  </table>
+                </div>
+              </section>
+              ${editDialogHtml}
+            </div>`;
+  }
+
+  function renderFinancialsViewHtml(): string {
+    const presetOpts = FINANCIAL_CATEGORY_PRESETS.map((x) => `<option value="${escapeAttr(x)}"></option>`).join("");
+    const payeeOptionsFor = (selected: string | null | undefined) =>
+      `<option value="">(none / one-off)</option>${financialPayees
+        .map(
+          (p) =>
+            `<option value="${escapeAttr(p.id)}"${selected && selected === p.id ? " selected" : ""}>${escapeAttr(p.name)}</option>`,
+        )
+        .join("")}`;
+    const y = financialCalendarYear;
+    const m = financialCalendarMonth;
+    const monthTitle = new Date(y, m, 1).toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+    const first = new Date(y, m, 1);
+    const firstDow = first.getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const byDate = new Map<string, FinancialTransactionRow[]>();
+    for (const tx of financialTransactions) {
+      if (!byDate.has(tx.txDate)) byDate.set(tx.txDate, []);
+      byDate.get(tx.txDate)!.push(tx);
+    }
+    const toneFor = (tx: FinancialTransactionRow): string => {
+      if (tx.status === "paid") return tx.direction === "income" ? "fin-chip--income-paid" : "fin-chip--expense-paid";
+      if (tx.status === "pending") return tx.direction === "income" ? "fin-chip--income-pending" : "fin-chip--expense-pending";
+      return "fin-chip--other";
+    };
+    const headers = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const calendarCells: string[] = [];
+    const calendarHead = headers
+      .map((h) => `<div class="admin-jobs__cal-hd">${escapeAttr(h)}</div>`)
+      .join("");
+    for (let i = 0; i < firstDow; i++) {
+      calendarCells.push(`<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`);
+    }
+    const today = new Date();
+    const isThisMonth = today.getFullYear() === y && today.getMonth() === m;
+    const todayDay = today.getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ymd = isoLocalYmd(y, m, d);
+      const rows = byDate.get(ymd) ?? [];
+      const isToday = isThisMonth && d === todayDay;
+      const chips = rows
+        .slice(0, 4)
+        .map(
+          (tx) =>
+            `<button type="button" class="admin-jobs__cal-pill fin-chip ${toneFor(tx)}" data-fin-edit-tx="${escapeAttr(tx.id)}" data-fin-drag-tx="${escapeAttr(tx.id)}" draggable="true" title="${escapeAttr(`${tx.category || tx.paymentTag || tx.direction} · ${tx.currency} ${tx.amount.toFixed(2)} · ${tx.status}`)}">${escapeAttr(adminDisplayTruncate(tx.category || tx.paymentTag || tx.direction, 18))}</button>`,
+        )
+        .join("");
+      calendarCells.push(
+        `<div class="admin-jobs__cal-cell${isToday ? " admin-jobs__cal-cell--today" : ""}" data-fin-drop-date="${escapeAttr(ymd)}"><div class="admin-jobs__cal-daynum">${d}</div><div class="admin-jobs__cal-pills">${chips}${rows.length > 4 ? `<span class="admin-jobs__cal-more">+${rows.length - 4}</span>` : ""}</div></div>`,
+      );
+    }
+    const totalCells = firstDow + daysInMonth;
+    const tail = (7 - (totalCells % 7)) % 7;
+    for (let i = 0; i < tail; i++) {
+      calendarCells.push(`<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`);
+    }
+
+    const txRows =
+      financialTransactions.length === 0
+        ? "<tr><td colspan='11' class='admin-note'>No ledger rows in the selected period.</td></tr>"
+        : financialTransactions
+            .map((r) => {
+              const payee = r.payeeLabel || financialPayees.find((p) => p.id === r.payeeId)?.name || "—";
+              return `<tr class="cc-row-editing${financialEditingTxId === r.id ? " is-editing" : ""}">
+                <td><input type="checkbox" name="finTxSelect" value="${escapeAttr(r.id)}" /></td>
+                <td>${escapeAttr(r.txDate)}</td>
+                <td>${escapeAttr(r.category)}</td>
+                <td>${escapeAttr(r.paymentTag || "—")}</td>
+                <td>${escapeAttr(r.direction)}</td>
+                <td>${escapeAttr(r.status)}</td>
+                <td>${escapeAttr(`${r.currency} ${r.amount.toFixed(2)}`)}</td>
+                <td>${escapeAttr(payee)}</td>
+                <td>${escapeAttr(r.sourceType || "manual")}</td>
+                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(r.notes, 34))}</td>
+                <td>${escapeAttr(r.createdAt.slice(0, 10))}</td>
+                <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-tx="${escapeAttr(r.id)}">Edit</button></td>
+              </tr>`;
+            })
+            .join("");
+
+    const recurringRows =
+      financialRecurringTemplates.length === 0
+        ? "<tr><td colspan='11' class='admin-note'>No recurring templates yet.</td></tr>"
+        : financialRecurringTemplates
+            .map((t) => {
+              const recurrenceLabel =
+                t.recurrenceUnit === "custom_days"
+                  ? `${t.intervalDays} day(s)`
+                  : `${t.recurrenceEvery} ${t.recurrenceUnit}`;
+              const payee = t.payeeLabel || financialPayees.find((p) => p.id === t.payeeId)?.name || "—";
+              return `<tr class="cc-row-editing${financialEditingTemplateId === t.id ? " is-editing" : ""}">
+                <td>${escapeAttr(t.label)}</td>
+                <td>${escapeAttr(t.category)}</td>
+                <td>${escapeAttr(t.paymentTag || "—")}</td>
+                <td>${escapeAttr(t.direction)}</td>
+                <td>${escapeAttr(t.defaultStatus)}</td>
+                <td>${escapeAttr(`${t.currency} ${t.amount.toFixed(2)}`)}</td>
+                <td>${escapeAttr(recurrenceLabel)}</td>
+                <td>${escapeAttr(t.nextDueDate)}</td>
+                <td>${escapeAttr(payee)}</td>
+                <td>${t.isActive ? "yes" : "no"}</td>
+                <td style="white-space:nowrap">
+                  <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-template-edit data-template-id="${escapeAttr(t.id)}">Edit</button>
+                  <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-template-toggle data-template-id="${escapeAttr(t.id)}" data-active="${t.isActive ? "true" : "false"}">${t.isActive ? "Deactivate" : "Activate"}</button>
+                  <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-template-delete data-template-id="${escapeAttr(t.id)}">Delete</button>
+                </td>
+              </tr>`;
+            })
+            .join("");
+
+    const payeeRows =
+      financialPayees.length === 0
+        ? "<tr><td colspan='5' class='admin-note'>No payees yet.</td></tr>"
+        : financialPayees
+            .map(
+              (p) =>
+                `<tr><td>${escapeAttr(p.name)}</td><td>${escapeAttr(p.defaultPaymentTag || "—")}</td><td>${escapeAttr(p.defaultCurrency)}</td><td>${p.isActive ? "yes" : "no"}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-payee-edit="${escapeAttr(p.id)}">Edit</button></td></tr>`,
+            )
+            .join("");
+
+    const payeeFilterOptions = `<option value="">All payees</option>${financialPayees
+      .map((p) => `<option value="${escapeAttr(p.id)}"${financialFilterPayeeId === p.id ? " selected" : ""}>${escapeAttr(p.name)}</option>`)
+      .join("")}`;
+
+    return `
+      <div class="admin-form">
+        <h4 class="full">Period summary</h4>
+        <form id="financial-period-form" class="full">
+          <div class="cc-field"><label>From</label><input name="from" type="date" value="${escapeAttr(financialPeriodFrom)}" /></div>
+          <div class="cc-field"><label>To</label><input name="to" type="date" value="${escapeAttr(financialPeriodTo)}" /></div>
+          <div class="cc-field"><label>Direction</label><select name="direction"><option value=""${financialFilterDirection === "" ? " selected" : ""}>All</option><option value="income"${financialFilterDirection === "income" ? " selected" : ""}>income</option><option value="expense"${financialFilterDirection === "expense" ? " selected" : ""}>expense</option></select></div>
+          <div class="cc-field"><label>Status</label><select name="status"><option value=""${financialFilterStatus === "" ? " selected" : ""}>All</option><option value="pending"${financialFilterStatus === "pending" ? " selected" : ""}>pending</option><option value="paid"${financialFilterStatus === "paid" ? " selected" : ""}>paid</option><option value="cancelled"${financialFilterStatus === "cancelled" ? " selected" : ""}>cancelled</option><option value="failed"${financialFilterStatus === "failed" ? " selected" : ""}>failed</option></select></div>
+          <div class="cc-field"><label>Payment tag</label><input name="paymentTag" list="financial-category-presets" value="${escapeAttr(financialFilterTag)}" placeholder="promoter_payout / club_receives" /></div>
+          <div class="cc-field"><label>Payee</label><select name="payeeId">${payeeFilterOptions}</select></div>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-refresh>Refresh period</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-export-csv>Export period CSV</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-view-mode="${financialViewMode === "calendar" ? "table" : "calendar"}">Switch to ${financialViewMode === "calendar" ? "table" : "calendar"} view</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-entry="one_off">New one-off</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-entry="recurring">New recurring</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-payee>Manage payees</button>
+          </div>
+        </form>
+        <p class="admin-note full"><strong>Income:</strong> ${escapeAttr(`£${financialSummary.income.toFixed(2)}`)} · <strong>Expense:</strong> ${escapeAttr(`£${financialSummary.expense.toFixed(2)}`)} · <strong>Net:</strong> ${escapeAttr(`£${financialSummary.net.toFixed(2)}`)} · <strong>Transactions:</strong> ${financialSummary.txCount}</p>
+        <p class="admin-note full fin-legend">
+          <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--income-paid">income paid</span></span>
+          <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--income-pending">income pending</span></span>
+          <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--expense-paid">expense paid</span></span>
+          <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--expense-pending">expense pending</span></span>
+          <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--other">cancelled / failed</span></span>
+        </p>
+      </div>
+      ${
+        financialViewMode === "calendar"
+          ? `<div class="admin-form fin-cal" style="margin-top:1rem"><div class="admin-jobs__cal-toolbar full"><h4 class="admin-jobs__cal-title">Calendar · ${escapeAttr(monthTitle)}</h4><div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-year">-1y</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-month">Prev</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="today">Today</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-month">Next</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-year">+1y</button></div></div><p class="admin-note full">Drag a transaction chip to a different day to reschedule.</p><div class="admin-jobs__cal-grid fin-cal-grid">${calendarHead}${calendarCells.join("")}</div></div>`
+          : `<div class="admin-form" style="margin-top:1rem"><h4 class="full">Ledger table</h4><div class="admin-actions full" style="margin-bottom:0.65rem"><label class="admin-note" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" id="fin-select-all-tx" /> Select all</label><select id="fin-bulk-status"><option value="pending"${financialBulkStatus === "pending" ? " selected" : ""}>pending</option><option value="paid"${financialBulkStatus === "paid" ? " selected" : ""}>paid</option><option value="cancelled"${financialBulkStatus === "cancelled" ? " selected" : ""}>cancelled</option><option value="failed"${financialBulkStatus === "failed" ? " selected" : ""}>failed</option></select><button type="button" class="cc-btn cc-btn--ghost" data-fin-bulk-apply>Apply status to selected</button></div><div class="promoter-table-wrap full"><table><thead><tr><th></th><th>Date</th><th>Category</th><th>Tag</th><th>Dir</th><th>Status</th><th>Amount</th><th>Payee</th><th>Source</th><th>Notes</th><th>Logged</th><th>Action</th></tr></thead><tbody>${txRows}</tbody></table></div></div>`
+      }
+      <div class="admin-form" style="margin-top:1rem">
+        <h4 class="full">Recurring templates</h4>
+        <div class="admin-actions full" style="margin-bottom:0.75rem"><button type="button" class="cc-btn cc-btn--gold" data-fin-apply-recurring>Apply recurring through period end</button></div>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Label</th><th>Category</th><th>Tag</th><th>Dir</th><th>Status</th><th>Amount</th><th>Recurrence</th><th>Next due</th><th>Payee</th><th>Active</th><th>Actions</th></tr></thead><tbody>${recurringRows}</tbody></table></div>
+      </div>
+      <div class="admin-form" style="margin-top:1rem">
+        <h4 class="full">Payees</h4>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Name</th><th>Default tag</th><th>Default currency</th><th>Active</th><th>Action</th></tr></thead><tbody>${payeeRows}</tbody></table></div>
+      </div>
+      ${
+        financialEntryOpen
+          ? (() => {
+              const tx = financialEditingTxId
+                ? financialTransactions.find((x) => x.id === financialEditingTxId) ?? null
+                : null;
+              const tpl = financialEditingTemplateId
+                ? financialRecurringTemplates.find((x) => x.id === financialEditingTemplateId) ?? null
+                : null;
+              const editingMode = tx ? "one_off" : tpl ? "recurring" : financialEntryMode;
+              const recurringEvery = tpl?.recurrenceEvery ?? 1;
+              const recurringUnit = tpl?.recurrenceUnit ?? "monthly";
+              return `<div class="admin-form" style="margin-top:1rem">
+                <h4 class="full">${tx || tpl ? "Edit" : "Create"} ${editingMode === "one_off" ? "ledger entry" : "recurring template"}</h4>
+                <form id="financial-entry-form" class="full">
+                  <input type="hidden" name="entryType" value="${editingMode}" />
+                  <input type="hidden" name="txId" value="${escapeAttr(tx?.id ?? "")}" />
+                  <input type="hidden" name="templateId" value="${escapeAttr(tpl?.id ?? "")}" />
+                  <div class="cc-field"><label>Date</label><input name="txDate" type="date" value="${escapeAttr(tx?.txDate ?? tpl?.nextDueDate ?? new Date().toISOString().slice(0, 10))}" /></div>
+                  <div class="cc-field"><label>Category</label><input name="category" list="financial-category-presets" value="${escapeAttr(tx?.category ?? tpl?.category ?? "")}" /></div>
+                  <div class="cc-field"><label>Payment tag</label><input name="paymentTag" list="financial-category-presets" value="${escapeAttr(tx?.paymentTag ?? tpl?.paymentTag ?? "")}" /></div>
+                  <div class="cc-field"><label>Direction</label><select name="direction"><option value="income"${(tx?.direction ?? tpl?.direction ?? "expense") === "income" ? " selected" : ""}>income</option><option value="expense"${(tx?.direction ?? tpl?.direction ?? "expense") === "expense" ? " selected" : ""}>expense</option></select></div>
+                  <div class="cc-field"><label>Status</label><select name="status"><option value="pending"${(tx?.status ?? tpl?.defaultStatus ?? "pending") === "pending" ? " selected" : ""}>pending</option><option value="paid"${(tx?.status ?? tpl?.defaultStatus ?? "pending") === "paid" ? " selected" : ""}>paid</option><option value="cancelled"${(tx?.status ?? tpl?.defaultStatus ?? "pending") === "cancelled" ? " selected" : ""}>cancelled</option><option value="failed"${(tx?.status ?? tpl?.defaultStatus ?? "pending") === "failed" ? " selected" : ""}>failed</option></select></div>
+                  <div class="cc-field"><label>Amount</label><input name="amount" type="number" min="0" step="0.01" value="${escapeAttr(String(tx?.amount ?? tpl?.amount ?? 0))}" /></div>
+                  <div class="cc-field"><label>Currency</label><input name="currency" value="${escapeAttr(tx?.currency ?? tpl?.currency ?? "GBP")}" maxlength="8" /></div>
+                  <div class="cc-field"><label>Currency mode</label><select name="convertForeign"><option value="false"${!(tx?.convertForeign ?? tpl?.convertForeign ?? false) ? " selected" : ""}>store foreign only</option><option value="true"${tx?.convertForeign ?? tpl?.convertForeign ? " selected" : ""}>convert (mark intent)</option></select></div>
+                  <div class="cc-field"><label>Payee</label><select name="payeeId">${payeeOptionsFor(tx?.payeeId ?? tpl?.payeeId)}</select></div>
+                  <div class="cc-field"><label>One-off payee</label><input name="payeeLabel" value="${escapeAttr(tx?.payeeLabel ?? tpl?.payeeLabel ?? "")}" placeholder="Only if payee not listed" /></div>
+                  ${editingMode === "recurring" ? `<div class="cc-field"><label>Recurrence</label><select name="recurrenceUnit"><option value="monthly"${recurringUnit === "monthly" ? " selected" : ""}>monthly</option><option value="quarterly"${recurringUnit === "quarterly" ? " selected" : ""}>quarterly</option><option value="annual"${recurringUnit === "annual" ? " selected" : ""}>annual</option><option value="custom_days"${recurringUnit === "custom_days" ? " selected" : ""}>custom_days</option></select></div><div class="cc-field"><label>Every</label><input name="recurrenceEvery" type="number" min="1" max="24" value="${escapeAttr(String(recurringEvery))}" /></div><div class="cc-field"><label>Custom days</label><input name="intervalDays" type="number" min="1" value="${escapeAttr(String(tpl?.intervalDays ?? 30))}" /></div><div class="cc-field"><label>Active</label><select name="isActive"><option value="true"${tpl?.isActive !== false ? " selected" : ""}>yes</option><option value="false"${tpl?.isActive === false ? " selected" : ""}>no</option></select></div>` : ""}
+                  <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2">${escapeAttr(tx?.notes ?? tpl?.notes ?? "")}</textarea></div>
+                  <div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">${tx || tpl ? "Save changes" : "Create"}</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-entry>Close</button></div>
+                </form>
+              </div>`;
+            })()
+          : ""
+      }
+      ${
+        financialPayeeOpen
+          ? (() => {
+              const p = financialEditingPayeeId
+                ? financialPayees.find((x) => x.id === financialEditingPayeeId) ?? null
+                : null;
+              return `<div class="admin-form" style="margin-top:1rem">
+                <h4 class="full">${p ? "Edit payee" : "Create payee"}</h4>
+                <form id="financial-payee-form" class="full">
+                  <input type="hidden" name="payeeId" value="${escapeAttr(p?.id ?? "")}" />
+                  <div class="cc-field"><label>Name</label><input name="name" value="${escapeAttr(p?.name ?? "")}" /></div>
+                  <div class="cc-field"><label>Default tag</label><input name="defaultPaymentTag" list="financial-category-presets" value="${escapeAttr(p?.defaultPaymentTag ?? "")}" /></div>
+                  <div class="cc-field"><label>Default currency</label><input name="defaultCurrency" value="${escapeAttr(p?.defaultCurrency ?? "GBP")}" maxlength="8" /></div>
+                  <div class="cc-field"><label>Payment method</label><input name="paymentMethod" value="${escapeAttr(p?.paymentDetails.method ?? "")}" /></div>
+                  <div class="cc-field"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(p?.paymentDetails.beneficiaryName ?? "")}" /></div>
+                  <div class="cc-field"><label>Account no</label><input name="accountNumber" value="${escapeAttr(p?.paymentDetails.accountNumber ?? "")}" /></div>
+                  <div class="cc-field"><label>Sort code</label><input name="sortCode" value="${escapeAttr(p?.paymentDetails.sortCode ?? "")}" /></div>
+                  <div class="cc-field"><label>IBAN</label><input name="iban" value="${escapeAttr(p?.paymentDetails.iban ?? "")}" /></div>
+                  <div class="cc-field"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(p?.paymentDetails.swiftBic ?? "")}" /></div>
+                  <div class="cc-field"><label>Payment ref</label><input name="paymentReference" value="${escapeAttr(p?.paymentDetails.reference ?? "")}" /></div>
+                  <div class="cc-field"><label>Payout email</label><input name="payoutEmail" value="${escapeAttr(p?.paymentDetails.payoutEmail ?? "")}" /></div>
+                  <div class="cc-field"><label>Tax registered name</label><input name="taxRegisteredName" value="${escapeAttr(p?.taxDetails.registeredName ?? "")}" /></div>
+                  <div class="cc-field"><label>Tax ID</label><input name="taxId" value="${escapeAttr(p?.taxDetails.taxId ?? "")}" /></div>
+                  <div class="cc-field"><label>VAT no.</label><input name="vatNumber" value="${escapeAttr(p?.taxDetails.vatNumber ?? "")}" /></div>
+                  <div class="cc-field"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(p?.taxDetails.countryCode ?? "")}" maxlength="8" /></div>
+                  <div class="cc-field"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${p?.taxDetails.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!p?.taxDetails.isVatRegistered ? " selected" : ""}>no</option></select></div>
+                  <div class="cc-field full"><label>Tax notes</label><textarea name="taxNotes" rows="2">${escapeAttr(p?.taxDetails.notes ?? "")}</textarea></div>
+                  <div class="cc-field"><label>Active</label><select name="isActive"><option value="true"${p?.isActive !== false ? " selected" : ""}>yes</option><option value="false"${p?.isActive === false ? " selected" : ""}>no</option></select></div>
+                  <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2">${escapeAttr(p?.notes ?? "")}</textarea></div>
+                  <div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">${p ? "Update payee" : "Create payee"}</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-payee>Close</button></div>
+                </form>
+              </div>`;
+            })()
+          : ""
+      }
+      <datalist id="financial-category-presets">${presetOpts}</datalist>`;
+  }
+
   function renderDashboard(): void {
     const club = clubEntries[selectedClub]?.club ?? cloneClub();
     const car = carEntries[selectedCar]?.car ?? cloneCar();
@@ -830,6 +1822,9 @@ export async function initAdminPortal(): Promise<void> {
               <button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button>
               <button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button>
               <button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button>
+              <button type="button" class="admin-view-tab ${view === "guestlist_queue" ? "is-active" : ""}" data-view="guestlist_queue">Guestlist</button>
+              <button type="button" class="admin-view-tab ${view === "night_adjustments" ? "is-active" : ""}" data-view="night_adjustments">Nights</button>
+              <button type="button" class="admin-view-tab ${view === "table_sales" ? "is-active" : ""}" data-view="table_sales">Tables</button>
               <button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button>
               <button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>
             </div>
@@ -884,11 +1879,17 @@ export async function initAdminPortal(): Promise<void> {
                           ? "Choose a promoter for profile and revisions."
                           : view === "jobs"
                             ? "Choose a promoter to attach jobs and history."
-                            : view === "invoices"
-                              ? "Choose a promoter for invoice tools."
-                              : view === "financials"
-                                ? "Reporting uses financial_transactions."
-                                : "Choose an item to edit in the panel."
+                            : view === "guestlist_queue"
+                              ? "Pending promoter-submitted names are listed in the detail panel."
+                              : view === "night_adjustments"
+                                ? "Pending one-off night availability requests appear in the detail panel."
+                                : view === "table_sales"
+                                  ? "Pending table submissions count here; open Tables for the queue, office entry, and report."
+                                  : view === "invoices"
+                                    ? "Choose a promoter for invoice tools."
+                                    : view === "financials"
+                                      ? "Reporting uses financial_transactions."
+                                      : "Choose an item to edit in the panel."
                 }</p>
                 <div class="admin-list" id="admin-list"></div>
                 <div class="admin-actions">
@@ -911,6 +1912,10 @@ export async function initAdminPortal(): Promise<void> {
               <div class="cc-field"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
               <div class="cc-field"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
               <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${escapeAttr(club.shortDescription)}</textarea></div>
+              <p class="admin-maps-hint" style="margin:0 0 0.75rem">Nightlife discovery cards (carousel + all venues): optional overrides. Leave blank to use name, short description, and the first image URL in the list below.</p>
+              <div class="cc-field"><label>Card title override</label><input name="discoveryCardTitle" value="${escapeAttr(club.discoveryCardTitle ?? "")}" placeholder="Defaults to name" /></div>
+              <div class="cc-field full"><label>Card blurb override</label><textarea name="discoveryCardBlurb" placeholder="Defaults to short description">${escapeAttr(club.discoveryCardBlurb ?? "")}</textarea></div>
+              <div class="cc-field full"><label>Card image URL override</label><input name="discoveryCardImage" value="${escapeAttr(club.discoveryCardImage ?? "")}" placeholder="/clubs/… or https://…" /></div>
               <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${escapeAttr(club.longDescription)}</textarea></div>
               <div class="cc-field"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
               <div class="cc-field full">
@@ -952,6 +1957,22 @@ export async function initAdminPortal(): Promise<void> {
                 <input id="club-image-file" type="file" accept="image/*" />
                 <button type="button" class="cc-btn cc-btn--ghost" id="club-image-upload">Upload to storage &amp; append URL</button>
               </div>
+              <h4 class="full">Payment details</h4>
+              <div class="cc-field"><label>Method</label><input name="paymentMethod" value="${escapeAttr(club.paymentDetails?.method ?? "")}" /></div>
+              <div class="cc-field"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(club.paymentDetails?.beneficiaryName ?? "")}" /></div>
+              <div class="cc-field"><label>Account no</label><input name="accountNumber" value="${escapeAttr(club.paymentDetails?.accountNumber ?? "")}" /></div>
+              <div class="cc-field"><label>Sort code</label><input name="sortCode" value="${escapeAttr(club.paymentDetails?.sortCode ?? "")}" /></div>
+              <div class="cc-field"><label>IBAN</label><input name="iban" value="${escapeAttr(club.paymentDetails?.iban ?? "")}" /></div>
+              <div class="cc-field"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(club.paymentDetails?.swiftBic ?? "")}" /></div>
+              <div class="cc-field"><label>Reference</label><input name="paymentReference" value="${escapeAttr(club.paymentDetails?.reference ?? "")}" /></div>
+              <div class="cc-field"><label>Payout email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
+              <h4 class="full">Tax details</h4>
+              <div class="cc-field"><label>Registered name</label><input name="taxRegisteredName" value="${escapeAttr(club.taxDetails?.registeredName ?? "")}" /></div>
+              <div class="cc-field"><label>Tax ID</label><input name="taxId" value="${escapeAttr(club.taxDetails?.taxId ?? "")}" /></div>
+              <div class="cc-field"><label>VAT number</label><input name="vatNumber" value="${escapeAttr(club.taxDetails?.vatNumber ?? "")}" /></div>
+              <div class="cc-field"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
+              <div class="cc-field"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
+              <div class="cc-field full"><label>Tax notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
               <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
             </form>`
                 : view === "cars"
@@ -1053,7 +2074,9 @@ export async function initAdminPortal(): Promise<void> {
                       return `<div class="cc-field"><label>Name</label><input value="${escapeAttr(p.displayName)}" disabled /></div>
                       <div class="cc-field"><label>Approval</label><input value="${escapeAttr(p.approvalStatus)}" disabled /></div>
                       <div class="cc-field full"><label>Bio</label><textarea disabled>${escapeAttr(p.bio)}</textarea></div>
-                      <div class="cc-field full"><label>Image</label><input value="${escapeAttr(p.profileImageUrl)}" disabled /></div>`;
+                      <div class="cc-field full"><label>Primary image</label><input value="${escapeAttr(p.profileImageUrl)}" disabled /></div>
+                      <div class="cc-field full"><label>Photo gallery (${(p.profileImageUrls ?? []).length})</label><textarea disabled rows="3">${escapeAttr((p.profileImageUrls ?? []).join("\n"))}</textarea></div>
+                      <div class="cc-field full"><label>Portfolio clubs</label><input value="${escapeAttr((p.portfolioClubSlugs ?? []).join(", "))}" disabled /></div>`;
                     })()
                   : `<p class="admin-note full">No promoters yet.</p>`
               }
@@ -1074,7 +2097,15 @@ export async function initAdminPortal(): Promise<void> {
                 promoterRevisions.find((r) => r.id === selectedRevisionId)
                   ? (() => {
                       const r = promoterRevisions.find((x) => x.id === selectedRevisionId)!;
-                      return `<div class="cc-field full"><label>Revision payload</label><pre class="admin-json">${escapeAttr(JSON.stringify(r.payload, null, 2))}</pre></div>
+                      const pay = r.payload;
+                      const imgC = Array.isArray(pay.profile_image_urls)
+                        ? pay.profile_image_urls.length
+                        : 0;
+                      const portC = Array.isArray(pay.portfolio_club_slugs)
+                        ? pay.portfolio_club_slugs.length
+                        : 0;
+                      return `<p class="admin-note full">Summary: <strong>${imgC}</strong> photo URL(s), <strong>${portC}</strong> portfolio club slug(s).</p>
+                      <div class="cc-field full"><label>Revision payload</label><pre class="admin-json">${escapeAttr(JSON.stringify(r.payload, null, 2))}</pre></div>
                       <div class="cc-field full"><label>Review notes</label><textarea id="promoter-review-notes">${escapeAttr(r.review_notes || "")}</textarea></div>
                       <div class="admin-actions full">
                         <button class="cc-btn cc-btn--gold" type="button" id="promoter-approve-revision">Approve</button>
@@ -1085,46 +2116,15 @@ export async function initAdminPortal(): Promise<void> {
               }
             </div>`
                       : view === "jobs"
-                        ? `
-            <form class="admin-form" id="promoter-job-form">
-              <div class="cc-field"><label>Promoter</label>
-                <select name="promoterId">
-                  ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
-                </select>
-              </div>
-              <div class="cc-field"><label>Club</label>
-                <select name="clubSlug">
-                  <option value="">(none)</option>
-                  ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name)}</option>`).join("")}
-                </select>
-              </div>
-              <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
-              <div class="cc-field"><label>Service</label><input name="service" value="guestlist" /></div>
-              <div class="cc-field"><label>Shift fee</label><input name="shiftFee" type="number" step="0.01" value="0" /></div>
-              <div class="cc-field"><label>Guestlist fee</label><input name="guestFee" type="number" step="0.01" value="0" /></div>
-              <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="0" /></div>
-              <div class="cc-field full"><label>Notes</label><textarea name="notes"></textarea></div>
-              <div class="admin-actions full">
-                <button class="cc-btn cc-btn--gold" type="button" id="promoter-job-create">Create job</button>
-                <button class="cc-btn cc-btn--ghost" type="button" id="promoter-job-complete">Mark selected completed</button>
-              </div>
-              <div class="full promoter-table-wrap">
-                <table>
-                  <thead><tr><th>Date</th><th>Club</th><th>Status</th><th>Guests</th><th>Shift</th><th>Per guest</th></tr></thead>
-                  <tbody>
-                    ${
-                      promoterJobs.length
-                        ? promoterJobs
-                            .map((j) => `<tr><td>${escapeAttr(j.jobDate)}</td><td>${escapeAttr(j.clubSlug ?? "—")}</td><td>${escapeAttr(j.status)}</td><td>${j.guestsCount}</td><td>${escapeAttr(`£${j.shiftFee.toFixed(2)}`)}</td><td>${escapeAttr(`£${j.guestlistFee.toFixed(2)}`)}</td></tr>`)
-                            .join("")
-                        : "<tr><td colspan='6'>No jobs for selected promoter.</td></tr>"
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </form>`
-                        : view === "invoices"
-                          ? `
+                        ? renderJobsViewHtml()
+                        : view === "guestlist_queue"
+                          ? renderGuestlistQueueDetailHtml()
+                          : view === "night_adjustments"
+                            ? renderNightAdjustmentQueueDetailHtml()
+                            : view === "table_sales"
+                              ? renderTableSalesViewHtml()
+                              : view === "invoices"
+                                ? `
             <form class="admin-form" id="promoter-invoice-form">
               <div class="cc-field"><label>Promoter</label>
                 <select name="promoterId">${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}</select>
@@ -1134,40 +2134,37 @@ export async function initAdminPortal(): Promise<void> {
               <div class="admin-actions full">
                 <button class="cc-btn cc-btn--gold" type="button" id="promoter-invoice-generate">Generate invoice</button>
               </div>
+              <p class="admin-note full">PDF and email use the <code>promoter-invoice</code> Edge Function (deploy + set <code>RESEND_API_KEY</code>, <code>RESEND_FROM</code>, <code>INVOICE_EMAIL_PROVIDER</code>).</p>
               <div class="full promoter-table-wrap">
                 <table>
-                  <thead><tr><th>Period</th><th>Status</th><th>Total</th></tr></thead>
+                  <thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Sent</th><th>PDF</th><th>Email</th></tr></thead>
                   <tbody>
                     ${
                       promoterInvoices.length
                         ? promoterInvoices
-                            .map((i) => `<tr><td>${escapeAttr(i.periodStart)} to ${escapeAttr(i.periodEnd)}</td><td>${escapeAttr(i.status)}</td><td>${escapeAttr(`£${i.total.toFixed(2)}`)}</td></tr>`)
+                            .map((i) => {
+                              const sent =
+                                i.sentAt && i.sentToEmail
+                                  ? `${escapeAttr(i.sentAt.slice(0, 10))} → ${escapeAttr(i.sentToEmail)}`
+                                  : "—";
+                              return `<tr>
+                              <td>${escapeAttr(i.periodStart)} to ${escapeAttr(i.periodEnd)}</td>
+                              <td>${escapeAttr(i.status)}</td>
+                              <td>${escapeAttr(`£${i.total.toFixed(2)}`)}</td>
+                              <td class="admin-list-col--wide">${sent}</td>
+                              <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-invoice-pdf data-invoice-id="${escapeAttr(i.id)}">PDF</button></td>
+                              <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-invoice-email data-invoice-id="${escapeAttr(i.id)}">Email</button></td>
+                            </tr>`;
+                            })
                             .join("")
-                        : "<tr><td colspan='3'>No invoices for selected promoter.</td></tr>"
+                        : "<tr><td colspan='6'>No invoices for selected promoter.</td></tr>"
                     }
                   </tbody>
                 </table>
               </div>
             </form>`
                           : view === "financials"
-                            ? `
-            <div class="admin-form">
-              <h4 class="full">Financial summary (current year by month)</h4>
-              <div class="full promoter-table-wrap">
-                <table>
-                  <thead><tr><th>Period</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
-                  <tbody>
-                    ${
-                      financialRows.length
-                        ? financialRows
-                            .map((r) => `<tr><td>${escapeAttr(r.period_label)}</td><td>${escapeAttr(`£${r.income.toFixed(2)}`)}</td><td>${escapeAttr(`£${r.expense.toFixed(2)}`)}</td><td>${escapeAttr(`£${r.net.toFixed(2)}`)}</td></tr>`)
-                            .join("")
-                        : "<tr><td colspan='4'>No financial rows yet. Add records in public.financial_transactions.</td></tr>"
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </div>`
+                            ? renderFinancialsViewHtml()
                     : view === "enquiries"
                       ? enquiry
                         ? renderEnquiryDetail(enquiry)
@@ -1193,6 +2190,656 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   function bindDashboardEvents(): void {
+    if (!guestlistQueueDelegationBound) {
+      guestlistQueueDelegationBound = true;
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest("[data-gl-refresh]")) {
+          void reloadGuestlistQueue().then(() => {
+            flash("Guestlist queue refreshed.");
+            renderDashboard();
+          });
+          return;
+        }
+        const approve = t.closest("button[data-gl-approve]") as HTMLButtonElement | null;
+        const reject = t.closest("button[data-gl-reject]") as HTMLButtonElement | null;
+        const act = approve ?? reject;
+        if (!act) return;
+        const entryId = act.dataset.entryId?.trim();
+        if (!entryId) return;
+        const tr = act.closest("tr");
+        const notes = String(
+          (tr?.querySelector("input[data-gl-notes]") as HTMLInputElement | null)?.value ?? "",
+        ).trim();
+        void (async () => {
+          const res = await reviewGuestlistEntryAsAdmin(
+            supabase,
+            entryId,
+            Boolean(approve),
+            notes,
+          );
+          if (!res.ok) {
+            flash(res.message, "error");
+            return;
+          }
+          await reloadGuestlistQueue();
+          flash(approve ? "Guest approved." : "Guest rejected.");
+          renderDashboard();
+        })();
+      });
+    }
+
+    if (!nightAdjDelegationBound) {
+      nightAdjDelegationBound = true;
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest("[data-pna-refresh]")) {
+          void reloadNightAdjQueue().then(() => {
+            flash("Night queue refreshed.");
+            renderDashboard();
+          });
+          return;
+        }
+        const appr = t.closest("button[data-pna-approve]") as HTMLButtonElement | null;
+        const rej = t.closest("button[data-pna-reject]") as HTMLButtonElement | null;
+        const act = appr ?? rej;
+        if (!act) return;
+        const adjId = act.dataset.pnaId?.trim();
+        if (!adjId) return;
+        const tr = act.closest("tr");
+        const notes = String(
+          (tr?.querySelector("input[data-pna-notes]") as HTMLInputElement | null)?.value ?? "",
+        ).trim();
+        void (async () => {
+          const res = await reviewNightAdjustmentAsAdmin(
+            supabase,
+            adjId,
+            Boolean(appr),
+            notes,
+          );
+          if (!res.ok) {
+            flash(res.message, "error");
+            return;
+          }
+          await reloadNightAdjQueue();
+          flash(appr ? "Night request approved." : "Night request rejected.");
+          renderDashboard();
+        })();
+      });
+    }
+
+    if (!tableSaleQueueDelegationBound) {
+      tableSaleQueueDelegationBound = true;
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest("[data-ts-refresh]")) {
+          void (async () => {
+            await reloadTableSalesQueue();
+            await reloadTableSalesReport();
+            flash("Table sales refreshed.");
+            renderDashboard();
+          })();
+          return;
+        }
+        const approve = t.closest("button[data-ts-approve]") as HTMLButtonElement | null;
+        const reject = t.closest("button[data-ts-reject]") as HTMLButtonElement | null;
+        const act = approve ?? reject;
+        if (!act) return;
+        const entryId = act.dataset.entryId?.trim();
+        if (!entryId) return;
+        const tr = act.closest("tr");
+        const notes = String(
+          (tr?.querySelector("input[data-ts-notes]") as HTMLInputElement | null)?.value ?? "",
+        ).trim();
+        void (async () => {
+          const res = await reviewTableSaleAsAdmin(
+            supabase,
+            entryId,
+            Boolean(approve),
+            notes,
+          );
+          if (!res.ok) {
+            flash(res.message, "error");
+            return;
+          }
+          await reloadTableSalesQueue();
+          await reloadTableSalesReport();
+          flash(approve ? "Table sale approved." : "Table sale rejected.");
+          renderDashboard();
+        })();
+      });
+    }
+
+    if (!tableSaleFormDelegationBound) {
+      tableSaleFormDelegationBound = true;
+      adminRoot.addEventListener("change", (ev) => {
+        const el = ev.target as HTMLElement | null;
+        if (el?.id !== "admin-ts-promoter") return;
+        const id = (el as HTMLSelectElement).value?.trim();
+        if (!id) return;
+        selectedPromoterId = id;
+        void (async () => {
+          await reloadPromoters();
+          flash("Promoter jobs reloaded for table entry.");
+          renderDashboard();
+        })();
+      });
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t?.closest("[data-ts-report-apply]")) return;
+        const form = adminRoot.querySelector("#admin-ts-report-filters") as HTMLFormElement | null;
+        if (!form) return;
+        const fd = new FormData(form);
+        tableSalesReportFrom = String(fd.get("from") || "").trim().slice(0, 10);
+        tableSalesReportTo = String(fd.get("to") || "").trim().slice(0, 10);
+        tableSalesReportClub = String(fd.get("clubFilter") || "").trim();
+        void (async () => {
+          await reloadTableSalesReport();
+          flash("Report updated.");
+          renderDashboard();
+        })();
+      });
+      adminRoot.addEventListener("submit", (ev) => {
+        const form = (ev.target as HTMLElement | null)?.closest?.("#admin-ts-insert-form");
+        if (!form) return;
+        ev.preventDefault();
+        const fd = new FormData(form as HTMLFormElement);
+        const promoterId = String(fd.get("promoterId") || "").trim();
+        const saleDate = String(fd.get("saleDate") || "").trim();
+        const clubSlug = String(fd.get("clubSlug") || "").trim();
+        const promoterJobId = String(fd.get("promoterJobId") || "").trim() || null;
+        const tier = String(fd.get("tier") || "other").trim();
+        const tableCount = Number(fd.get("tableCount") || 1) || 1;
+        const totalMinSpend = Number(fd.get("totalMinSpend") || 0) || 0;
+        const notes = String(fd.get("notes") || "").trim();
+        void (async () => {
+          const res = await adminInsertTableSale(supabase, {
+            promoterId,
+            saleDate,
+            clubSlug,
+            promoterJobId,
+            tier,
+            tableCount,
+            totalMinSpend,
+            notes,
+          });
+          if (!res.ok) {
+            flash(res.message, "error");
+            return;
+          }
+          await reloadTableSalesQueue();
+          await reloadTableSalesReport();
+          flash("Office table entry saved.");
+          renderDashboard();
+        })();
+      });
+    }
+
+    if (!invoiceEdgeActionsBound) {
+      invoiceEdgeActionsBound = true;
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        const pdfBtn = t?.closest("button[data-invoice-pdf]") as HTMLButtonElement | null;
+        const emailBtn = t?.closest("button[data-invoice-email]") as HTMLButtonElement | null;
+        const act = pdfBtn ?? emailBtn;
+        if (!act) return;
+        const invoiceId = act.dataset.invoiceId?.trim();
+        if (!invoiceId) return;
+        const anonKey =
+          String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim() ||
+          String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
+        if (!anonKey) {
+          flash("Missing anon key in env.", "error");
+          return;
+        }
+        void (async () => {
+          const { data: sess } = await supabase.auth.getSession();
+          const token = sess.session?.access_token ?? "";
+          if (!token) {
+            flash("Session expired — sign in again.", "error");
+            return;
+          }
+          if (pdfBtn) {
+            const res = await callPromoterInvoiceEdge(anonKey, token, invoiceId, "pdf");
+            if (!res.ok) {
+              flash(res.message || "PDF failed.", "error");
+              return;
+            }
+            downloadPdfFromBase64(res.pdfBase64, res.filename);
+            flash("PDF downloaded.");
+            return;
+          }
+          const res = await callPromoterInvoiceEdge(anonKey, token, invoiceId, "send");
+          if (!res.ok) {
+            flash(res.message || "Email failed.", "error");
+            return;
+          }
+          await reloadPromoters();
+          flash(`Invoice emailed to ${res.emailedTo}.`);
+          renderDashboard();
+        })();
+      });
+    }
+
+    if (!financialDelegationBound) {
+      financialDelegationBound = true;
+      adminRoot.addEventListener("click", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!t) return;
+        if (t.closest("[data-fin-refresh]")) {
+          const form = adminRoot.querySelector("#financial-period-form") as HTMLFormElement | null;
+          if (form) {
+            const fd = new FormData(form);
+            financialPeriodFrom = String(fd.get("from") || "").trim().slice(0, 10);
+            financialPeriodTo = String(fd.get("to") || "").trim().slice(0, 10);
+            const d = String(fd.get("direction") || "").trim();
+            financialFilterDirection = d === "income" || d === "expense" ? d : "";
+            const st = String(fd.get("status") || "").trim();
+            financialFilterStatus =
+              st === "pending" || st === "paid" || st === "cancelled" || st === "failed" ? st : "";
+            financialFilterTag = String(fd.get("paymentTag") || "").trim();
+            financialFilterPayeeId = String(fd.get("payeeId") || "").trim();
+          }
+          void (async () => {
+            await reloadFinancialReport();
+            flash("Financial period refreshed.");
+            renderDashboard();
+          })();
+          return;
+        }
+        if (t.closest("[data-fin-export-csv]")) {
+          const lines = [
+            ["tx_date", "category", "direction", "amount", "currency", "source_type", "notes"].join(","),
+            ...financialTransactions.map((r) =>
+              [
+                r.txDate,
+                `"${String(r.category || "").replace(/"/g, '""')}"`,
+                r.direction,
+                r.amount.toFixed(2),
+                r.currency,
+                r.sourceType,
+                `"${String(r.notes || "").replace(/"/g, '""')}"`,
+              ].join(","),
+            ),
+          ];
+          const name = `financial-${financialPeriodFrom || "from"}-to-${financialPeriodTo || "to"}.csv`;
+          downloadTextFile(name, lines.join("\n"));
+          flash("Financial CSV exported.");
+          return;
+        }
+        const calNavBtn = t.closest("[data-fin-cal-nav]") as HTMLButtonElement | null;
+        if (calNavBtn) {
+          const action = calNavBtn.dataset.finCalNav?.trim() || "";
+          let y = financialCalendarYear;
+          let m = financialCalendarMonth;
+          if (action === "prev-month") m -= 1;
+          else if (action === "next-month") m += 1;
+          else if (action === "prev-year") y -= 1;
+          else if (action === "next-year") y += 1;
+          else if (action === "today") {
+            const now = new Date();
+            y = now.getFullYear();
+            m = now.getMonth();
+          }
+          if (m < 0) {
+            y -= Math.ceil(Math.abs(m) / 12);
+            m = ((m % 12) + 12) % 12;
+          } else if (m > 11) {
+            y += Math.floor(m / 12);
+            m %= 12;
+          }
+          financialCalendarYear = y;
+          financialCalendarMonth = m;
+          financialPeriodFrom = isoLocalYmd(y, m, 1);
+          financialPeriodTo = isoLocalYmd(y, m, new Date(y, m + 1, 0).getDate());
+          void (async () => {
+            await reloadFinancialReport();
+            renderDashboard();
+          })();
+          return;
+        }
+        if (t.closest("[data-fin-bulk-apply]")) {
+          const selected = Array.from(
+            adminRoot.querySelectorAll<HTMLInputElement>('input[name="finTxSelect"]:checked'),
+          )
+            .map((x) => x.value.trim())
+            .filter(Boolean);
+          if (selected.length === 0) {
+            flash("Select at least one ledger row first.", "error");
+            return;
+          }
+          void (async () => {
+            let changed = 0;
+            for (const txId of selected) {
+              const r = await saveFinancialTxPatch(txId, { status: financialBulkStatus });
+              if (r.ok) changed += 1;
+            }
+            if (changed === 0) {
+              flash("No rows were updated.", "error");
+              return;
+            }
+            await reloadFinancialReport();
+            flash(`Updated ${changed} transaction(s) to ${financialBulkStatus}.`);
+            renderDashboard();
+          })();
+          return;
+        }
+        const viewModeBtn = t.closest("[data-fin-view-mode]") as HTMLButtonElement | null;
+        if (viewModeBtn) {
+          financialViewMode = viewModeBtn.dataset.finViewMode === "table" ? "table" : "calendar";
+          renderDashboard();
+          return;
+        }
+        const openEntry = t.closest("[data-fin-open-entry]") as HTMLButtonElement | null;
+        if (openEntry) {
+          financialEntryOpen = true;
+          financialEntryMode = openEntry.dataset.finOpenEntry === "recurring" ? "recurring" : "one_off";
+          financialEditingTxId = null;
+          financialEditingTemplateId = null;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-close-entry]")) {
+          financialEntryOpen = false;
+          financialEditingTxId = null;
+          financialEditingTemplateId = null;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-open-payee]")) {
+          financialPayeeOpen = true;
+          financialEditingPayeeId = null;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-close-payee]")) {
+          financialPayeeOpen = false;
+          financialEditingPayeeId = null;
+          renderDashboard();
+          return;
+        }
+        const payeeEdit = t.closest("[data-fin-payee-edit]") as HTMLButtonElement | null;
+        if (payeeEdit) {
+          const pid = payeeEdit.dataset.finPayeeEdit?.trim() || "";
+          if (!pid) return;
+          financialPayeeOpen = true;
+          financialEditingPayeeId = pid;
+          renderDashboard();
+          return;
+        }
+        const editTx = t.closest("[data-fin-edit-tx]") as HTMLButtonElement | null;
+        if (editTx) {
+          const txId = editTx.dataset.finEditTx?.trim() || "";
+          if (!txId) return;
+          financialEntryOpen = true;
+          financialEntryMode = "one_off";
+          financialEditingTxId = txId;
+          financialEditingTemplateId = null;
+          renderDashboard();
+          return;
+        }
+        const editBtn = t.closest("[data-fin-template-edit]") as HTMLButtonElement | null;
+        if (editBtn) {
+          const tid = editBtn.dataset.templateId?.trim() ?? "";
+          if (!tid) return;
+          financialEntryOpen = true;
+          financialEntryMode = "recurring";
+          financialEditingTxId = null;
+          financialEditingTemplateId = tid;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-apply-recurring]")) {
+          void (async () => {
+            const through = financialPeriodTo.trim() || new Date().toISOString().slice(0, 10);
+            const r = await applyRecurringFinancialTransactions(supabase, through);
+            if (!r.ok) {
+              flash(r.message, "error");
+              return;
+            }
+            await reloadFinancialReport();
+            flash(`Recurring applied: ${r.createdRows} row(s) created.`);
+            renderDashboard();
+          })();
+          return;
+        }
+        const toggleBtn = t.closest("[data-fin-template-toggle]") as HTMLButtonElement | null;
+        if (toggleBtn) {
+          const tid = toggleBtn.dataset.templateId?.trim() ?? "";
+          if (!tid) return;
+          const current = toggleBtn.dataset.active === "true";
+          void (async () => {
+            const r = await setFinancialRecurringTemplateActive(supabase, tid, !current);
+            if (!r.ok) {
+              flash(r.message, "error");
+              return;
+            }
+            await reloadFinancialReport();
+            flash(!current ? "Template activated." : "Template deactivated.");
+            renderDashboard();
+          })();
+          return;
+        }
+        const delBtn = t.closest("[data-fin-template-delete]") as HTMLButtonElement | null;
+        if (delBtn) {
+          const tid = delBtn.dataset.templateId?.trim() ?? "";
+          if (!tid) return;
+          const ok = window.confirm("Delete this recurring template?");
+          if (!ok) return;
+          void (async () => {
+            const r = await deleteFinancialRecurringTemplate(supabase, tid);
+            if (!r.ok) {
+              flash(r.message, "error");
+              return;
+            }
+            await reloadFinancialReport();
+            flash("Template deleted.");
+            renderDashboard();
+          })();
+        }
+      });
+
+      adminRoot.addEventListener("change", (ev) => {
+        const t = ev.target as HTMLElement | null;
+        if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement)) return;
+        if (t.id === "fin-select-all-tx" && t instanceof HTMLInputElement) {
+          const checked = t.checked;
+          adminRoot
+            .querySelectorAll<HTMLInputElement>('input[name="finTxSelect"]')
+            .forEach((el) => {
+              el.checked = checked;
+            });
+          return;
+        }
+        if (t.id === "fin-bulk-status") {
+          const v = t.value.trim();
+          financialBulkStatus =
+            v === "pending" || v === "paid" || v === "cancelled" || v === "failed" ? v : "paid";
+        }
+      });
+
+      adminRoot.addEventListener("dragstart", (event) => {
+        const ev = event as DragEvent;
+        const t = ev.target as HTMLElement | null;
+        const chip = t?.closest("[data-fin-drag-tx]") as HTMLElement | null;
+        if (!chip || !ev.dataTransfer) return;
+        const txId = chip.getAttribute("data-fin-drag-tx")?.trim() || "";
+        if (!txId) return;
+        ev.dataTransfer.setData("text/plain", txId);
+        ev.dataTransfer.effectAllowed = "move";
+      });
+
+      adminRoot.addEventListener("dragover", (event) => {
+        const ev = event as DragEvent;
+        const t = ev.target as HTMLElement | null;
+        const cell = t?.closest("[data-fin-drop-date]") as HTMLElement | null;
+        if (!cell) return;
+        ev.preventDefault();
+        cell.classList.add("fin-cal-drop-target");
+      });
+
+      adminRoot.addEventListener("dragleave", (event) => {
+        const ev = event as DragEvent;
+        const t = ev.target as HTMLElement | null;
+        const cell = t?.closest("[data-fin-drop-date]") as HTMLElement | null;
+        if (!cell) return;
+        cell.classList.remove("fin-cal-drop-target");
+      });
+
+      adminRoot.addEventListener("drop", (event) => {
+        const ev = event as DragEvent;
+        const t = ev.target as HTMLElement | null;
+        const cell = t?.closest("[data-fin-drop-date]") as HTMLElement | null;
+        if (!cell || !ev.dataTransfer) return;
+        ev.preventDefault();
+        cell.classList.remove("fin-cal-drop-target");
+        const txId = ev.dataTransfer.getData("text/plain").trim();
+        const newDate = cell.getAttribute("data-fin-drop-date")?.trim() || "";
+        if (!txId || !newDate) return;
+        void (async () => {
+          const r = await saveFinancialTxPatch(txId, { txDate: newDate });
+          if (!r.ok) {
+            flash(r.message, "error");
+            return;
+          }
+          await reloadFinancialReport();
+          flash(`Rescheduled transaction to ${newDate}.`);
+          renderDashboard();
+        })();
+      });
+
+      adminRoot.addEventListener("submit", (ev) => {
+        const target = ev.target as HTMLElement | null;
+        const entryForm = target?.closest?.("#financial-entry-form");
+        if (entryForm) {
+          ev.preventDefault();
+          const fd = new FormData(entryForm as HTMLFormElement);
+          const entryType = String(fd.get("entryType") || "one_off");
+          const direction = String(fd.get("direction") || "expense").trim() === "income" ? "income" : "expense";
+          const statusRaw = String(fd.get("status") || "pending").trim();
+          const status: FinancialStatus =
+            statusRaw === "paid" || statusRaw === "cancelled" || statusRaw === "failed" || statusRaw === "pending"
+              ? statusRaw
+              : "pending";
+          const common = {
+            txDate: String(fd.get("txDate") || "").trim(),
+            category: String(fd.get("category") || "").trim(),
+            direction,
+            status,
+            paymentTag: String(fd.get("paymentTag") || "").trim(),
+            amount: Number(fd.get("amount") || 0) || 0,
+            currency: String(fd.get("currency") || "GBP").trim(),
+            convertForeign: String(fd.get("convertForeign") || "false").trim() === "true",
+            payeeId: String(fd.get("payeeId") || "").trim() || null,
+            payeeLabel: String(fd.get("payeeLabel") || "").trim(),
+            notes: String(fd.get("notes") || "").trim(),
+          };
+          void (async () => {
+            if (entryType === "recurring") {
+              const templateId = String(fd.get("templateId") || "").trim();
+              const recurrenceUnitRaw = String(fd.get("recurrenceUnit") || "monthly").trim();
+              const recurrenceUnit =
+                recurrenceUnitRaw === "monthly" ||
+                recurrenceUnitRaw === "quarterly" ||
+                recurrenceUnitRaw === "annual" ||
+                recurrenceUnitRaw === "custom_days"
+                  ? recurrenceUnitRaw
+                  : "monthly";
+              const rInput = {
+                id: templateId || undefined,
+                label: String(fd.get("category") || "").trim() || String(fd.get("paymentTag") || "").trim(),
+                category: common.category,
+                direction: common.direction,
+                defaultStatus: common.status,
+                paymentTag: common.paymentTag,
+                amount: common.amount,
+                currency: common.currency,
+                convertForeign: common.convertForeign,
+                payeeId: common.payeeId,
+                payeeLabel: common.payeeLabel,
+                notes: common.notes,
+                intervalDays: Number(fd.get("intervalDays") || 30) || 30,
+                recurrenceUnit,
+                recurrenceEvery: Number(fd.get("recurrenceEvery") || 1) || 1,
+                nextDueDate: common.txDate,
+                isActive: String(fd.get("isActive") || "true").trim() !== "false",
+              } as const;
+              const res = await upsertFinancialRecurringTemplate(supabase, rInput);
+              if (!res.ok) {
+                flash(res.message, "error");
+                return;
+              }
+              flash(templateId ? "Recurring template updated." : "Recurring template created.");
+            } else {
+              const txId = String(fd.get("txId") || "").trim();
+              const res = await upsertFinancialTransaction(supabase, {
+                id: txId || undefined,
+                ...common,
+              });
+              if (!res.ok) {
+                flash(res.message, "error");
+                return;
+              }
+              flash(txId ? "Ledger entry updated." : "Ledger entry created.");
+            }
+            financialEntryOpen = false;
+            financialEditingTxId = null;
+            financialEditingTemplateId = null;
+            await reloadFinancialReport();
+            renderDashboard();
+          })();
+          return;
+        }
+        const payeeForm = target?.closest?.("#financial-payee-form");
+        if (payeeForm) {
+          ev.preventDefault();
+          const fd = new FormData(payeeForm as HTMLFormElement);
+          const payeeId = String(fd.get("payeeId") || "").trim();
+          const payload = {
+            id: payeeId || undefined,
+            name: String(fd.get("name") || "").trim(),
+            defaultPaymentTag: String(fd.get("defaultPaymentTag") || "").trim(),
+            defaultCurrency: String(fd.get("defaultCurrency") || "GBP").trim(),
+            paymentDetails: {
+              method: String(fd.get("paymentMethod") || "").trim(),
+              beneficiaryName: String(fd.get("beneficiaryName") || "").trim(),
+              accountNumber: String(fd.get("accountNumber") || "").trim(),
+              sortCode: String(fd.get("sortCode") || "").trim(),
+              iban: String(fd.get("iban") || "").trim(),
+              swiftBic: String(fd.get("swiftBic") || "").trim(),
+              reference: String(fd.get("paymentReference") || "").trim(),
+              payoutEmail: String(fd.get("payoutEmail") || "").trim(),
+            },
+            taxDetails: {
+              registeredName: String(fd.get("taxRegisteredName") || "").trim(),
+              taxId: String(fd.get("taxId") || "").trim(),
+              vatNumber: String(fd.get("vatNumber") || "").trim(),
+              countryCode: String(fd.get("taxCountryCode") || "").trim().toUpperCase(),
+              isVatRegistered: String(fd.get("isVatRegistered") || "false").trim() === "true",
+              notes: String(fd.get("taxNotes") || "").trim(),
+            },
+            notes: String(fd.get("notes") || "").trim(),
+            isActive: String(fd.get("isActive") || "true").trim() !== "false",
+          };
+          void (async () => {
+            const r = await upsertFinancialPayee(supabase, payload);
+            if (!r.ok) {
+              flash(r.message, "error");
+              return;
+            }
+            financialPayeeOpen = false;
+            financialEditingPayeeId = null;
+            await reloadFinancialReport();
+            flash(payeeId ? "Payee updated." : "Payee created.");
+            renderDashboard();
+          })();
+        }
+      });
+    }
+
     adminRoot.querySelectorAll(".admin-view-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         const v = (btn as HTMLButtonElement).dataset.view as AdminView | undefined;
@@ -1203,7 +2850,22 @@ export async function initAdminPortal(): Promise<void> {
         else if (v === "promoter_requests")
           void reloadPromoterSignupRequests().then(() => renderDashboard());
         else if (v === "promoters" || v === "jobs" || v === "invoices")
-          void reloadPromoters().then(() => renderDashboard());
+          void (async () => {
+            await reloadPromoters();
+            if (v === "jobs") await reloadJobsCalendar();
+            renderDashboard();
+          })();
+        else if (v === "guestlist_queue")
+          void reloadGuestlistQueue().then(() => renderDashboard());
+        else if (v === "night_adjustments")
+          void reloadNightAdjQueue().then(() => renderDashboard());
+        else if (v === "table_sales")
+          void (async () => {
+            await reloadPromoters();
+            await reloadTableSalesQueue();
+            await reloadTableSalesReport();
+            renderDashboard();
+          })();
         else if (v === "financials")
           void reloadFinancialReport().then(() => renderDashboard());
         else renderDashboard();
@@ -1461,9 +3123,22 @@ export async function initAdminPortal(): Promise<void> {
           );
           bindAdminListRows(listEl, "tr[data-promoter-id]", (row) => {
             selectedPromoterId = row.dataset.promoterId ?? null;
-            void reloadPromoters().then(() => renderDashboard());
+            void (async () => {
+              await reloadPromoters();
+              if (view === "jobs") await reloadJobsCalendar();
+              renderDashboard();
+            })();
           });
         }
+      } else if (view === "guestlist_queue") {
+        listEl.className = "admin-list";
+        listEl.innerHTML = `<p class="admin-note">${guestlistQueueRows.length} pending name(s). Open <strong>Guestlist</strong> in the sidebar if you switched away.</p>`;
+      } else if (view === "night_adjustments") {
+        listEl.className = "admin-list";
+        listEl.innerHTML = `<p class="admin-note">${nightAdjQueueRows.length} pending night request(s).</p>`;
+      } else if (view === "table_sales") {
+        listEl.className = "admin-list";
+        listEl.innerHTML = `<p class="admin-note">${tableSalesQueueRows.length} pending table submission(s). Use <strong>Tables</strong> for review, office entry, and the dated report.</p>`;
       } else if (view === "financials") {
         listEl.className = "admin-list";
         listEl.innerHTML = `<p class="admin-note">Financial reporting is generated from \`financial_transactions\`.</p>`;
@@ -1660,6 +3335,30 @@ export async function initAdminPortal(): Promise<void> {
             amenities: parseLines(String(fd.get("amenities") || "")),
             images: parseLines(String(fd.get("images") || "")),
             guestlists: parseGuestlists(String(fd.get("guestlists") || "")),
+            paymentDetails: {
+              method: String(fd.get("paymentMethod") || "").trim(),
+              beneficiaryName: String(fd.get("beneficiaryName") || "").trim(),
+              accountNumber: String(fd.get("accountNumber") || "").trim(),
+              sortCode: String(fd.get("sortCode") || "").trim(),
+              iban: String(fd.get("iban") || "").trim(),
+              swiftBic: String(fd.get("swiftBic") || "").trim(),
+              reference: String(fd.get("paymentReference") || "").trim(),
+              payoutEmail: String(fd.get("payoutEmail") || "").trim(),
+            },
+            taxDetails: {
+              registeredName: String(fd.get("taxRegisteredName") || "").trim(),
+              taxId: String(fd.get("taxId") || "").trim(),
+              vatNumber: String(fd.get("vatNumber") || "").trim(),
+              countryCode: String(fd.get("taxCountryCode") || "").trim().toUpperCase(),
+              isVatRegistered: String(fd.get("isVatRegistered") || "false").trim() === "true",
+              notes: String(fd.get("taxNotes") || "").trim(),
+            },
+            discoveryCardTitle:
+              String(fd.get("discoveryCardTitle") || "").trim() || undefined,
+            discoveryCardBlurb:
+              String(fd.get("discoveryCardBlurb") || "").trim() || undefined,
+            discoveryCardImage:
+              String(fd.get("discoveryCardImage") || "").trim() || undefined,
           }),
         };
       };
@@ -2001,26 +3700,213 @@ export async function initAdminPortal(): Promise<void> {
           flash(`Create job failed: ${res.message}`, "error");
           return;
         }
+        const ymd = jobDate.split("-").map(Number);
+        if (ymd.length >= 2 && Number.isFinite(ymd[0]) && Number.isFinite(ymd[1])) {
+          jobsCalendarYear = ymd[0]!;
+          jobsCalendarMonth = Math.max(0, Math.min(11, ymd[1]! - 1));
+        }
         await reloadPromoters();
+        if (view === "jobs") await reloadJobsCalendar();
         flash("Job created.");
         renderDashboard();
       })();
     });
 
-    adminRoot.querySelector("#promoter-job-complete")?.addEventListener("click", () => {
-      const candidate =
-        promoterJobs.find((j) => j.status === "assigned") ?? promoterJobs[0];
-      if (!candidate) {
-        flash("No job available for selected promoter.", "error");
-        return;
+    adminRoot.querySelector("#jobs-cal-prev")?.addEventListener("click", () => {
+      editingJobId = null;
+      jobsCalendarMonth -= 1;
+      if (jobsCalendarMonth < 0) {
+        jobsCalendarMonth = 11;
+        jobsCalendarYear -= 1;
       }
+      void reloadJobsCalendar().then(() => renderDashboard());
+    });
+
+    adminRoot.querySelector("#jobs-cal-next")?.addEventListener("click", () => {
+      editingJobId = null;
+      jobsCalendarMonth += 1;
+      if (jobsCalendarMonth > 11) {
+        jobsCalendarMonth = 0;
+        jobsCalendarYear += 1;
+      }
+      void reloadJobsCalendar().then(() => renderDashboard());
+    });
+
+    adminRoot.querySelector("#jobs-filter-apply")?.addEventListener("click", () => {
+      const pf = adminRoot.querySelector(
+        "#jobs-filter-promoter",
+      ) as HTMLSelectElement | null;
+      const cf = adminRoot.querySelector("#jobs-filter-club") as HTMLSelectElement | null;
+      jobsFilterPromoterId = pf?.value.trim() ?? "";
+      jobsFilterClubSlug = cf?.value.trim() ?? "";
+      void reloadJobsCalendar().then(() => renderDashboard());
+    });
+
+    adminRoot.querySelector("#jobs-filter-reset")?.addEventListener("click", () => {
+      jobsFilterPromoterId = "";
+      jobsFilterClubSlug = "";
+      void reloadJobsCalendar().then(() => renderDashboard());
+    });
+
+    adminRoot.querySelectorAll("[data-open-job-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        editingJobId =
+          (btn as HTMLButtonElement).dataset.openJobEdit?.trim() || null;
+        renderDashboard();
+      });
+    });
+
+    adminRoot.querySelectorAll("[data-job-delete]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = (btn as HTMLButtonElement).dataset.jobDelete?.trim();
+        if (!id) return;
+        if (
+          !globalThis.confirm(
+            "Delete this job? Guestlist rows on this job will be removed. If the job was completed, linked payout expense and earning rows will be removed too.",
+          )
+        )
+          return;
+        void (async () => {
+          const res = await deletePromoterJob(supabase, id);
+          if (!res.ok) {
+            flash(`Delete failed: ${res.message}`, "error");
+            return;
+          }
+          editingJobId = null;
+          await reloadPromoters();
+          await reloadJobsCalendar();
+          await reloadFinancialReport();
+          flashAfterJobDelete(res);
+          renderDashboard();
+        })();
+      });
+    });
+
+    adminRoot.querySelectorAll("[data-job-complete]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = (btn as HTMLButtonElement).dataset.jobComplete?.trim();
+        if (!id) return;
+        void (async () => {
+          const res = await completePromoterJob(supabase, id);
+          if (!res.ok) {
+            flash(`Complete job failed: ${res.message}`, "error");
+            return;
+          }
+          editingJobId = null;
+          await reloadPromoters();
+          await reloadJobsCalendar();
+          await reloadFinancialReport();
+          flash("Job completed and earnings recorded.");
+          renderDashboard();
+        })();
+      });
+    });
+
+    adminRoot.querySelector("#admin-job-edit-dismiss")?.addEventListener("click", () => {
+      const dlg = adminRoot.querySelector(
+        "#admin-job-edit-dialog",
+      ) as HTMLDialogElement | null;
+      dlg?.close();
+      editingJobId = null;
+      renderDashboard();
+    });
+
+    adminRoot.querySelector("#admin-job-edit-save")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector(
+        "#admin-job-edit-form",
+      ) as HTMLFormElement | null;
+      if (!form) return;
+      const fd = new FormData(form);
+      const jobId = String(fd.get("jobId") || "").trim();
+      if (!jobId) return;
+      const clubRaw = String(fd.get("clubSlug") || "").trim();
       void (async () => {
-        const res = await completePromoterJob(supabase, candidate.id);
+        const rawSt = String(fd.get("status") || "assigned").trim();
+        const status: PromoterJob["status"] =
+          rawSt === "cancelled" ? "cancelled" : "assigned";
+        const res = await updatePromoterJob(supabase, jobId, {
+          club_slug: clubRaw ? clubRaw : null,
+          service: String(fd.get("service") || "guestlist").trim() || "guestlist",
+          job_date: String(fd.get("jobDate") || "").trim(),
+          status,
+          guests_count: Number(fd.get("guestCount") || 0) || 0,
+          shift_fee: Number(fd.get("shiftFee") || 0) || 0,
+          guestlist_fee: Number(fd.get("guestFee") || 0) || 0,
+          notes: String(fd.get("notes") || "").trim(),
+        });
+        if (!res.ok) {
+          flash(`Save failed: ${res.message}`, "error");
+          return;
+        }
+        (
+          adminRoot.querySelector(
+            "#admin-job-edit-dialog",
+          ) as HTMLDialogElement | null
+        )?.close();
+        editingJobId = null;
+        await reloadPromoters();
+        await reloadJobsCalendar();
+        flash("Job updated.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#admin-job-edit-delete")?.addEventListener("click", () => {
+      const fromForm = adminRoot.querySelector(
+        '#admin-job-edit-form input[name="jobId"]',
+      ) as HTMLInputElement | null;
+      const fromRo = adminRoot.querySelector(
+        "#admin-job-edit-id",
+      ) as HTMLInputElement | null;
+      const jobId = (fromForm?.value ?? fromRo?.value ?? "").trim();
+      if (!jobId) return;
+      if (
+        !globalThis.confirm(
+          "Delete this job permanently? Guestlist rows will be removed. If it was completed, linked payout expense and earning rows will be removed as well.",
+        )
+      )
+        return;
+      void (async () => {
+        const res = await deletePromoterJob(supabase, jobId);
+        if (!res.ok) {
+          flash(`Delete failed: ${res.message}`, "error");
+          return;
+        }
+        (
+          adminRoot.querySelector(
+            "#admin-job-edit-dialog",
+          ) as HTMLDialogElement | null
+        )?.close();
+        editingJobId = null;
+        await reloadPromoters();
+        await reloadJobsCalendar();
+        await reloadFinancialReport();
+        flashAfterJobDelete(res);
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#admin-job-edit-complete")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector(
+        "#admin-job-edit-form",
+      ) as HTMLFormElement | null;
+      if (!form) return;
+      const jobId = String(new FormData(form).get("jobId") || "").trim();
+      if (!jobId) return;
+      void (async () => {
+        const res = await completePromoterJob(supabase, jobId);
         if (!res.ok) {
           flash(`Complete job failed: ${res.message}`, "error");
           return;
         }
+        (
+          adminRoot.querySelector(
+            "#admin-job-edit-dialog",
+          ) as HTMLDialogElement | null
+        )?.close();
+        editingJobId = null;
         await reloadPromoters();
+        await reloadJobsCalendar();
         await reloadFinancialReport();
         flash("Job completed and earnings recorded.");
         renderDashboard();
@@ -2169,6 +4055,27 @@ export async function initAdminPortal(): Promise<void> {
         if (row) row.status = t.value;
       }
     });
+
+    if (view === "jobs" && editingJobId) {
+      const dlg = adminRoot.querySelector(
+        "#admin-job-edit-dialog",
+      ) as HTMLDialogElement | null;
+      if (dlg && typeof dlg.showModal === "function") {
+        dlg.addEventListener(
+          "cancel",
+          () => {
+            editingJobId = null;
+            renderDashboard();
+          },
+          { once: true },
+        );
+        try {
+          dlg.showModal();
+        } catch {
+          /* already open or invalid */
+        }
+      }
+    }
 
     const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
     const mapsHint = adminRoot.querySelector("#club-address-maps-hint");

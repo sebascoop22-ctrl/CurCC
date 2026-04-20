@@ -9,7 +9,7 @@ import {
 } from "../forms";
 import "./venue-request-modal.css";
 
-export type VenueRequestKind = "private_table" | "guestlist";
+export type VenueRequestKind = "private_table" | "guestlist" | "venue_access";
 
 function formatGuestlistsSummary(club: Club): string {
   if (!club.guestlists?.length) return "";
@@ -69,8 +69,10 @@ export function openVenueRequestModal(opts: {
   host: HTMLElement | null;
   kind: VenueRequestKind;
   club: Club;
+  /** When joining a specific promoter guestlist from club detail */
+  promoterName?: string;
 }): void {
-  const { host, kind, club } = opts;
+  const { host, kind, club, promoterName } = opts;
   if (!host) return;
 
   host.querySelectorAll(".venue-request-overlay").forEach((el) => el.remove());
@@ -86,13 +88,23 @@ export function openVenueRequestModal(opts: {
   modal.addEventListener("click", (e) => e.stopPropagation());
 
   const title =
-    kind === "private_table" ? "Book private table" : "Join the guestlist";
+    kind === "private_table"
+      ? "Book private table"
+      : kind === "venue_access"
+        ? "Request club access"
+        : "Join the guestlist";
   const formName =
     kind === "private_table"
       ? "nightlife_private_table"
-      : "nightlife_guestlist";
+      : kind === "venue_access"
+        ? "nightlife_venue_access"
+        : "nightlife_guestlist";
 
   const scheduleText = formatGuestlistsSummary(club);
+  const promoterBlock =
+    kind === "guestlist" && promoterName
+      ? `<p class="venue-request-modal__lede" style="margin-top:-0.35rem">Host: <strong>${escapeAttr(promoterName)}</strong></p>`
+      : "";
   const scheduleBlock =
     kind === "guestlist" && scheduleText
       ? `<div class="venue-request-modal__schedule" aria-label="Guestlist schedule"><strong style="color:var(--cc-cream);font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase">On file</strong><ul>${club.guestlists
@@ -108,10 +120,10 @@ export function openVenueRequestModal(opts: {
     kind === "guestlist"
       ? `<section class="venue-request-modal__party" aria-label="Guestlist party details">
       <div class="venue-request-modal__party-head">
-        <p class="venue-request-modal__party-title">Party list (up to 10)</p>
-        <button type="button" class="cc-btn cc-btn--ghost venue-request-modal__add-guest" id="vr-add-guest">Add another person</button>
+        <p class="venue-request-modal__party-title">Additional guests (up to 10)</p>
+        <button type="button" class="cc-btn cc-btn--ghost venue-request-modal__add-guest" id="vr-add-guest">Add a person</button>
       </div>
-      <p class="venue-request-modal__hint">Add each guest’s name plus <strong>Instagram handle or phone</strong> (not email).</p>
+      <p class="venue-request-modal__hint">Your details are above. Add each extra guest’s name plus <strong>Instagram or phone</strong> (not email).</p>
       <div id="vr-guest-rows" class="venue-request-modal__guest-rows"></div>
     </section>`
       : "";
@@ -120,6 +132,7 @@ export function openVenueRequestModal(opts: {
     <button type="button" class="modal__close" data-vr-close aria-label="Close">×</button>
     <h3 id="venue-request-title">${escapeAttr(title)}</h3>
     <p class="venue-request-modal__lede">${escapeAttr(club.name)}${club.locationTag ? ` · ${escapeAttr(club.locationTag)}` : ""}</p>
+    ${promoterBlock}
     ${scheduleBlock}
     <div class="cc-form-error" id="vr-error" role="alert" style="margin-bottom:1rem"></div>
     <form class="venue-request-modal__form" id="vr-form" novalidate>
@@ -365,14 +378,21 @@ export function openVenueRequestModal(opts: {
       ];
     }
 
+    const requestLabel =
+      kind === "private_table"
+        ? "Private table"
+        : kind === "venue_access"
+          ? "Club access request"
+          : "Guestlist";
     const payload: Record<string, string> = {
       name,
-      request: kind === "private_table" ? "Private table" : "Guestlist",
+      request: requestLabel,
       venue: club.name,
       venue_slug: club.slug,
       notify_via: method,
       guestlist_schedule_on_file: formatGuestlistsForPayload(club),
     };
+    if (promoterName) payload.promoter_host = promoterName;
     if (method === "email") payload.email = email;
     if (method === "phone") payload.phone = phone;
     if (method === "instagram_dm" && ig) payload.instagram_handle = ig;

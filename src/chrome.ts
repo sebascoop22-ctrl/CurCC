@@ -20,6 +20,7 @@ export type ActivePage =
   | "home"
   | "nightlife"
   | "nightlife-map"
+  | "club"
   | "promoter"
   | "security"
   | "chauffeuring"
@@ -29,14 +30,15 @@ export type ActivePage =
   | "terms";
 
 const homeHref = "/";
-const servicesHref = `${homeHref}#services`;
+const classicHomeHref = "/classic";
+const servicesHref = `${classicHomeHref}#services`;
 
 function drawerLinks(active: ActivePage): string {
   const cls = (p: ActivePage | "nightlife-map") =>
     active === p ? ' class="is-active"' : "";
   return `
     <a href="${servicesHref}"${cls("home")}>Services</a>
-    <a href="/nightlife"${cls("nightlife")}>Nightlife</a>
+    <a href="/"${cls("nightlife")}>Nightlife</a>
     <a href="/chauffeuring"${cls("chauffeuring")}>Chauffeur</a>
     <a href="/security"${cls("security")}>Security</a>
     <a href="/enquiry"${cls("enquiry")}>Inquiry</a>
@@ -52,7 +54,7 @@ export function initChrome(active: ActivePage): void {
 
   const desktopNav = () => `<nav class="site-nav" aria-label="Primary">
     <a href="${servicesHref}" class="${active === "home" ? "is-active" : ""}">Services</a>
-    <a href="/nightlife" class="${active === "nightlife" || active === "nightlife-map" ? "is-active" : ""}">Nightlife</a>
+    <a href="/" class="${active === "nightlife" || active === "nightlife-map" || active === "club" ? "is-active" : ""}">Nightlife</a>
     <a href="/chauffeuring" class="${active === "chauffeuring" ? "is-active" : ""}">Chauffeur</a>
     <a href="/security" class="${active === "security" ? "is-active" : ""}">Security</a>
     <a href="/enquiry" class="${active === "enquiry" ? "is-active" : ""}">Inquiry</a>
@@ -86,8 +88,8 @@ export function initChrome(active: ActivePage): void {
       </div>
       <div class="site-footer__cluster">
         <nav class="site-footer__pages" aria-label="Site pages">
-          <a href="${homeHref}">Home</a>
-          <a href="/nightlife">Nightlife</a>
+          <a href="/">Nightlife</a>
+          <a href="${classicHomeHref}">Classic home</a>
           <a href="/promoter">Promoter Portal</a>
           <a href="/nightlife-map">Map</a>
           <a href="/chauffeuring">Chauffeur</a>

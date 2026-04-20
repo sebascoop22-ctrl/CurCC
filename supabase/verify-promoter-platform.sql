@@ -14,6 +14,9 @@ where table_schema = 'public'
     'promoter_earnings',
     'promoter_invoices',
     'promoter_invoice_lines',
+    'promoter_table_sales',
+    'financial_payees',
+    'financial_recurring_templates',
     'financial_transactions'
   )
 order by table_name;
