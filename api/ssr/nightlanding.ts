@@ -33,9 +33,9 @@ export default async function handler(
   try {
     const [{ fetchClubFlyersServer, groupFlyersByClubSlug, loadClubCatalog }, { buildNightlifeSsrHtml }, { rankFlyersForHero }] =
       await Promise.all([
-        import("../../server/catalog-fetch"),
-        import("../../server/render-nightlife-ssr"),
-        import("../../src/nightlife/flyer-rank"),
+        import("../../server/catalog-fetch.js"),
+        import("../../server/render-nightlife-ssr.js"),
+        import("../../src/nightlife/flyer-rank.js"),
       ]);
     const rows = await loadClubCatalog();
     const safeRows = rows.filter(
