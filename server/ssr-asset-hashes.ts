@@ -10,11 +10,11 @@ export const ssrAssetHashes = {
     ]
   },
   "clubDetail": {
-    "js": "/assets/clubDetail-CloWeN6c.js",
+    "js": "/assets/clubDetail-DZ6TznKE.js",
     "css": [
       "/assets/chrome-6Hokc4zM.css",
       "/assets/venue-request-modal-Dcpx4a3a.css",
-      "/assets/clubDetail-CkqTDZHG.css"
+      "/assets/clubDetail-CK0Y5p_c.css"
     ]
   }
 } as const;

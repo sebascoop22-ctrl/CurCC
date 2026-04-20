@@ -53,7 +53,7 @@ export function buildClubDetailMainHtml(
       : `https://${websiteRaw}`
     : "";
   const websiteBtn = websiteHref
-    ? `<a class="cc-btn cc-btn--ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">Clubs Website</a>`
+    ? `<a class="cc-btn cc-btn--ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">Website</a>`
     : "";
 
   const hasMapCoords = Boolean(c.lat && c.lng);
@@ -261,15 +261,6 @@ export function buildClubDetailMainHtml(
       </section>`
     : "";
 
-  const websiteSection = websiteHref
-    ? `<section class="club-detail__website cc-container">
-        <h2>Website</h2>
-        <div class="club-detail__website-link">
-          <a class="cc-btn cc-btn--ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">Clubs Website</a>
-        </div>
-      </section>`
-    : "";
-
   const footerCtas = [ctaGuestlist, ctaTable, ctaAccess, websiteBtn]
     .filter(Boolean)
     .join("");
@@ -297,8 +288,6 @@ export function buildClubDetailMainHtml(
       ${pricesSection}
 
       ${aboutSection}
-
-      ${websiteSection}
 
       ${promotersSection}
 

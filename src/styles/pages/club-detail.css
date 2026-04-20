@@ -43,9 +43,12 @@
 
 .club-detail__cta-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--cc-space-sm);
   margin: var(--cc-space-md) 0 0;
+  align-items: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .club-detail__cta-row--top {
@@ -80,8 +83,6 @@ main.club-detail > .club-detail__website,
 main.club-detail > .club-detail__promoters {
   padding-top: var(--cc-space-xl);
   margin-top: var(--cc-space-md);
-  max-width: 56rem;
-  margin-inline: auto;
 }
 
 main.club-detail > .club-detail__hero + .club-detail__gallery {
