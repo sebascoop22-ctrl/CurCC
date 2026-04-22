@@ -447,6 +447,70 @@ p {
   grid-column: 3;
 }
 
+.site-account {
+  position: relative;
+}
+
+.site-account__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-nav-toggle-bg);
+  color: var(--cc-cream);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.site-account__btn:hover {
+  border-color: var(--cc-gold);
+  color: var(--cc-gold);
+}
+
+.site-account__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  min-width: 200px;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg-card);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  padding: 0.35rem;
+  z-index: 80;
+}
+
+.site-account__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--cc-cream);
+  font: inherit;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.52rem 0.6rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.site-account__item:hover {
+  background: var(--cc-gold-soft);
+  color: var(--cc-gold);
+  text-decoration: none;
+}
+
+.site-account__item--danger {
+  color: #f6b6b6;
+}
+
 @media (max-width: 899px) {
   .site-header__actions {
     grid-column: 2;

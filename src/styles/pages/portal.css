@@ -1,0 +1,21 @@
+.portal-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.portal-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .portal-switcher {
+    width: 100%;
+  }
+
+  .portal-switcher .cc-btn {
+    flex: 1 1 100%;
+  }
+}

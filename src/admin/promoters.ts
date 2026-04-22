@@ -22,6 +22,7 @@ import type {
   PromoterTableSale,
   PromoterTableSaleQueueRow,
   PromoterTableSaleReportRow,
+  PromoterJobService,
 } from "../types";
 
 type Raw = Record<string, unknown>;
@@ -112,6 +113,12 @@ function parsePgTextArray(raw: unknown): string[] {
   return [];
 }
 
+function parsePromoterJobService(raw: unknown): PromoterJobService {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (v === "guestlist" || v === "table_sale" || v === "tickets" || v === "other") return v;
+  return "other";
+}
+
 function mapPromoterRowToProfile(r: Raw): PromoterProfile {
   const imgs = parseJsonbStringArray(r.profile_image_urls, 12);
   const primary = String(r.profile_image_url ?? "").trim();
@@ -189,6 +196,29 @@ export type PromoterRevisionRow = {
   review_notes: string;
   created_at: string;
   reviewed_at: string | null;
+};
+
+export type PromoterClient = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  instagram: string;
+  notes: string;
+  preferredPromoterId: string | null;
+  createdAt: string;
+};
+
+export type PromoterClientAttendance = {
+  id: string;
+  clientId: string;
+  eventDate: string;
+  clubSlug: string;
+  promoterId: string | null;
+  spendGbp: number;
+  source: string;
+  notes: string;
+  createdAt: string;
 };
 
 export async function loadPromoterRevisionsForAdmin(
@@ -382,13 +412,217 @@ export async function savePromoterPreference(
   return { ok: true };
 }
 
+export async function loadPromoterClients(
+  supabase: SupabaseClient,
+  promoterId: string,
+): Promise<{ ok: true; rows: PromoterClient[] } | { ok: false; message: string }> {
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id,name,email,phone,instagram,notes,preferred_promoter_id,created_at")
+    .eq("preferred_promoter_id", promoterId)
+    .order("created_at", { ascending: false })
+    .limit(400);
+  if (error) return { ok: false, message: error.message };
+  const rows: PromoterClient[] = (data ?? []).map((raw) => {
+    const r = raw as Raw;
+    return {
+      id: String(r.id ?? ""),
+      name: String(r.name ?? "").trim(),
+      email: String(r.email ?? "").trim(),
+      phone: String(r.phone ?? "").trim(),
+      instagram: String(r.instagram ?? "").trim(),
+      notes: String(r.notes ?? "").trim(),
+      preferredPromoterId:
+        r.preferred_promoter_id != null ? String(r.preferred_promoter_id) : null,
+      createdAt: String(r.created_at ?? ""),
+    };
+  });
+  return { ok: true, rows };
+}
+
+export async function savePromoterClient(
+  supabase: SupabaseClient,
+  input: {
+    id?: string;
+    promoterId: string;
+    name: string;
+    email: string;
+    phone: string;
+    instagram: string;
+    notes: string;
+  },
+): Promise<
+  | { ok: true; id: string; deduped: boolean }
+  | { ok: false; message: string }
+> {
+  const promoterId = input.promoterId.trim();
+  if (!promoterId) return { ok: false, message: "Missing promoter id." };
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  const phone = input.phone.trim();
+  const instagram = input.instagram.trim();
+  const notes = input.notes.trim();
+  if (!name) return { ok: false, message: "Client name is required." };
+
+  const dedupeCandidates = await supabase
+    .from("clients")
+    .select("id,name,email,phone,instagram,preferred_promoter_id")
+    .eq("preferred_promoter_id", promoterId)
+    .limit(400);
+  if (dedupeCandidates.error) {
+    return { ok: false, message: dedupeCandidates.error.message };
+  }
+  const ownId = input.id?.trim();
+  const dupe = (dedupeCandidates.data ?? []).find((raw) => {
+    const r = raw as Raw;
+    const id = String(r.id ?? "");
+    if (ownId && id === ownId) return false;
+    const e = String(r.email ?? "").trim().toLowerCase();
+    const p = String(r.phone ?? "").trim();
+    const ig = String(r.instagram ?? "").trim().toLowerCase();
+    return (email && e && email === e) || (phone && p && phone === p) || (instagram && ig && instagram.toLowerCase() === ig);
+  });
+
+  if (dupe) {
+    const dupeId = String((dupe as Raw).id ?? "");
+    const { error: updErr } = await supabase
+      .from("clients")
+      .update({
+        name,
+        email: email || null,
+        phone: phone || null,
+        instagram: instagram || null,
+        notes: notes || null,
+        preferred_promoter_id: promoterId,
+      })
+      .eq("id", dupeId);
+    if (updErr) return { ok: false, message: updErr.message };
+    return { ok: true, id: dupeId, deduped: true };
+  }
+
+  if (ownId) {
+    const { error } = await supabase
+      .from("clients")
+      .update({
+        name,
+        email: email || null,
+        phone: phone || null,
+        instagram: instagram || null,
+        notes: notes || null,
+        preferred_promoter_id: promoterId,
+      })
+      .eq("id", ownId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, id: ownId, deduped: false };
+  }
+
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      name,
+      email: email || null,
+      phone: phone || null,
+      instagram: instagram || null,
+      notes: notes || null,
+      preferred_promoter_id: promoterId,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: String((data as Raw).id ?? ""), deduped: false };
+}
+
+export async function loadPromoterClientAttendances(
+  supabase: SupabaseClient,
+  promoterId: string,
+  clientId: string,
+): Promise<{ ok: true; rows: PromoterClientAttendance[] } | { ok: false; message: string }> {
+  const { data, error } = await supabase
+    .from("client_attendances")
+    .select("id,client_id,event_date,club_slug,promoter_id,spend_gbp,source,notes,created_at")
+    .eq("promoter_id", promoterId)
+    .eq("client_id", clientId)
+    .order("event_date", { ascending: false });
+  if (error) return { ok: false, message: error.message };
+  const rows: PromoterClientAttendance[] = (data ?? []).map((raw) => {
+    const r = raw as Raw;
+    return {
+      id: String(r.id ?? ""),
+      clientId: String(r.client_id ?? ""),
+      eventDate: String(r.event_date ?? "").slice(0, 10),
+      clubSlug: String(r.club_slug ?? ""),
+      promoterId: r.promoter_id != null ? String(r.promoter_id) : null,
+      spendGbp: asNumber(r.spend_gbp),
+      source: String(r.source ?? "manual").trim() || "manual",
+      notes: String(r.notes ?? "").trim(),
+      createdAt: String(r.created_at ?? ""),
+    };
+  });
+  return { ok: true, rows };
+}
+
+export async function savePromoterClientAttendance(
+  supabase: SupabaseClient,
+  input: {
+    id?: string;
+    clientId: string;
+    promoterId: string;
+    eventDate: string;
+    clubSlug: string;
+    spendGbp: number;
+    source: string;
+    notes: string;
+  },
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const payload = {
+    client_id: input.clientId,
+    promoter_id: input.promoterId,
+    event_date: input.eventDate.trim().slice(0, 10),
+    club_slug: input.clubSlug.trim(),
+    spend_gbp: Number(input.spendGbp) || 0,
+    source: input.source.trim() || "manual",
+    notes: input.notes.trim(),
+  };
+  if (input.id?.trim()) {
+    const id = input.id.trim();
+    const { error } = await supabase
+      .from("client_attendances")
+      .update(payload)
+      .eq("id", id)
+      .eq("promoter_id", input.promoterId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, id };
+  }
+  const { data, error } = await supabase
+    .from("client_attendances")
+    .insert(payload)
+    .select("id")
+    .single();
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: String((data as Raw).id ?? "") };
+}
+
+export async function deletePromoterClientAttendance(
+  supabase: SupabaseClient,
+  promoterId: string,
+  id: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { error } = await supabase
+    .from("client_attendances")
+    .delete()
+    .eq("id", id)
+    .eq("promoter_id", promoterId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
 export async function loadPromoterJobs(
   supabase: SupabaseClient,
   promoterId: string,
 ): Promise<{ ok: true; rows: PromoterJob[] } | { ok: false; message: string }> {
   const { data, error } = await supabase
     .from("promoter_jobs")
-    .select("id,promoter_id,club_slug,service,job_date,status,guests_count,shift_fee,guestlist_fee,notes")
+    .select("id,promoter_id,club_slug,service,job_date,status,client_name,client_contact,guests_count,shift_fee,guestlist_fee,notes")
     .eq("promoter_id", promoterId)
     .order("job_date", { ascending: false });
   if (error) return { ok: false, message: error.message };
@@ -398,9 +632,11 @@ export async function loadPromoterJobs(
       id: String(r.id ?? ""),
       promoterId: String(r.promoter_id ?? ""),
       clubSlug: r.club_slug != null ? String(r.club_slug) : null,
-      service: String(r.service ?? ""),
+      service: parsePromoterJobService(r.service),
       jobDate: String(r.job_date ?? ""),
       status: String(r.status ?? "assigned") as PromoterJob["status"],
+      clientName: String(r.client_name ?? "").trim() || undefined,
+      clientContact: String(r.client_contact ?? "").trim() || undefined,
       guestsCount: asNumber(r.guests_count),
       shiftFee: asNumber(r.shift_fee),
       guestlistFee: asNumber(r.guestlist_fee),
@@ -423,7 +659,7 @@ export async function loadPromoterJobsCalendar(
   let q = supabase
     .from("promoter_jobs")
     .select(
-      "id,promoter_id,club_slug,service,job_date,status,guests_count,shift_fee,guestlist_fee,notes",
+      "id,promoter_id,club_slug,service,job_date,status,client_name,client_contact,guests_count,shift_fee,guestlist_fee,notes",
     )
     .gte("job_date", opts.from)
     .lte("job_date", opts.to)
@@ -439,9 +675,11 @@ export async function loadPromoterJobsCalendar(
       id: String(r.id ?? ""),
       promoterId: String(r.promoter_id ?? ""),
       clubSlug: r.club_slug != null ? String(r.club_slug) : null,
-      service: String(r.service ?? ""),
+      service: parsePromoterJobService(r.service),
       jobDate: String(r.job_date ?? "").slice(0, 10),
       status: String(r.status ?? "assigned") as PromoterJob["status"],
+      clientName: String(r.client_name ?? "").trim() || undefined,
+      clientContact: String(r.client_contact ?? "").trim() || undefined,
       guestsCount: asNumber(r.guests_count),
       shiftFee: asNumber(r.shift_fee),
       guestlistFee: asNumber(r.guestlist_fee),
@@ -483,6 +721,8 @@ export async function updatePromoterJob(
     guests_count: number;
     shift_fee: number;
     guestlist_fee: number;
+    client_name: string;
+    client_contact: string;
     notes: string;
   }>,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -576,6 +816,9 @@ export async function createPromoterJob(
     club_slug: string | null;
     service: string;
     job_date: string;
+    status: PromoterJob["status"];
+    client_name: string;
+    client_contact: string;
     shift_fee: number;
     guestlist_fee: number;
     guests_count: number;
@@ -584,10 +827,42 @@ export async function createPromoterJob(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error } = await supabase.from("promoter_jobs").insert({
     ...input,
-    status: "assigned",
   });
   if (error) return { ok: false, message: error.message };
   return { ok: true };
+}
+
+export async function insertPromoterJobSelf(
+  supabase: SupabaseClient,
+  input: {
+    clubSlug: string;
+    jobDate: string;
+    service: string;
+    status?: PromoterJob["status"];
+    clientName?: string;
+    clientContact?: string;
+    shiftFee: number;
+    guestlistFee: number;
+    guestsCount: number;
+    notes: string;
+  },
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const jobDate = input.jobDate.trim().slice(0, 10);
+  if (!jobDate) return { ok: false, message: "Pick a job date." };
+  const { data, error } = await supabase.rpc("insert_promoter_job_self", {
+    p_club_slug: input.clubSlug.trim(),
+    p_job_date: jobDate,
+    p_service: input.service.trim() || "guestlist",
+    p_status: String(input.status || "assigned").trim(),
+    p_client_name: String(input.clientName || "").trim(),
+    p_client_contact: String(input.clientContact || "").trim(),
+    p_shift_fee: Number(input.shiftFee) || 0,
+    p_guestlist_fee: Number(input.guestlistFee) || 0,
+    p_guests_count: Math.max(0, Math.round(Number(input.guestsCount) || 0)),
+    p_notes: input.notes.trim(),
+  });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: String(data ?? "") };
 }
 
 function parseGuestlistEntryRow(raw: Raw): PromoterGuestlistEntry {

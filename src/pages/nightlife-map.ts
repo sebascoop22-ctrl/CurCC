@@ -388,8 +388,21 @@ export async function initNightlifeMap(): Promise<void> {
     if (gl) gl.disabled = !ok;
   }
 
-  function selectClub(c: Club): void {
+  let selectedMarkerRoot: HTMLElement | null = null;
+
+  function setMarkerFront(root: HTMLElement, active: boolean): void {
+    root.classList.toggle("is-active", active);
+  }
+
+  function selectClub(c: Club, markerRoot?: HTMLElement | null): void {
     selectedClub = c;
+    if (selectedMarkerRoot && selectedMarkerRoot !== markerRoot) {
+      setMarkerFront(selectedMarkerRoot, false);
+    }
+    if (markerRoot) {
+      selectedMarkerRoot = markerRoot;
+      setMarkerFront(markerRoot, true);
+    }
     selectedFlyerIndex = 0;
     fillSidebar(c);
     updateSidebarCtas();
@@ -431,12 +444,24 @@ export async function initNightlifeMap(): Promise<void> {
     new maplibregl.Marker({ element: root, anchor: "bottom" })
       .setLngLat([c.lng, c.lat])
       .addTo(map);
-    el.addEventListener("click", () => selectClub(c));
+    el.addEventListener("click", () => selectClub(c, root));
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        selectClub(c);
+        selectClub(c, root);
       }
+    });
+    el.addEventListener("mouseenter", () => {
+      root.classList.add("is-hovered");
+    });
+    el.addEventListener("mouseleave", () => {
+      root.classList.remove("is-hovered");
+    });
+    el.addEventListener("focus", () => {
+      root.classList.add("is-hovered");
+    });
+    el.addEventListener("blur", () => {
+      root.classList.remove("is-hovered");
     });
   }
 

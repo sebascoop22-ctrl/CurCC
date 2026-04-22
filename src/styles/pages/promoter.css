@@ -74,6 +74,41 @@
   padding-right: 0.1rem;
 }
 
+.promoter-nav-block {
+  margin-bottom: 0.7rem;
+}
+
+.promoter-nav-heading {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  margin: 0 0 0.3rem;
+  padding: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #667085;
+  cursor: pointer;
+}
+
+.promoter-nav-heading::after {
+  content: "▾";
+  font-size: 0.7rem;
+  transition: transform 0.14s ease;
+}
+
+.promoter-nav-block:not(.is-open) .promoter-nav-heading::after {
+  transform: rotate(-90deg);
+}
+
+.promoter-nav-items {
+  margin-top: 0.1rem;
+}
+
 .promoter-sidebar .promoter-view-tab {
   display: block;
   width: 100%;
@@ -159,6 +194,57 @@
   line-height: 1.45;
   color: #667085;
   max-width: 60ch;
+}
+
+.promoter-account {
+  position: relative;
+}
+
+.promoter-account__btn {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  color: #101828;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.promoter-account__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  width: 260px;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.18);
+  padding: 0.35rem;
+  z-index: 30;
+}
+
+.promoter-account__item {
+  width: 100%;
+  text-align: left;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #344054;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.promoter-account__item:hover {
+  background: #f2f4f7;
+  color: #101828;
+}
+
+.promoter-account__item--danger {
+  color: #b42318;
 }
 
 .promoter-workspace {
@@ -478,6 +564,14 @@ html[data-cc-theme="ocean"] .promoter-auth-hint {
   border-bottom: none;
 }
 
+.promoter-client-row {
+  cursor: pointer;
+}
+
+.promoter-client-row.is-active td {
+  background: rgba(148, 163, 184, 0.16);
+}
+
 .promoter-page .cc-field label {
   color: #667085;
   font-weight: 600;
@@ -552,6 +646,11 @@ html[data-cc-theme="ocean"] .promoter-sidebar {
 
 html[data-cc-theme="dark"] .promoter-sidebar__eyebrow,
 html[data-cc-theme="ocean"] .promoter-sidebar__eyebrow {
+  color: var(--cc-muted);
+}
+
+html[data-cc-theme="dark"] .promoter-nav-heading,
+html[data-cc-theme="ocean"] .promoter-nav-heading {
   color: var(--cc-muted);
 }
 

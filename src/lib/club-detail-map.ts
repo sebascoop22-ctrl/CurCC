@@ -57,6 +57,13 @@ export async function initClubDetailMap(club: Club): Promise<void> {
   face.setAttribute("aria-hidden", "true");
   face.textContent = iconForVenue(club.venueType);
   btn.appendChild(face);
+  btn.addEventListener("mouseenter", () => root.classList.add("is-hovered"));
+  btn.addEventListener("mouseleave", () => root.classList.remove("is-hovered"));
+  btn.addEventListener("focus", () => root.classList.add("is-hovered"));
+  btn.addEventListener("blur", () => root.classList.remove("is-hovered"));
+  btn.addEventListener("click", () => {
+    root.classList.add("is-active");
+  });
   wrap.appendChild(label);
   wrap.appendChild(btn);
   root.appendChild(wrap);

@@ -8,6 +8,8 @@ import {
   themeIcon,
   themeLabel,
 } from "./theme";
+import { getSupabaseClient } from "./lib/supabase";
+import { resolveSignedInRole } from "./lib/session-role";
 import "./styles/global.css";
 
 /** Vite/static sites use `inject()` — not `@vercel/analytics/next` (Next.js only). */
@@ -26,6 +28,8 @@ export type ActivePage =
   | "chauffeuring"
   | "enquiry"
   | "admin"
+  | "portal"
+  | "account"
   | "privacy"
   | "terms";
 
@@ -42,7 +46,38 @@ function drawerLinks(active: ActivePage): string {
     <a href="/chauffeuring"${cls("chauffeuring")}>Chauffeur</a>
     <a href="/security"${cls("security")}>Security</a>
     <a href="/enquiry"${cls("enquiry")}>Inquiry</a>
+    <a href="/account"${cls("account")}>Account</a>
   `;
+}
+
+function accountMenuHtml(
+  state: {
+  signedIn: boolean;
+  role: "admin" | "promoter" | "host" | null;
+  },
+  active: ActivePage,
+): string {
+  if (!state.signedIn) {
+    return [
+      `<a class="site-account__item" href="/account">Sign in</a>`,
+      `<a class="site-account__item" href="/account?mode=signup">Sign up</a>`,
+    ].join("");
+  }
+  const links: string[] = [];
+  if (state.role === "admin") {
+    const allowRoleSwitch = active === "portal";
+    if (allowRoleSwitch) {
+      links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
+    } else {
+      links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
+    }
+  } else if (state.role === "promoter") {
+    links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
+  } else {
+    links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
+  }
+  links.push(`<button type="button" class="site-account__item site-account__item--danger" id="site-account-signout">Sign out</button>`);
+  return links.join("");
 }
 
 export function initChrome(active: ActivePage): void {
@@ -68,8 +103,11 @@ export function initChrome(active: ActivePage): void {
       ${desktopNav()}
       <div class="site-header__actions">
         <button type="button" class="nav-toggle" id="cc-nav-toggle" aria-expanded="false" aria-controls="cc-drawer" aria-label="Open menu">☰</button>
-        <button type="button" class="cc-btn cc-btn--ghost cc-btn--header" id="cc-contact-open">Contact</button>
         <button type="button" class="cc-theme-toggle" id="cc-theme-toggle" aria-label="Switch color theme" title="Theme">☾</button>
+        <div class="site-account" id="site-account">
+          <button type="button" class="site-account__btn" id="site-account-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu" title="Account">👤</button>
+          <div class="site-account__menu" id="site-account-menu" role="menu" hidden></div>
+        </div>
       </div>
     </div>`;
 
@@ -90,7 +128,7 @@ export function initChrome(active: ActivePage): void {
         <nav class="site-footer__pages" aria-label="Site pages">
           <a href="/nightlife">Nightlife</a>
           <a href="${classicHomeHref}">Classic home</a>
-          <a href="/promoter">Promoter Portal</a>
+          <a href="/portal">Portal</a>
           <a href="/nightlife-map">Map</a>
           <a href="/chauffeuring">Chauffeur</a>
           <a href="/security">Security</a>
@@ -127,6 +165,9 @@ export function initChrome(active: ActivePage): void {
   const closeBtn = document.getElementById("cc-modal-close");
   const toggle = document.getElementById("cc-nav-toggle");
   const themeBtn = document.getElementById("cc-theme-toggle");
+  const accountBtn = document.getElementById("site-account-btn") as HTMLButtonElement | null;
+  const accountMenu = document.getElementById("site-account-menu") as HTMLElement | null;
+  const supabase = getSupabaseClient();
 
   function refreshThemeToggle(): void {
     if (!themeBtn) return;
@@ -163,6 +204,43 @@ export function initChrome(active: ActivePage): void {
     drawer?.classList.toggle("is-open", open);
     toggle?.setAttribute("aria-expanded", String(open));
   }
+
+  function setAccountMenu(open: boolean): void {
+    if (!accountBtn || !accountMenu) return;
+    accountBtn.setAttribute("aria-expanded", String(open));
+    accountMenu.hidden = !open;
+  }
+
+  async function hydrateAccountMenu(): Promise<void> {
+    if (!accountMenu || !accountBtn) return;
+    const state = await resolveSignedInRole();
+    accountMenu.innerHTML = accountMenuHtml(state, active);
+    accountMenu.querySelector("#site-account-signout")?.addEventListener("click", () => {
+      if (!supabase) {
+        window.location.href = "/account";
+        return;
+      }
+      void supabase.auth.signOut().then(() => {
+        setAccountMenu(false);
+        window.location.href = "/account";
+      });
+    });
+  }
+
+  void hydrateAccountMenu();
+  supabase?.auth.onAuthStateChange(() => {
+    void hydrateAccountMenu();
+  });
+  accountBtn?.addEventListener("click", () => {
+    const open = accountBtn.getAttribute("aria-expanded") === "true";
+    setAccountMenu(!open);
+  });
+  document.addEventListener("click", (e) => {
+    const t = e.target as Node | null;
+    if (!t) return;
+    if (accountBtn?.contains(t) || accountMenu?.contains(t)) return;
+    setAccountMenu(false);
+  });
 
   toggle?.addEventListener("click", () => {
     const open = drawer?.classList.contains("is-open");

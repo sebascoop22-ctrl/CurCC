@@ -25,6 +25,41 @@ create table if not exists public.clients (
   created_at timestamptz not null default now()
 );
 
+alter table public.clients
+  add column if not exists notes text;
+alter table public.clients
+  add column if not exists guest_profile_id uuid;
+alter table public.clients
+  add column if not exists typical_spend_gbp numeric(12,2);
+alter table public.clients
+  add column if not exists preferred_nights text;
+alter table public.clients
+  add column if not exists preferred_promoter_id uuid;
+alter table public.clients
+  add column if not exists preferred_club_slug text;
+
+create index if not exists clients_preferred_promoter_idx on public.clients (preferred_promoter_id);
+create index if not exists clients_preferred_club_idx on public.clients (preferred_club_slug);
+create index if not exists clients_guest_profile_idx on public.clients (guest_profile_id);
+
+create table if not exists public.client_attendances (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients (id) on delete cascade,
+  event_date date not null,
+  club_slug text not null references public.clubs (slug) on delete restrict,
+  promoter_id uuid references public.promoters (id) on delete set null,
+  spend_gbp numeric(12,2) not null default 0 check (spend_gbp >= 0),
+  source text not null default 'manual',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists client_attendances_client_date_idx
+on public.client_attendances (client_id, event_date desc);
+create index if not exists client_attendances_club_date_idx
+on public.client_attendances (club_slug, event_date desc);
+
 create index if not exists clients_email_idx on public.clients (lower(email));
 create index if not exists clients_phone_idx on public.clients (phone);
 
@@ -253,6 +288,8 @@ create table if not exists public.promoter_jobs (
   service text not null default 'guestlist',
   job_date date not null,
   status text not null default 'assigned' check (status in ('assigned', 'completed', 'cancelled')),
+  client_name text not null default '',
+  client_contact text not null default '',
   guests_count integer not null default 0,
   shift_fee numeric(12,2) not null default 0,
   guestlist_fee numeric(12,2) not null default 0,
@@ -260,6 +297,11 @@ create table if not exists public.promoter_jobs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.promoter_jobs
+  add column if not exists client_name text not null default '';
+alter table public.promoter_jobs
+  add column if not exists client_contact text not null default '';
 
 create table if not exists public.promoter_guestlist_entries (
   id uuid primary key default gen_random_uuid(),
@@ -573,6 +615,17 @@ create index if not exists promoter_table_sales_pending_idx
 on public.promoter_table_sales (created_at desc)
 where approval_status = 'pending';
 
+alter table public.clients
+  drop constraint if exists clients_preferred_promoter_id_fkey;
+alter table public.clients
+  add constraint clients_preferred_promoter_id_fkey
+  foreign key (preferred_promoter_id) references public.promoters (id) on delete set null;
+alter table public.clients
+  drop constraint if exists clients_preferred_club_slug_fkey;
+alter table public.clients
+  add constraint clients_preferred_club_slug_fkey
+  foreign key (preferred_club_slug) references public.clubs (slug) on delete set null;
+
 -- RLS defaults.
 alter table public.profiles enable row level security;
 alter table public.clients enable row level security;
@@ -595,6 +648,7 @@ alter table public.financial_transactions enable row level security;
 alter table public.financial_recurring_templates enable row level security;
 alter table public.financial_payees enable row level security;
 alter table public.promoter_table_sales enable row level security;
+alter table public.client_attendances enable row level security;
 
 -- Profiles: each user can read their own row (needed for admin role check in the browser).
 drop policy if exists profiles_self_read on public.profiles;
@@ -781,6 +835,236 @@ with check (
   )
 );
 
+drop policy if exists clients_promoter_select on public.clients;
+create policy clients_promoter_select
+on public.clients
+for select
+to authenticated
+using (
+  preferred_promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+drop policy if exists clients_promoter_insert on public.clients;
+create policy clients_promoter_insert
+on public.clients
+for insert
+to authenticated
+with check (
+  preferred_promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+drop policy if exists clients_promoter_update on public.clients;
+create policy clients_promoter_update
+on public.clients
+for update
+to authenticated
+using (
+  preferred_promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+)
+with check (
+  preferred_promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+drop policy if exists client_attendances_admin_all on public.client_attendances;
+create policy client_attendances_admin_all
+on public.client_attendances
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+);
+
+drop policy if exists client_attendances_promoter_select on public.client_attendances;
+create policy client_attendances_promoter_select
+on public.client_attendances
+for select
+to authenticated
+using (
+  promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+  or exists (
+    select 1
+    from public.clients c
+    where c.id = client_attendances.client_id
+      and c.preferred_promoter_id = (
+        select pr.id
+        from public.promoters pr
+        where pr.user_id = auth.uid()
+        limit 1
+      )
+  )
+);
+
+drop policy if exists client_attendances_promoter_write on public.client_attendances;
+create policy client_attendances_promoter_write
+on public.client_attendances
+for insert
+to authenticated
+with check (
+  promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+drop policy if exists client_attendances_promoter_update on public.client_attendances;
+create policy client_attendances_promoter_update
+on public.client_attendances
+for update
+to authenticated
+using (
+  promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+)
+with check (
+  promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+drop policy if exists client_attendances_promoter_delete on public.client_attendances;
+create policy client_attendances_promoter_delete
+on public.client_attendances
+for delete
+to authenticated
+using (
+  promoter_id = (
+    select pr.id
+    from public.promoters pr
+    where pr.user_id = auth.uid()
+    limit 1
+  )
+);
+
+create or replace function public.recalculate_client_preferences(p_client_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_promoter_id uuid;
+  v_club_slug text;
+  v_nights text;
+  v_avg_spend numeric(12,2);
+begin
+  select promoter_id
+  into v_promoter_id
+  from public.client_attendances
+  where client_id = p_client_id
+    and promoter_id is not null
+  group by promoter_id
+  order by count(*) desc, max(event_date) desc
+  limit 1;
+
+  select club_slug
+  into v_club_slug
+  from public.client_attendances
+  where client_id = p_client_id
+  group by club_slug
+  order by count(*) desc, max(event_date) desc
+  limit 1;
+
+  select round(avg(spend_gbp)::numeric, 2)
+  into v_avg_spend
+  from public.client_attendances
+  where client_id = p_client_id
+    and spend_gbp is not null;
+
+  select string_agg(day_name, ', ' order by visits desc, day_name)
+  into v_nights
+  from (
+    select
+      (array['Sun','Mon','Tue','Wed','Thu','Fri','Sat'])[(extract(dow from event_date)::int + 1)] as day_name,
+      count(*) as visits
+    from public.client_attendances
+    where client_id = p_client_id
+    group by 1
+    order by visits desc, day_name
+    limit 2
+  ) ranked_days;
+
+  update public.clients
+  set
+    preferred_promoter_id = v_promoter_id,
+    preferred_club_slug = v_club_slug,
+    preferred_nights = nullif(coalesce(v_nights, ''), ''),
+    typical_spend_gbp = v_avg_spend
+  where id = p_client_id;
+end;
+$$;
+
+create or replace function public.client_attendance_recalc_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    perform public.recalculate_client_preferences(old.client_id);
+    return old;
+  end if;
+  perform public.recalculate_client_preferences(new.client_id);
+  if tg_op = 'UPDATE' and new.client_id is distinct from old.client_id then
+    perform public.recalculate_client_preferences(old.client_id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists client_attendance_recalc_after_change on public.client_attendances;
+create trigger client_attendance_recalc_after_change
+after insert or update or delete on public.client_attendances
+for each row
+execute function public.client_attendance_recalc_trigger();
+
 -- Create client rows from enquiry_guests (and legacy enquiries row if no guests).
 create or replace function public.create_clients_from_enquiry(p_enquiry_id uuid)
 returns integer
@@ -904,6 +1188,72 @@ end;
 $$;
 
 grant execute on function public.create_clients_from_enquiry(uuid) to authenticated;
+
+drop function if exists public.insert_promoter_job_self(text, date, text, numeric, numeric, integer, text);
+drop function if exists public.insert_promoter_job_self(text, date, text, numeric, numeric, integer, text, text, text, text);
+create or replace function public.insert_promoter_job_self(
+  p_club_slug text,
+  p_job_date date,
+  p_service text default 'guestlist',
+  p_shift_fee numeric default 0,
+  p_guestlist_fee numeric default 0,
+  p_guests_count integer default 0,
+  p_notes text default '',
+  p_status text default 'assigned',
+  p_client_name text default '',
+  p_client_contact text default ''
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_promoter_id uuid;
+  v_id uuid;
+  v_service text := lower(trim(coalesce(p_service, 'guestlist')));
+  v_status text := lower(trim(coalesce(p_status, 'assigned')));
+begin
+  select pr.id
+  into v_promoter_id
+  from public.promoters pr
+  where pr.user_id = auth.uid()
+  limit 1;
+
+  if v_promoter_id is null then
+    raise exception 'promoter profile not found for current user';
+  end if;
+
+  if v_service not in ('guestlist', 'table_sale', 'tickets', 'other') then
+    v_service := 'other';
+  end if;
+  if v_status not in ('assigned', 'completed', 'cancelled') then
+    v_status := 'assigned';
+  end if;
+
+  insert into public.promoter_jobs (
+    promoter_id, club_slug, service, job_date, status, client_name, client_contact, guests_count, shift_fee, guestlist_fee, notes
+  )
+  values (
+    v_promoter_id,
+    nullif(trim(p_club_slug), ''),
+    v_service,
+    p_job_date,
+    v_status,
+    coalesce(p_client_name, ''),
+    coalesce(p_client_contact, ''),
+    greatest(0, coalesce(p_guests_count, 0)),
+    greatest(0, coalesce(p_shift_fee, 0)),
+    greatest(0, coalesce(p_guestlist_fee, 0)),
+    coalesce(p_notes, '')
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+grant execute on function public.insert_promoter_job_self(text, date, text, numeric, numeric, integer, text, text, text, text) to authenticated;
 
 -- Promoter self-service + admin policies.
 drop policy if exists promoters_admin_select on public.promoters;
@@ -1782,6 +2132,12 @@ create index if not exists guestlist_signups_event_idx on public.guestlist_signu
 create index if not exists guestlist_signups_guest_idx on public.guestlist_signups (guest_profile_id, signup_at desc);
 create index if not exists guestlist_checkins_signup_idx on public.guestlist_checkins (guestlist_signup_id, checked_in_at desc);
 create index if not exists guestlist_demographics_guest_idx on public.guestlist_demographics (guest_profile_id, created_at desc);
+
+alter table public.clients
+  drop constraint if exists clients_guest_profile_id_fkey;
+alter table public.clients
+  add constraint clients_guest_profile_id_fkey
+  foreign key (guest_profile_id) references public.guest_profiles (id) on delete set null;
 
 alter table public.guest_profiles enable row level security;
 alter table public.guest_identity_links enable row level security;

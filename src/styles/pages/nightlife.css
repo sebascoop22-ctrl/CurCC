@@ -72,6 +72,87 @@
   margin: 0.35rem 0 0;
 }
 
+.nl-carousel-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.nl-carousel-arrow {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-raised);
+  color: var(--cc-cream);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.nl-carousel-arrow:hover {
+  border-color: rgba(212, 196, 168, 0.4);
+  color: var(--cc-gold);
+}
+
+.nl-flyers-carousel-section {
+  padding-top: 0;
+}
+
+#nl-flyer-carousel-track {
+  justify-content: center;
+}
+
+.nl-flyer-slide__card {
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  background: var(--cc-bg-card);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.nl-flyer-slide__card:hover,
+.nl-flyer-slide__card:focus-within {
+  transform: translateY(-2px);
+  border-color: rgba(212, 196, 168, 0.38);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.nl-flyer-slide__media img,
+.nl-flyer-slide__placeholder {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.nl-flyer-slide__placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--cc-muted);
+  background: #0b0b0f;
+}
+
+.nl-flyer-slide__body {
+  padding: 0.75rem;
+}
+
+.nl-flyer-slide__meta {
+  margin: 0 0 0.3rem;
+  font-size: 0.7rem;
+  color: var(--cc-muted);
+}
+
+.nl-flyer-slide__title {
+  margin: 0 0 0.65rem;
+  color: var(--cc-cream);
+}
+
 .nightlife-content-toggle {
   margin-bottom: 1rem;
 }
@@ -138,6 +219,74 @@
   object-fit: cover;
   border-radius: var(--cc-radius);
   border: 1px solid var(--cc-border);
+}
+
+.nightlife-flyers__actions {
+  margin-top: 0.75rem;
+}
+
+.modal--flyer {
+  width: min(980px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.flyer-modal__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.flyer-modal__info {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.flyer-modal__media img {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: #0b0b0f;
+}
+
+.flyer-modal__placeholder {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  color: var(--cc-muted);
+}
+
+.flyer-modal__meta,
+.flyer-modal__desc {
+  margin: 0 0 0.55rem;
+  color: var(--cc-muted);
+  line-height: 1.5;
+}
+
+.flyer-modal__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.6rem;
+  margin-top: auto;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+@media (max-width: 860px) {
+  .flyer-modal__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .flyer-modal__actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 @media (min-width: 700px) {
@@ -845,6 +994,12 @@
   border-radius: var(--cc-radius-lg);
   border: 1px solid var(--cc-border);
   background: var(--cc-bg-card);
+  cursor: pointer;
+}
+
+.nl-hero-flyer:focus-visible {
+  outline: 1px solid var(--cc-gold);
+  outline-offset: 3px;
 }
 
 @media (max-width: 600px) {
@@ -855,9 +1010,14 @@
 
 .nl-hero-flyer img {
   width: 100%;
-  height: 160px;
-  object-fit: cover;
+  height: 190px;
+  object-fit: contain;
   border-radius: var(--cc-radius);
+  background: #0b0b0f;
+}
+
+.nl-hero-flyer__open {
+  margin-top: 0.65rem;
 }
 
 .nl-hero-flyer__eyebrow {
@@ -938,6 +1098,13 @@
 /* Hero map: same pin affordance as full venue map; name on hover / focus */
 .nl-hero-map__marker-root {
   display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.nl-hero-map__marker-root.is-hovered,
+.nl-hero-map__marker-root.is-active {
+  z-index: 5000;
 }
 
 .nl-hero-map__marker-wrap {
@@ -945,6 +1112,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  z-index: 1;
+}
+
+.nl-hero-map__marker-root.is-hovered .nl-hero-map__marker-wrap,
+.nl-hero-map__marker-root.is-active .nl-hero-map__marker-wrap {
+  z-index: 5001;
 }
 
 .nl-hero-map__marker-label {
@@ -976,8 +1149,12 @@
 }
 
 .nl-hero-map__marker-wrap:hover .nl-hero-map__marker-label,
-.nl-hero-map__marker-wrap:focus-within .nl-hero-map__marker-label {
+.nl-hero-map__marker-wrap:focus-within .nl-hero-map__marker-label,
+.nl-hero-map__marker-root.is-hovered .nl-hero-map__marker-label,
+.nl-hero-map__marker-root.is-active .nl-hero-map__marker-label {
   opacity: 1;
+  z-index: 5002;
+  border-color: rgba(212, 196, 168, 0.5);
 }
 
 .nl-hero-map__marker-hit {
@@ -1015,6 +1192,61 @@
 .nl-featured-section,
 .nl-all-clubs {
   padding-top: var(--cc-space-lg);
+}
+
+.nl-all-clubs__filters {
+  margin: 0 0 var(--cc-space-md);
+}
+
+.nl-all-clubs__filter-toggle {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nl-all-clubs__filter-toggle svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  fill: currentColor;
+}
+
+.nl-all-clubs__filter-panel {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.75rem;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg-card);
+}
+
+.nl-all-clubs__filter-panel[hidden] {
+  display: none !important;
+}
+
+.nl-all-clubs__filter-panel .cc-field {
+  margin: 0;
+}
+
+.nl-all-clubs__filter-panel .cc-field label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.nl-all-clubs__filter-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  color: var(--cc-muted);
+}
+
+.nl-all-clubs__filter-status[hidden] {
+  display: none !important;
 }
 
 .nl-carousel {

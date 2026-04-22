@@ -39,6 +39,15 @@
   background: var(--cc-bg-card);
 }
 
+.featured-banner__clickable {
+  cursor: pointer;
+}
+
+.featured-banner__clickable:focus-visible {
+  outline: 1px solid var(--cc-gold);
+  outline-offset: 3px;
+}
+
 .featured-banner__label {
   margin: 0 0 0.35rem;
   font-size: 0.58rem;
@@ -181,6 +190,111 @@
   border-color: var(--cc-gold);
   background: var(--cc-home-featured-details-hover-bg);
   text-decoration: none;
+}
+
+.modal--flyer {
+  width: min(980px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.flyer-modal__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.flyer-modal__info,
+.club-modal__info {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.flyer-modal__media img {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: #0b0b0f;
+}
+
+.flyer-modal__placeholder {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  color: var(--cc-muted);
+}
+
+.flyer-modal__meta,
+.flyer-modal__desc {
+  margin: 0 0 0.55rem;
+  color: var(--cc-muted);
+  line-height: 1.5;
+}
+
+.flyer-modal__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.6rem;
+  margin-top: auto;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.modal--club-preview {
+  width: min(980px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.club-modal__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.club-modal__media img {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: cover;
+  border-radius: var(--cc-radius);
+  border: 1px solid var(--cc-border);
+  background: #0b0b0f;
+}
+
+.club-modal__meta,
+.club-modal__desc {
+  margin: 0 0 0.55rem;
+  color: var(--cc-muted);
+  line-height: 1.5;
+}
+
+.club-modal__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.6rem;
+  margin-top: auto;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+@media (max-width: 860px) {
+  .flyer-modal__layout,
+  .club-modal__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .flyer-modal__actions,
+  .club-modal__actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 /* —— Lead / invitation form —— */

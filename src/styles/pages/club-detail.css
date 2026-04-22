@@ -226,6 +226,13 @@ main.club-detail > .club-detail__prices h3.club-detail__price-sub {
 /* Venue pin (matches nightlife hero markers; scoped to club page CSS bundle) */
 .club-detail-map__marker-root {
   display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.club-detail-map__marker-root.is-hovered,
+.club-detail-map__marker-root.is-active {
+  z-index: 5000;
 }
 
 .club-detail-map__marker-wrap {
@@ -233,6 +240,12 @@ main.club-detail > .club-detail__prices h3.club-detail__price-sub {
   display: flex;
   flex-direction: column;
   align-items: center;
+  z-index: 1;
+}
+
+.club-detail-map__marker-root.is-hovered .club-detail-map__marker-wrap,
+.club-detail-map__marker-root.is-active .club-detail-map__marker-wrap {
+  z-index: 5001;
 }
 
 .club-detail-map__marker-label {
@@ -263,8 +276,12 @@ main.club-detail > .club-detail__prices h3.club-detail__price-sub {
 }
 
 .club-detail-map__marker-wrap:hover .club-detail-map__marker-label,
-.club-detail-map__marker-wrap:focus-within .club-detail-map__marker-label {
+.club-detail-map__marker-wrap:focus-within .club-detail-map__marker-label,
+.club-detail-map__marker-root.is-hovered .club-detail-map__marker-label,
+.club-detail-map__marker-root.is-active .club-detail-map__marker-label {
   opacity: 1;
+  z-index: 5002;
+  border-color: rgba(212, 196, 168, 0.5);
 }
 
 .club-detail-map__marker-hit {

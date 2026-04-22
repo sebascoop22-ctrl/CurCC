@@ -182,14 +182,18 @@ export interface PromoterJob {
   id: string;
   promoterId: string;
   clubSlug: string | null;
-  service: string;
+  service: PromoterJobService;
   jobDate: string;
   status: "assigned" | "completed" | "cancelled";
   guestsCount: number;
   shiftFee: number;
   guestlistFee: number;
+  clientName?: string;
+  clientContact?: string;
   notes: string;
 }
+
+export type PromoterJobService = "guestlist" | "table_sale" | "tickets" | "other";
 
 /** Job row with promoter display name for admin calendar / list views. */
 export type PromoterJobAdminRow = PromoterJob & {
@@ -265,6 +269,8 @@ export interface PromoterTableSale {
   tier: "standard" | "luxury" | "vip" | "other";
   tableCount: number;
   totalMinSpend: number;
+  clientName?: string;
+  clientContact?: string;
   notes: string;
   approvalStatus: "pending" | "approved" | "rejected";
   createdAt: string;

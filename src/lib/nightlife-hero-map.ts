@@ -71,6 +71,8 @@ export async function initNightlifeHeroMap(clubs: Club[]): Promise<void> {
     map.setZoom(DEFAULT_ZOOM);
   }
 
+  let selectedMarkerRoot: HTMLElement | null = null;
+
   for (const c of withGeo) {
     const root = document.createElement("div");
     root.className = "nl-hero-map__marker-root";
@@ -89,7 +91,22 @@ export async function initNightlifeHeroMap(clubs: Club[]): Promise<void> {
     face.setAttribute("aria-hidden", "true");
     face.textContent = iconForVenue(c.venueType);
     btn.appendChild(face);
+    const setHovered = (on: boolean) => {
+      root.classList.toggle("is-hovered", on);
+    };
+    const setSelected = () => {
+      if (selectedMarkerRoot && selectedMarkerRoot !== root) {
+        selectedMarkerRoot.classList.remove("is-active");
+      }
+      root.classList.add("is-active");
+      selectedMarkerRoot = root;
+    };
+    btn.addEventListener("mouseenter", () => setHovered(true));
+    btn.addEventListener("mouseleave", () => setHovered(false));
+    btn.addEventListener("focus", () => setHovered(true));
+    btn.addEventListener("blur", () => setHovered(false));
     btn.addEventListener("click", () => {
+      setSelected();
       window.location.href = `/club/${encodeURIComponent(c.slug)}`;
     });
     wrap.appendChild(label);

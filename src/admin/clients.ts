@@ -12,6 +12,7 @@ export type ClientRow = {
   typical_spend_gbp: number | null;
   preferred_nights: string | null;
   preferred_promoter_id: string | null;
+  preferred_club_slug: string | null;
 };
 
 export type ClientGuestlistActivityRow = {
@@ -24,6 +25,18 @@ export type ClientGuestlistActivityRow = {
   created_at: string;
 };
 
+export type ClientAttendanceRow = {
+  id: string;
+  client_id: string;
+  event_date: string;
+  club_slug: string;
+  promoter_id: string | null;
+  spend_gbp: number;
+  source: string;
+  notes: string;
+  created_at: string;
+};
+
 export async function loadClientsForAdmin(
   supabase: SupabaseClient,
   limit = 500,
@@ -31,7 +44,7 @@ export async function loadClientsForAdmin(
   const { data, error } = await supabase
     .from("clients")
     .select(
-      "id, name, email, phone, instagram, created_at, notes, guest_profile_id, typical_spend_gbp, preferred_nights, preferred_promoter_id",
+      "id, name, email, phone, instagram, created_at, notes, guest_profile_id, typical_spend_gbp, preferred_nights, preferred_promoter_id, preferred_club_slug",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -61,6 +74,8 @@ export async function loadClientsForAdmin(
         r.preferred_promoter_id != null
           ? String(r.preferred_promoter_id)
           : null,
+      preferred_club_slug:
+        r.preferred_club_slug != null ? String(r.preferred_club_slug) : null,
     };
   });
   return { ok: true, rows };
@@ -128,6 +143,7 @@ export async function updateClientById(
     typical_spend_gbp: number | null;
     preferred_nights: string | null;
     preferred_promoter_id: string | null;
+    preferred_club_slug: string | null;
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error } = await supabase
@@ -141,8 +157,87 @@ export async function updateClientById(
       typical_spend_gbp: patch.typical_spend_gbp,
       preferred_nights: patch.preferred_nights,
       preferred_promoter_id: patch.preferred_promoter_id,
+      preferred_club_slug: patch.preferred_club_slug,
     })
     .eq("id", id);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
+export async function loadClientAttendancesForAdmin(
+  supabase: SupabaseClient,
+  clientId: string,
+): Promise<
+  { ok: true; rows: ClientAttendanceRow[] } | { ok: false; message: string }
+> {
+  const { data, error } = await supabase
+    .from("client_attendances")
+    .select(
+      "id, client_id, event_date, club_slug, promoter_id, spend_gbp, source, notes, created_at",
+    )
+    .eq("client_id", clientId)
+    .order("event_date", { ascending: false });
+  if (error) return { ok: false, message: error.message };
+  const rows: ClientAttendanceRow[] = (data ?? []).map((raw) => {
+    const r = raw as Record<string, unknown>;
+    const spend = Number(r.spend_gbp ?? 0);
+    return {
+      id: String(r.id ?? ""),
+      client_id: String(r.client_id ?? ""),
+      event_date: String(r.event_date ?? "").slice(0, 10),
+      club_slug: String(r.club_slug ?? ""),
+      promoter_id: r.promoter_id != null ? String(r.promoter_id) : null,
+      spend_gbp: Number.isFinite(spend) ? spend : 0,
+      source: String(r.source ?? "manual"),
+      notes: String(r.notes ?? ""),
+      created_at: String(r.created_at ?? ""),
+    };
+  });
+  return { ok: true, rows };
+}
+
+export async function saveClientAttendanceForAdmin(
+  supabase: SupabaseClient,
+  input: {
+    id?: string;
+    client_id: string;
+    event_date: string;
+    club_slug: string;
+    promoter_id: string | null;
+    spend_gbp: number;
+    source?: string;
+    notes?: string;
+  },
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const payload = {
+    client_id: input.client_id,
+    event_date: input.event_date,
+    club_slug: input.club_slug,
+    promoter_id: input.promoter_id,
+    spend_gbp: Number(input.spend_gbp) || 0,
+    source: (input.source || "manual").trim() || "manual",
+    notes: (input.notes || "").trim(),
+  };
+  if (input.id?.trim()) {
+    const id = input.id.trim();
+    const { error } = await supabase.from("client_attendances").update(payload).eq("id", id);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, id };
+  }
+  const { data, error } = await supabase
+    .from("client_attendances")
+    .insert(payload)
+    .select("id")
+    .single();
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: String((data as { id?: string } | null)?.id ?? "") };
+}
+
+export async function deleteClientAttendanceForAdmin(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { error } = await supabase.from("client_attendances").delete().eq("id", id);
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }

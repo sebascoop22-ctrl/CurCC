@@ -69,10 +69,14 @@ export function openVenueRequestModal(opts: {
   host: HTMLElement | null;
   kind: VenueRequestKind;
   club: Club;
+  clubOptions?: Array<{ slug: string; name: string; locationTag?: string }>;
+  dateOptions?: string[];
   /** When joining a specific promoter guestlist from club detail */
   promoterName?: string;
+  /** Optional preferred event date (e.g. from flyer click). */
+  preferredDate?: string;
 }): void {
-  const { host, kind, club, promoterName } = opts;
+  const { host, kind, club, clubOptions, dateOptions, promoterName, preferredDate } = opts;
   if (!host) return;
 
   host.querySelectorAll(".venue-request-overlay").forEach((el) => el.remove());
@@ -116,6 +120,52 @@ export function openVenueRequestModal(opts: {
           )
           .join("")}</ul></div>`
       : "";
+  const preferredDateLabel = String(preferredDate ?? "").trim();
+  const preferredDateBlock =
+    kind === "guestlist" && preferredDateLabel
+      ? `<p class="venue-request-modal__lede" style="margin-top:-0.35rem">Preferred date: <strong>${escapeAttr(preferredDateLabel)}</strong></p>`
+      : "";
+  const clubChoices =
+    kind === "guestlist" && clubOptions?.length
+      ? clubOptions
+      : [{ slug: club.slug, name: club.name, locationTag: club.locationTag }];
+  const clubSelectorBlock =
+    kind === "guestlist"
+      ? `<div class="cc-field">
+      <label for="vr-club-select">Club</label>
+      <select id="vr-club-select" name="club_slug">
+        ${clubChoices
+          .map((c) => {
+            const selected = c.slug === club.slug ? ' selected' : "";
+            const label = c.locationTag?.trim()
+              ? `${c.name} · ${c.locationTag.trim()}`
+              : c.name;
+            return `<option value="${escapeAttr(c.slug)}"${selected}>${escapeAttr(label)}</option>`;
+          })
+          .join("")}
+      </select>
+    </div>`
+      : "";
+  const dateChoices = (dateOptions ?? []).map((d) => String(d).trim()).filter(Boolean);
+  if (preferredDateLabel && !dateChoices.includes(preferredDateLabel)) {
+    dateChoices.unshift(preferredDateLabel);
+  }
+  const dateSelectorBlock =
+    kind === "guestlist"
+      ? `<div class="cc-field">
+      <label for="vr-date-select">Event date</label>
+      ${
+        dateChoices.length
+          ? `<select id="vr-date-select" name="preferred_date">
+              ${dateChoices
+                .map((d) => `<option value="${escapeAttr(d)}"${d === preferredDateLabel ? " selected" : ""}>${escapeAttr(d)}</option>`)
+                .join("")}
+              <option value="">Date TBC</option>
+            </select>`
+          : `<input id="vr-date-select" name="preferred_date" type="date" value="${escapeAttr(preferredDateLabel)}" />`
+      }
+    </div>`
+      : "";
   const guestRowsBlock =
     kind === "guestlist"
       ? `<section class="venue-request-modal__party" aria-label="Guestlist party details">
@@ -133,6 +183,7 @@ export function openVenueRequestModal(opts: {
     <h3 id="venue-request-title">${escapeAttr(title)}</h3>
     <p class="venue-request-modal__lede">${escapeAttr(club.name)}${club.locationTag ? ` · ${escapeAttr(club.locationTag)}` : ""}</p>
     ${promoterBlock}
+    ${preferredDateBlock}
     ${scheduleBlock}
     <div class="cc-form-error" id="vr-error" role="alert" style="margin-bottom:1rem"></div>
     <form class="venue-request-modal__form" id="vr-form" novalidate>
@@ -140,6 +191,8 @@ export function openVenueRequestModal(opts: {
         <label for="vr-name">Your name</label>
         <input id="vr-name" name="name" type="text" autocomplete="name" required placeholder="Full name" />
       </div>
+      ${clubSelectorBlock}
+      ${dateSelectorBlock}
       ${guestRowsBlock}
       <fieldset class="cc-notify-fieldset">
         <legend>How should we reach you?</legend>
@@ -318,6 +371,14 @@ export function openVenueRequestModal(opts: {
     const phone = phoneIn.value.trim();
     const ig = (modal.querySelector("#vr-ig") as HTMLInputElement).value.trim();
     const tt = (modal.querySelector("#vr-tt") as HTMLInputElement).value.trim();
+    const selectedClubSlug = String(
+      (modal.querySelector("#vr-club-select") as HTMLSelectElement | null)?.value || club.slug,
+    ).trim();
+    const selectedClubRow = clubChoices.find((c) => c.slug === selectedClubSlug);
+    const selectedClubName = selectedClubRow?.name?.trim() || club.name;
+    const selectedDate = String(
+      (modal.querySelector("#vr-date-select") as HTMLInputElement | HTMLSelectElement | null)?.value || preferredDateLabel,
+    ).trim();
     const guestRows = Array.from(
       modal.querySelectorAll("[data-guest-row]"),
     ).map((row) => {
@@ -387,12 +448,13 @@ export function openVenueRequestModal(opts: {
     const payload: Record<string, string> = {
       name,
       request: requestLabel,
-      venue: club.name,
-      venue_slug: club.slug,
+      venue: selectedClubName,
+      venue_slug: selectedClubSlug || club.slug,
       notify_via: method,
       guestlist_schedule_on_file: formatGuestlistsForPayload(club),
     };
     if (promoterName) payload.promoter_host = promoterName;
+    if (selectedDate) payload.preferred_date = selectedDate;
     if (method === "email") payload.email = email;
     if (method === "phone") payload.phone = phone;
     if (method === "instagram_dm" && ig) payload.instagram_handle = ig;
@@ -409,6 +471,9 @@ export function openVenueRequestModal(opts: {
     if (method === "phone") inquiryPayload.phone = phone;
     if (guestlistAllGuests) {
       inquiryPayload.guestlistGuests = guestlistAllGuests;
+    }
+    if (selectedDate) {
+      inquiryPayload.preferredDate = selectedDate;
     }
 
     submitBtn.disabled = true;

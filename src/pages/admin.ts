@@ -24,10 +24,14 @@ import {
 } from "../admin/enquiries";
 import {
   createEmptyClient,
+  deleteClientAttendanceForAdmin,
   deleteClientById,
+  loadClientAttendancesForAdmin,
   loadClientGuestlistActivityForAdmin,
   loadClientsForAdmin,
+  saveClientAttendanceForAdmin,
   updateClientById,
+  type ClientAttendanceRow,
   type ClientGuestlistActivityRow,
   type ClientRow,
 } from "../admin/clients";
@@ -99,6 +103,7 @@ import "../styles/pages/admin.css";
 
 /** Desk = CRM; catalog = clubs, cars, weekly flyers */
 type AdminView =
+  | "admin_profile"
   | "enquiries"
   | "clients"
   | "promoter_requests"
@@ -112,8 +117,14 @@ type AdminView =
   | "clubs"
   | "cars"
   | "flyers";
+type AdminNavSection = "account" | "enquiries" | "promoters" | "website";
 
 const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }> = {
+  admin_profile: {
+    title: "Profile settings",
+    subtitle:
+      "Manage admin identity controls (email/username/password) and account access settings.",
+  },
   enquiries: {
     title: "Enquiries",
     subtitle: "Review submissions, guest lists, and payload. Update status as you work each lead.",
@@ -599,7 +610,10 @@ function flyerClubSelectOptions(
 function renderClientDetail(
   c: ClientRow,
   activity: ClientGuestlistActivityRow[],
+  attendances: ClientAttendanceRow[],
+  clubs: ClubEntry[],
   promoters: PromoterProfile[],
+  selectedAttendanceId: string | null,
 ): string {
   const spendVal =
     c.typical_spend_gbp != null && Number.isFinite(c.typical_spend_gbp)
@@ -610,6 +624,29 @@ function renderClientDetail(
     ...promoters.map(
       (p) =>
         `<option value="${escapeAttr(p.id)}"${p.id === c.preferred_promoter_id ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
+    ),
+  ].join("");
+  const selectedAttendance =
+    (selectedAttendanceId &&
+      attendances.find((a) => a.id === selectedAttendanceId)) ||
+    null;
+  const clubOpts = clubs
+    .map(
+      (entry) =>
+        `<option value="${escapeAttr(entry.club.slug)}"${entry.club.slug === c.preferred_club_slug ? " selected" : ""}>${escapeAttr(entry.club.name)}</option>`,
+    )
+    .join("");
+  const attendanceClubOpts = clubs
+    .map(
+      (entry) =>
+        `<option value="${escapeAttr(entry.club.slug)}"${entry.club.slug === selectedAttendance?.club_slug ? " selected" : ""}>${escapeAttr(entry.club.name)}</option>`,
+    )
+    .join("");
+  const attendancePromoOpts = [
+    `<option value="">— None —</option>`,
+    ...promoters.map(
+      (p) =>
+        `<option value="${escapeAttr(p.id)}"${p.id === selectedAttendance?.promoter_id ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
     ),
   ].join("");
   const activityRows =
@@ -632,6 +669,26 @@ function renderClientDetail(
           </tr>`;
           })
           .join("");
+  const attendanceRows =
+    attendances.length === 0
+      ? "<tr><td colspan='7'>No attendance history yet. Add past visits below.</td></tr>"
+      : attendances
+          .map((a) => {
+            const pr = a.promoter_id
+              ? promoters.find((p) => p.id === a.promoter_id)
+              : undefined;
+            const isActive = selectedAttendanceId === a.id ? " is-active" : "";
+            return `<tr class="admin-list-row${isActive}" data-client-attendance-id="${escapeAttr(a.id)}">
+            <td>${escapeAttr(a.event_date)}</td>
+            <td><code class="admin-list-code">${escapeAttr(a.club_slug)}</code></td>
+            <td>${escapeAttr(pr?.displayName || pr?.userId || "—")}</td>
+            <td>£${Number(a.spend_gbp || 0).toFixed(2)}</td>
+            <td>${escapeAttr(a.source || "manual")}</td>
+            <td>${escapeAttr(a.notes || "—")}</td>
+            <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-client-attendance-delete="${escapeAttr(a.id)}">Delete</button></td>
+          </tr>`;
+          })
+          .join("");
   return `
       <div class="admin-client-detail">
         <h4 class="admin-subhead" style="margin-top: 0">Client record</h4>
@@ -651,6 +708,8 @@ function renderClientDetail(
             <input id="client-nights" name="preferred_nights" value="${escapeAttr(c.preferred_nights ?? "")}" placeholder="Fri, Sat" /></div>
           <div class="cc-field full"><label for="client-promoter">Preferred promoter</label>
             <select id="client-promoter" name="preferred_promoter_id">${promoOpts}</select></div>
+          <div class="cc-field full"><label for="client-club">Preferred club</label>
+            <select id="client-club" name="preferred_club_slug"><option value="">— None —</option>${clubOpts}</select></div>
           <div class="cc-field full"><label for="client-notes">Internal notes</label>
             <textarea id="client-notes" name="notes" rows="4" placeholder="VIP preferences, relationships, spend patterns…">${escapeHtmlText(c.notes ?? "")}</textarea></div>
           <div class="cc-field full"><label>Guest profile id</label>
@@ -659,6 +718,39 @@ function renderClientDetail(
             <input value="${escapeAttr(c.created_at || "—")}" readonly /></div>
           <div class="admin-actions full">
             <button type="button" class="cc-btn cc-btn--gold" id="admin-client-save">Save client</button>
+          </div>
+        </form>
+        <h4 class="admin-subhead">Attendance history (editable)</h4>
+        <p class="admin-hint">Client preferences are auto-calculated from this attendance history.</p>
+        <div class="full promoter-table-wrap">
+          <table class="admin-list-table">
+            <thead><tr>
+              <th scope="col">Date</th>
+              <th scope="col">Club</th>
+              <th scope="col">Promoter</th>
+              <th scope="col">Spend</th>
+              <th scope="col">Source</th>
+              <th scope="col">Notes</th>
+              <th scope="col">Action</th>
+            </tr></thead>
+            <tbody>${attendanceRows}</tbody>
+          </table>
+        </div>
+        <form class="admin-form" id="admin-client-attendance-form">
+          <input type="hidden" name="attendance_id" value="${escapeAttr(selectedAttendance?.id || "")}" />
+          <div class="cc-field"><label>Date</label><input name="event_date" type="date" required value="${escapeAttr(selectedAttendance?.event_date || new Date().toISOString().slice(0, 10))}" /></div>
+          <div class="cc-field"><label>Club</label><select name="club_slug" required>${attendanceClubOpts}</select></div>
+          <div class="cc-field"><label>Promoter</label><select name="promoter_id">${attendancePromoOpts}</select></div>
+          <div class="cc-field"><label>Spend (GBP)</label><input name="spend_gbp" type="number" min="0" step="0.01" value="${escapeAttr(String(selectedAttendance?.spend_gbp ?? 0))}" /></div>
+          <div class="cc-field"><label>Source</label><input name="source" value="${escapeAttr(selectedAttendance?.source || "manual")}" /></div>
+          <div class="cc-field full"><label>Details</label><textarea name="attendance_notes" rows="2">${escapeHtmlText(selectedAttendance?.notes || "")}</textarea></div>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-attendance-save">${selectedAttendance ? "Save attendance" : "Add attendance"}</button>
+            ${
+              selectedAttendance
+                ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-client-attendance-new">New attendance</button>`
+                : ""
+            }
           </div>
         </form>
         <h4 class="admin-subhead">Guestlist history</h4>
@@ -693,6 +785,7 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   let view: AdminView = "enquiries";
+  let adminNavExpanded: AdminNavSection = "enquiries";
   let selectedClub = 0;
   let selectedCar = 0;
   let selectedFlyer = 0;
@@ -707,6 +800,8 @@ export async function initAdminPortal(): Promise<void> {
   let enquiryGuests: EnquiryGuestRow[] = [];
   let clients: ClientRow[] = [];
   let clientGuestlistActivity: ClientGuestlistActivityRow[] = [];
+  let clientAttendances: ClientAttendanceRow[] = [];
+  let selectedClientAttendanceId: string | null = null;
   let promoterSignupRequests: PromoterSignupRequest[] = [];
   let selectedPromoterRequestId: string | null = null;
   let promoters: PromoterProfile[] = [];
@@ -761,6 +856,19 @@ export async function initAdminPortal(): Promise<void> {
   let invoiceEdgeActionsBound = false;
   let nightAdjDelegationBound = false;
   let loginError = "";
+  let createJobClients: Array<{
+    mode: "existing" | "blank" | "new";
+    clientId?: string;
+    name: string;
+    contact: string;
+    newEmail?: string;
+    newPhone?: string;
+  }> = [];
+  let adminProfile = {
+    userId: "",
+    email: "",
+    username: "",
+  };
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
     const db = await loadClubsForAdmin(supabase);
@@ -833,12 +941,15 @@ export async function initAdminPortal(): Promise<void> {
     }
     if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
     clientGuestlistActivity = [];
+    clientAttendances = [];
+    selectedClientAttendanceId = null;
     if (selectedClientId) {
-      const a = await loadClientGuestlistActivityForAdmin(
-        supabase,
-        selectedClientId,
-      );
+      const [a, at] = await Promise.all([
+        loadClientGuestlistActivityForAdmin(supabase, selectedClientId),
+        loadClientAttendancesForAdmin(supabase, selectedClientId),
+      ]);
       clientGuestlistActivity = a.ok ? a.rows : [];
+      clientAttendances = at.ok ? at.rows : [];
     }
   }
 
@@ -1508,6 +1619,47 @@ export async function initAdminPortal(): Promise<void> {
                     <div class="cc-field"><label>Service</label>
                       <select name="service">${jobServiceSelectHtml("guestlist")}</select>
                     </div>
+                    <div class="cc-field"><label>Status</label>
+                      <select name="status">
+                        <option value="assigned">assigned (upcoming)</option>
+                        <option value="completed">completed (already happened)</option>
+                      </select>
+                    </div>
+                    <div class="cc-field"><label>Client mode</label>
+                      <select name="clientMode">
+                        <option value="existing">Find client</option>
+                        <option value="blank">Create blank client</option>
+                        <option value="new">Create new client profile</option>
+                      </select>
+                    </div>
+                    <div class="cc-field full" id="admin-job-find-client-block"><label>Find client</label>
+                      <input name="clientSearch" type="text" placeholder="Type client name/email/phone" />
+                      <select name="existingClientId" style="margin-top:0.4rem">
+                        <option value="">(none)</option>
+                        ${clients.map((c) => `<option value="${escapeAttr(c.id)}">${escapeAttr(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="cc-field" id="admin-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
+                    <div class="cc-field" id="admin-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
+                    <div class="cc-field" id="admin-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
+                    <div class="admin-actions full">
+                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-job-add-client">+ Add client</button>
+                    </div>
+                    <div class="full promoter-table-wrap">
+                      <table>
+                        <thead><tr><th>Type</th><th>Name</th><th>Contact</th><th>Remove</th></tr></thead>
+                        <tbody id="admin-job-clients-body">${
+                          createJobClients.length
+                            ? createJobClients
+                                .map(
+                                  (c, idx) =>
+                                    `<tr><td>${escapeAttr(c.mode === "existing" ? "existing" : c.mode === "blank" ? "blank" : "new profile")}</td><td>${escapeAttr(c.name || "New client")}</td><td>${escapeAttr(c.contact || "—")}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-job-remove-client="${idx}">Remove</button></td></tr>`,
+                                )
+                                .join("")
+                            : "<tr><td colspan='4'>No clients added yet.</td></tr>"
+                        }</tbody>
+                      </table>
+                    </div>
                     <div class="cc-field"><label>Shift fee (£)</label><input name="shiftFee" type="number" step="0.01" value="0" /></div>
                     <div class="cc-field"><label>Guestlist fee / guest (£)</label><input name="guestFee" type="number" step="0.01" value="0" /></div>
                     <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="0" /></div>
@@ -1803,6 +1955,19 @@ export async function initAdminPortal(): Promise<void> {
     const vt = club.venueType;
     const gs = car.gridSize;
     const vh = ADMIN_VIEW_HEADINGS[view];
+    const adminNavSection = (
+      section: AdminNavSection,
+      label: string,
+      body: string,
+    ): string => {
+      const open = adminNavExpanded === section;
+      return `<div class="admin-nav-block ${open ? "is-open" : ""}">
+        <button type="button" class="admin-nav-heading admin-nav-heading--toggle" data-admin-nav-toggle="${section}" aria-expanded="${open ? "true" : "false"}">${escapeAttr(label)}</button>
+        <div class="admin-nav-items"${open ? "" : " hidden"}>
+          ${body}
+        </div>
+      </div>`;
+    };
 
     adminRoot.innerHTML = `
       <div class="admin-shell">
@@ -1812,28 +1977,10 @@ export async function initAdminPortal(): Promise<void> {
             <p class="admin-sidebar__title">Admin</p>
           </div>
           <nav class="admin-sidebar__nav">
-            <div class="admin-nav-block">
-              <p class="admin-nav-heading">Enquiries</p>
-              <button type="button" class="admin-view-tab ${view === "enquiries" ? "is-active" : ""}" data-view="enquiries">Enquiries</button>
-              <button type="button" class="admin-view-tab ${view === "clients" ? "is-active" : ""}" data-view="clients">Clients</button>
-            </div>
-            <div class="admin-nav-block">
-              <p class="admin-nav-heading">Promoters</p>
-              <button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button>
-              <button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button>
-              <button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button>
-              <button type="button" class="admin-view-tab ${view === "guestlist_queue" ? "is-active" : ""}" data-view="guestlist_queue">Guestlist</button>
-              <button type="button" class="admin-view-tab ${view === "night_adjustments" ? "is-active" : ""}" data-view="night_adjustments">Nights</button>
-              <button type="button" class="admin-view-tab ${view === "table_sales" ? "is-active" : ""}" data-view="table_sales">Tables</button>
-              <button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button>
-              <button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>
-            </div>
-            <div class="admin-nav-block">
-              <p class="admin-nav-heading">Website</p>
-              <button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button>
-              <button type="button" class="admin-view-tab ${view === "cars" ? "is-active" : ""}" data-view="cars">Cars</button>
-              <button type="button" class="admin-view-tab ${view === "flyers" ? "is-active" : ""}" data-view="flyers">Flyers</button>
-            </div>
+            ${adminNavSection("account", "Account", `<button type="button" class="admin-view-tab ${view === "admin_profile" ? "is-active" : ""}" data-view="admin_profile">Profile settings</button>`)}
+            ${adminNavSection("enquiries", "Enquiries", `<button type="button" class="admin-view-tab ${view === "enquiries" ? "is-active" : ""}" data-view="enquiries">Enquiries</button><button type="button" class="admin-view-tab ${view === "clients" ? "is-active" : ""}" data-view="clients">Clients</button>`)}
+            ${adminNavSection("promoters", "Promoters", `<button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button><button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button><button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button><button type="button" class="admin-view-tab ${view === "guestlist_queue" ? "is-active" : ""}" data-view="guestlist_queue">Guestlist</button><button type="button" class="admin-view-tab ${view === "night_adjustments" ? "is-active" : ""}" data-view="night_adjustments">Nights</button><button type="button" class="admin-view-tab ${view === "table_sales" ? "is-active" : ""}" data-view="table_sales">Tables</button><button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button><button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>`)}
+            ${adminNavSection("website", "Website", `<button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button><button type="button" class="admin-view-tab ${view === "cars" ? "is-active" : ""}" data-view="cars">Cars</button><button type="button" class="admin-view-tab ${view === "flyers" ? "is-active" : ""}" data-view="flyers">Flyers</button>`)}
           </nav>
           <div class="admin-sidebar__footer">
             <a class="admin-sidebar__link" href="/workspace">Open workspace</a>
@@ -1847,21 +1994,37 @@ export async function initAdminPortal(): Promise<void> {
               <h2 class="admin-main__title">${escapeAttr(vh.title)}</h2>
               <p class="admin-main__subtitle">${escapeAttr(vh.subtitle)}</p>
             </div>
-            <div class="admin-toolbar admin-toolbar--main">
-              <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>
-              <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
-              ${
-                view === "clubs"
-                  ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
+            <div class="admin-main__actions">
+              <div class="admin-toolbar admin-toolbar--main">
+                <button class="cc-btn cc-btn--ghost" id="admin-export-json" type="button">Export JSON</button>
+                <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
+                ${
+                  view === "clubs"
+                    ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
                  <button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
-                  : ""
-              }
-              ${
-                view === "cars"
-                  ? `<button class="cc-btn cc-btn--gold" id="admin-save-car" type="button">Save car to DB</button>
+                    : ""
+                }
+                ${
+                  view === "cars"
+                    ? `<button class="cc-btn cc-btn--gold" id="admin-save-car" type="button">Save car to DB</button>
                  <button class="cc-btn cc-btn--ghost" id="admin-save-all-cars" type="button">Save all cars</button>`
-                  : ""
-              }
+                    : ""
+                }
+              </div>
+              <div class="admin-account">
+                <button type="button" class="admin-account__btn" id="admin-account-btn" aria-haspopup="menu" aria-expanded="false">Account</button>
+                <div class="admin-account__menu" id="admin-account-menu" role="menu" hidden>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="admin_profile">Profile settings</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="promoters">Operations: promoter management</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clients">Operations: client management</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="jobs">Operations: job management</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="financials">Operations: financial management</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clubs">Website editing: clubs</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="cars">Website editing: cars</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="flyers">Website editing: flyers</button>
+                  <button type="button" class="admin-account__item admin-account__item--danger" role="menuitem" id="admin-account-signout">Sign out</button>
+                </div>
+              </div>
             </div>
           </header>
           <div class="admin-workspace">
@@ -1869,7 +2032,9 @@ export async function initAdminPortal(): Promise<void> {
               <aside class="admin-list-panel">
                 <h3 class="admin-list-panel__title">List</h3>
                 <p class="admin-list-panel__hint">${
-                  view === "enquiries"
+                  view === "admin_profile"
+                    ? "Admin account credentials and profile settings."
+                    : view === "enquiries"
                     ? "Select an enquiry to open details and update status."
                     : view === "clients"
                       ? "Client records from enquiries and imports."
@@ -1906,7 +2071,19 @@ export async function initAdminPortal(): Promise<void> {
               </aside>
               <section class="admin-detail-panel" id="admin-form-wrap">
             ${
-              view === "clubs"
+              view === "admin_profile"
+                ? `
+            <form class="admin-form" id="admin-profile-form">
+              <div class="cc-field"><label>Email</label><input name="email" type="email" autocomplete="email" value="${escapeAttr(adminProfile.email)}" placeholder="admin@cooperconcierge.co.uk" /></div>
+              <div class="cc-field"><label>Username</label><input name="username" value="${escapeAttr(adminProfile.username)}" placeholder="Admin username" /></div>
+              <div class="cc-field"><label>New password</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
+              <div class="cc-field"><label>Confirm new password</label><input name="passwordConfirm" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
+              <div class="admin-actions full">
+                <button class="cc-btn cc-btn--gold" type="submit" id="admin-save-profile-settings">Save profile settings</button>
+              </div>
+            </form>
+            `
+                : view === "clubs"
                 ? `
             <form class="admin-form" id="club-form">
               <div class="cc-field"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
@@ -2080,6 +2257,34 @@ export async function initAdminPortal(): Promise<void> {
                     })()
                   : `<p class="admin-note full">No promoters yet.</p>`
               }
+              ${
+                selectedPromoterId
+                  ? `
+              <h4 class="full">Promoter interactions</h4>
+              <div class="admin-actions full">
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="jobs">Open job manager</button>
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="financials">Open financial manager</button>
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="invoices">Open invoices</button>
+              </div>
+              <div class="full promoter-table-wrap">
+                <table>
+                  <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Comp</th></tr></thead>
+                  <tbody>${
+                    promoterJobs.length
+                      ? promoterJobs
+                          .slice()
+                          .sort((a, b) => (a.jobDate < b.jobDate ? 1 : a.jobDate > b.jobDate ? -1 : 0))
+                          .map(
+                            (j) =>
+                              `<tr><td>${escapeAttr(j.jobDate)}</td><td>${escapeAttr(j.clubSlug ?? "—")}</td><td>${escapeAttr(j.service)}</td><td>${escapeAttr(j.status)}</td><td>${j.guestsCount}</td><td>${escapeAttr(`£${j.shiftFee.toFixed(2)} + £${j.guestlistFee.toFixed(2)}/guest`)}</td></tr>`,
+                          )
+                          .join("")
+                      : "<tr><td colspan='6'>No jobs logged for this promoter yet.</td></tr>"
+                  }</tbody>
+                </table>
+              </div>`
+                  : ""
+              }
               <h4 class="full">Pending revisions</h4>
               <div class="full admin-list admin-list--inline">
                 ${
@@ -2173,7 +2378,10 @@ export async function initAdminPortal(): Promise<void> {
                         ? renderClientDetail(
                             clientRow,
                             clientGuestlistActivity,
+                            clientAttendances,
+                            clubEntries,
                             promoters,
+                            selectedClientAttendanceId,
                           )
                         : `<p class="admin-note">No clients yet. Add one with “Add client” or use “Create clients from names” on a guestlist enquiry.</p>`
             }
@@ -2845,6 +3053,14 @@ export async function initAdminPortal(): Promise<void> {
         const v = (btn as HTMLButtonElement).dataset.view as AdminView | undefined;
         if (!v) return;
         view = v;
+        adminNavExpanded =
+          v === "admin_profile"
+            ? "account"
+            : v === "enquiries" || v === "clients"
+              ? "enquiries"
+              : v === "clubs" || v === "cars" || v === "flyers"
+                ? "website"
+                : "promoters";
         if (v === "enquiries") void reloadEnquiries().then(() => renderDashboard());
         else if (v === "clients") void reloadClients().then(() => renderDashboard());
         else if (v === "promoter_requests")
@@ -2869,6 +3085,167 @@ export async function initAdminPortal(): Promise<void> {
         else if (v === "financials")
           void reloadFinancialReport().then(() => renderDashboard());
         else renderDashboard();
+      });
+    });
+    adminRoot.querySelectorAll("[data-admin-nav-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = (btn as HTMLButtonElement).dataset
+          .adminNavToggle as AdminNavSection | undefined;
+        if (!section) return;
+        adminNavExpanded = adminNavExpanded === section ? "enquiries" : section;
+        renderDashboard();
+      });
+    });
+    const adminAccountBtn = adminRoot.querySelector("#admin-account-btn") as HTMLButtonElement | null;
+    const adminAccountMenu = adminRoot.querySelector("#admin-account-menu") as HTMLElement | null;
+    const setAdminAccountOpen = (open: boolean): void => {
+      if (!adminAccountBtn || !adminAccountMenu) return;
+      adminAccountBtn.setAttribute("aria-expanded", String(open));
+      adminAccountMenu.hidden = !open;
+    };
+    adminAccountBtn?.addEventListener("click", () => {
+      const open = adminAccountBtn.getAttribute("aria-expanded") === "true";
+      setAdminAccountOpen(!open);
+    });
+    adminAccountMenu?.addEventListener("click", (ev) => {
+      const target = (ev.target as HTMLElement | null)?.closest(
+        "[data-admin-menu-view], #admin-account-signout",
+      ) as HTMLElement | null;
+      if (!target) return;
+      if (target.id === "admin-account-signout") {
+        void signOutAdmin(supabase).then(() => renderLogin());
+        return;
+      }
+      const v = target.getAttribute("data-admin-menu-view") as AdminView | null;
+      if (!v) return;
+      view = v;
+      renderDashboard();
+    });
+    adminRoot.querySelectorAll("[data-admin-menu-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = (btn as HTMLElement).getAttribute("data-admin-menu-view") as
+          | AdminView
+          | null;
+        if (!v) return;
+        view = v;
+        adminNavExpanded =
+          v === "admin_profile"
+            ? "account"
+            : v === "enquiries" || v === "clients"
+              ? "enquiries"
+              : v === "clubs" || v === "cars" || v === "flyers"
+                ? "website"
+                : "promoters";
+        renderDashboard();
+      });
+    });
+    adminRoot.querySelector("#admin-profile-form")?.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const form = ev.target as HTMLFormElement;
+      const fd = new FormData(form);
+      const email = String(fd.get("email") || "")
+        .trim()
+        .toLowerCase();
+      const username = String(fd.get("username") || "").trim();
+      const password = String(fd.get("password") || "").trim();
+      const passwordConfirm = String(fd.get("passwordConfirm") || "").trim();
+
+      if (!adminProfile.userId) {
+        flash("Missing admin session context. Reload and try again.", "error");
+        return;
+      }
+      if (!email) {
+        flash("Email is required.", "error");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        flash("Enter a valid email address.", "error");
+        return;
+      }
+      if (!username) {
+        flash("Username is required.", "error");
+        return;
+      }
+      if (password && password.length < 8) {
+        flash("New password must be at least 8 characters.", "error");
+        return;
+      }
+      if (password && password !== passwordConfirm) {
+        flash("Password confirmation does not match.", "error");
+        return;
+      }
+
+      const emailChanged = email !== adminProfile.email;
+      const usernameChanged = username !== adminProfile.username;
+      const passwordChanged = Boolean(password);
+      if (!emailChanged && !usernameChanged && !passwordChanged) {
+        flash("No profile changes to save.");
+        return;
+      }
+
+      const saveBtn = form.querySelector("#admin-save-profile-settings") as HTMLButtonElement | null;
+      if (saveBtn) saveBtn.disabled = true;
+      void (async () => {
+        const { data: profileRow, error: profileReadError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", adminProfile.userId)
+          .maybeSingle();
+        if (profileReadError) {
+          flash(`Could not verify admin profile: ${profileReadError.message}`, "error");
+          if (saveBtn) saveBtn.disabled = false;
+          return;
+        }
+        const role = String(profileRow?.role || "admin");
+        const { error: profileWriteError } = await supabase.from("profiles").upsert(
+          {
+            id: adminProfile.userId,
+            role,
+            display_name: username,
+          },
+          { onConflict: "id" },
+        );
+        if (profileWriteError) {
+          flash(`Could not save username to profile: ${profileWriteError.message}`, "error");
+          if (saveBtn) saveBtn.disabled = false;
+          return;
+        }
+
+        const authPayload: {
+          email?: string;
+          password?: string;
+          data?: Record<string, unknown>;
+        } = {};
+        if (emailChanged) authPayload.email = email;
+        if (passwordChanged) authPayload.password = password;
+        if (usernameChanged) {
+          authPayload.data = {
+            username,
+            display_name: username,
+          };
+        }
+        if (Object.keys(authPayload).length) {
+          const { error: authError } = await supabase.auth.updateUser(authPayload);
+          if (authError) {
+            flash(`Could not update auth settings: ${authError.message}`, "error");
+            if (saveBtn) saveBtn.disabled = false;
+            return;
+          }
+        }
+
+        adminProfile = {
+          ...adminProfile,
+          email,
+          username,
+        };
+        flash(
+          emailChanged
+            ? "Profile saved. Check your inbox to confirm the new email if required."
+            : "Profile settings updated.",
+        );
+        renderDashboard();
+      })().finally(() => {
+        if (saveBtn) saveBtn.disabled = false;
       });
     });
 
@@ -3170,6 +3547,9 @@ export async function initAdminPortal(): Promise<void> {
             renderDashboard();
           });
         }
+      } else if (view === "admin_profile") {
+        listEl.className = "admin-list";
+        listEl.innerHTML = `<p class="admin-note">Profile settings only. Website editors (clubs/cars/flyers) appear under the Website section.</p>`;
       } else {
         const isClubs = view === "clubs";
         const items = isClubs ? clubEntries : carEntries;
@@ -3681,16 +4061,69 @@ export async function initAdminPortal(): Promise<void> {
       const promoterId = String(fd.get("promoterId") || "").trim();
       const clubSlug = String(fd.get("clubSlug") || "").trim();
       const jobDate = String(fd.get("jobDate") || "").trim();
+      const status = String(fd.get("status") || "assigned").trim() as
+        | "assigned"
+        | "completed"
+        | "cancelled";
       if (!promoterId || !jobDate) {
         flash("Promoter and date are required.", "error");
         return;
       }
       void (async () => {
+        const resolvedClients: Array<{ name: string; contact: string }> = [];
+        for (const item of createJobClients) {
+          if (item.mode === "existing") {
+            if (item.name.trim()) {
+              resolvedClients.push({ name: item.name.trim(), contact: item.contact.trim() });
+            }
+            continue;
+          }
+          if (item.mode === "blank") {
+            const blank = await createEmptyClient(supabase);
+            if (!blank.ok) {
+              flash(`Create client failed: ${blank.message}`, "error");
+              return;
+            }
+            await reloadClients();
+            const c = clients.find((x) => x.id === blank.id);
+            resolvedClients.push({ name: String(c?.name || "New client").trim(), contact: "" });
+            continue;
+          }
+          const created = await createEmptyClient(supabase);
+          if (!created.ok) {
+            flash(`Create client failed: ${created.message}`, "error");
+            return;
+          }
+          const newName = String(item.name || "").trim() || "New client";
+          const newEmail = String(item.newEmail || "").trim() || null;
+          const newPhone = String(item.newPhone || "").trim() || null;
+          const upd = await updateClientById(supabase, created.id, {
+            name: newName,
+            email: newEmail,
+            phone: newPhone,
+            instagram: null,
+            notes: null,
+            typical_spend_gbp: null,
+            preferred_nights: null,
+            preferred_promoter_id: promoterId || null,
+            preferred_club_slug: null,
+          });
+          if (!upd.ok) {
+            flash(`Update client failed: ${upd.message}`, "error");
+            return;
+          }
+          resolvedClients.push({ name: newName, contact: String(newPhone || newEmail || "").trim() });
+        }
+        const clientName = resolvedClients.map((c) => c.name).filter(Boolean).join("; ");
+        const clientContact = resolvedClients.map((c) => c.contact).filter(Boolean).join("; ");
         const res = await createPromoterJob(supabase, {
           promoter_id: promoterId,
           club_slug: clubSlug || null,
           service: String(fd.get("service") || "guestlist").trim() || "guestlist",
           job_date: jobDate,
+          status,
+          client_name: clientName,
+          client_contact: clientContact,
           shift_fee: Number(fd.get("shiftFee") || 0) || 0,
           guestlist_fee: Number(fd.get("guestFee") || 0) || 0,
           guests_count: Number(fd.get("guestCount") || 0) || 0,
@@ -3707,9 +4140,84 @@ export async function initAdminPortal(): Promise<void> {
         }
         await reloadPromoters();
         if (view === "jobs") await reloadJobsCalendar();
+        createJobClients = [];
         flash("Job created.");
         renderDashboard();
       })();
+    });
+    adminRoot.querySelector("#admin-job-add-client")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector("#promoter-job-form") as HTMLFormElement | null;
+      if (!form) return;
+      const fd = new FormData(form);
+      const mode = String(fd.get("clientMode") || "existing").trim();
+      if (mode === "existing") {
+        const existingId = String(fd.get("existingClientId") || "").trim();
+        const existing = clients.find((c) => c.id === existingId);
+        if (!existing) {
+          flash("Select a client from the find results first.", "error");
+          return;
+        }
+        createJobClients.push({
+          mode: "existing",
+          clientId: existing.id,
+          name: String(existing.name || "").trim() || "Client",
+          contact: String(existing.phone || existing.email || existing.instagram || "").trim(),
+        });
+      } else if (mode === "blank") {
+        createJobClients.push({
+          mode: "blank",
+          name: "New client",
+          contact: "",
+        });
+      } else {
+        const newName = String(fd.get("newClientName") || "").trim();
+        const newEmail = String(fd.get("newClientEmail") || "").trim();
+        const newPhone = String(fd.get("newClientPhone") || "").trim();
+        if (!newName) {
+          flash("New client name is required.", "error");
+          return;
+        }
+        createJobClients.push({
+          mode: "new",
+          name: newName,
+          contact: String(newPhone || newEmail || "").trim(),
+          newEmail,
+          newPhone,
+        });
+      }
+      renderDashboard();
+    });
+    adminRoot.querySelectorAll("[data-admin-job-remove-client]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number((btn as HTMLElement).getAttribute("data-admin-job-remove-client") || "-1");
+        if (idx < 0 || idx >= createJobClients.length) return;
+        createJobClients.splice(idx, 1);
+        renderDashboard();
+      });
+    });
+    adminRoot.querySelector("[name=clientMode]")?.addEventListener("change", (ev) => {
+      const mode = String((ev.target as HTMLSelectElement).value || "existing").trim();
+      const findBlock = adminRoot.querySelector("#admin-job-find-client-block") as HTMLElement | null;
+      const newName = adminRoot.querySelector("#admin-job-new-client-name") as HTMLElement | null;
+      const newEmail = adminRoot.querySelector("#admin-job-new-client-email") as HTMLElement | null;
+      const newPhone = adminRoot.querySelector("#admin-job-new-client-phone") as HTMLElement | null;
+      const showNew = mode === "new";
+      if (findBlock) findBlock.hidden = mode !== "existing";
+      if (newName) newName.hidden = !showNew;
+      if (newEmail) newEmail.hidden = !showNew;
+      if (newPhone) newPhone.hidden = !showNew;
+    });
+    adminRoot.querySelector("[name=clientSearch]")?.addEventListener("input", (ev) => {
+      const q = String((ev.target as HTMLInputElement).value || "").trim().toLowerCase();
+      const sel = adminRoot.querySelector("[name=existingClientId]") as HTMLSelectElement | null;
+      if (!sel) return;
+      const filtered = clients.filter((c) => {
+        const hay = `${c.name || ""} ${c.email || ""} ${c.phone || ""}`.toLowerCase();
+        return !q || hay.includes(q);
+      });
+      sel.innerHTML = `<option value="">(none)</option>${filtered
+        .map((c) => `<option value="${escapeAttr(c.id)}">${escapeAttr(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`)
+        .join("")}`;
     });
 
     adminRoot.querySelector("#jobs-cal-prev")?.addEventListener("click", () => {
@@ -3997,6 +4505,7 @@ export async function initAdminPortal(): Promise<void> {
           typical_spend_gbp: spend,
           preferred_nights: String(fd.get("preferred_nights") || "").trim() || null,
           preferred_promoter_id: promoId || null,
+          preferred_club_slug: String(fd.get("preferred_club_slug") || "").trim() || null,
         });
         if (!res.ok) {
           flash(`Save failed: ${res.message}`, "error");
@@ -4043,6 +4552,64 @@ export async function initAdminPortal(): Promise<void> {
         selectedClientId = null;
         await reloadClients();
         flash("Client deleted.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelectorAll("[data-client-attendance-id]").forEach((row) => {
+      row.addEventListener("click", () => {
+        selectedClientAttendanceId =
+          (row as HTMLElement).getAttribute("data-client-attendance-id") || null;
+        renderDashboard();
+      });
+    });
+    adminRoot.querySelectorAll("[data-client-attendance-delete]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id =
+          (btn as HTMLElement).getAttribute("data-client-attendance-delete") || "";
+        if (!id) return;
+        void (async () => {
+          const res = await deleteClientAttendanceForAdmin(supabase, id);
+          if (!res.ok) {
+            flash(`Delete attendance failed: ${res.message}`, "error");
+            return;
+          }
+          await reloadClients();
+          flash("Attendance deleted.");
+          renderDashboard();
+        })();
+      });
+    });
+    adminRoot.querySelector("#admin-client-attendance-new")?.addEventListener("click", () => {
+      selectedClientAttendanceId = null;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#admin-client-attendance-save")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector(
+        "#admin-client-attendance-form",
+      ) as HTMLFormElement | null;
+      if (!form || !selectedClientId) return;
+      const fd = new FormData(form);
+      const spend = Number(fd.get("spend_gbp") || 0) || 0;
+      void (async () => {
+        const res = await saveClientAttendanceForAdmin(supabase, {
+          id: String(fd.get("attendance_id") || "").trim() || undefined,
+          client_id: selectedClientId,
+          event_date: String(fd.get("event_date") || "").trim(),
+          club_slug: String(fd.get("club_slug") || "").trim(),
+          promoter_id: String(fd.get("promoter_id") || "").trim() || null,
+          spend_gbp: spend,
+          source: String(fd.get("source") || "").trim() || "manual",
+          notes: String(fd.get("attendance_notes") || "").trim(),
+        });
+        if (!res.ok) {
+          flash(`Save attendance failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadClients();
+        selectedClientAttendanceId = res.id;
+        flash("Attendance saved. Client preferences recalculated.");
         renderDashboard();
       })();
     });
@@ -4120,6 +4687,23 @@ export async function initAdminPortal(): Promise<void> {
       renderLogin();
       return;
     }
+    const userMetadata = (gate.user.user_metadata ?? {}) as Record<string, unknown>;
+    const profileRow = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", gate.user.id)
+      .maybeSingle();
+    adminProfile = {
+      userId: gate.user.id,
+      email: String(gate.user.email ?? "").trim().toLowerCase(),
+      username: String(
+        profileRow.data?.display_name ??
+          userMetadata.username ??
+          userMetadata.display_name ??
+          gate.user.email ??
+          "",
+      ).trim(),
+    };
     await reloadAllFromDb();
     renderDashboard();
   }

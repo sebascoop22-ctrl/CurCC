@@ -8,6 +8,20 @@ function esc(s: string | undefined | null): string {
     .replace(/"/g, "&quot;");
 }
 
+function sanitizeExternalHttpUrl(raw: string | undefined | null): string {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  const withProtocol = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withProtocol);
+    const protocol = u.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
 /** Collapse whitespace so we can detect duplicate hero lede vs long bio. */
 function normalizedBio(s: string): string {
   return s.trim().replace(/\s+/g, " ");
@@ -46,12 +60,7 @@ export function buildClubDetailMainHtml(
   const directionsBtn = navDest
     ? `<a class="cc-btn cc-btn--ghost" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(navDest)}" target="_blank" rel="noopener noreferrer">Directions</a>`
     : "";
-  const websiteRaw = c.website?.trim() ?? "";
-  const websiteHref = websiteRaw
-    ? /^https?:\/\//i.test(websiteRaw)
-      ? websiteRaw
-      : `https://${websiteRaw}`
-    : "";
+  const websiteHref = sanitizeExternalHttpUrl(c.website);
   const websiteBtn = websiteHref
     ? `<a class="cc-btn cc-btn--ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener noreferrer">Website</a>`
     : "";
@@ -170,8 +179,9 @@ export function buildClubDetailMainHtml(
   const videos = (c.videos ?? []).filter(Boolean);
   const vHtml = videos
     .map((url) => {
-      const u = esc(url);
-      return `<div class="club-detail__video"><a class="cc-btn cc-btn--ghost" href="${u}" target="_blank" rel="noopener noreferrer">Watch video</a></div>`;
+      const href = sanitizeExternalHttpUrl(url);
+      if (!href) return "";
+      return `<div class="club-detail__video"><a class="cc-btn cc-btn--ghost" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Watch video</a></div>`;
     })
     .join("");
 

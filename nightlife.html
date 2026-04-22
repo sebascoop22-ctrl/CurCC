@@ -64,8 +64,26 @@
           <p class="cc-eyebrow">Featured</p>
           <h2>Signature destinations</h2>
         </div>
-        <div class="nl-carousel" data-nl-carousel>
-          <div class="nl-carousel__track" id="nl-carousel-track"></div>
+        <div class="nl-carousel-shell">
+          <button type="button" class="nl-carousel-arrow" id="nl-carousel-prev" aria-label="Previous featured club">‹</button>
+          <div class="nl-carousel" data-nl-carousel>
+            <div class="nl-carousel__track" id="nl-carousel-track"></div>
+          </div>
+          <button type="button" class="nl-carousel-arrow" id="nl-carousel-next" aria-label="Next featured club">›</button>
+        </div>
+      </section>
+
+      <section class="cc-section cc-container nl-flyers-carousel-section">
+        <div class="elite-venues-head">
+          <p class="cc-eyebrow">Flyers</p>
+          <h2>Upcoming events</h2>
+        </div>
+        <div class="nl-carousel-shell">
+          <button type="button" class="nl-carousel-arrow" id="nl-flyer-carousel-prev" aria-label="Previous flyer">‹</button>
+          <div class="nl-carousel" id="nl-flyer-carousel" data-nl-flyer-carousel>
+            <div class="nl-carousel__track" id="nl-flyer-carousel-track"></div>
+          </div>
+          <button type="button" class="nl-carousel-arrow" id="nl-flyer-carousel-next" aria-label="Next flyer">›</button>
         </div>
       </section>
 
@@ -74,25 +92,36 @@
           <p class="cc-eyebrow">All venues</p>
           <h2>London clubs</h2>
         </div>
-        <div class="nl-card-grid" id="clubs-grid"></div>
-      </section>
-
-      <section class="cc-section cc-container">
-        <div class="featured-banner__mode nightlife-content-toggle" role="tablist" aria-label="Nightlife content mode">
-          <button type="button" class="featured-banner__mode-btn is-active" id="nightlife-mode-featured" role="tab" aria-selected="true">Featured</button>
-          <button type="button" class="featured-banner__mode-btn" id="nightlife-mode-flyers" role="tab" aria-selected="false">Flyers</button>
-        </div>
-        <section class="nightlife-flyers" id="nightlife-flyers-panel" hidden>
-          <div class="nightlife-flyers__head">
-            <h3 id="nightlife-flyers-title">Club flyers</h3>
-            <div class="nightlife-flyers__nav">
-              <button type="button" class="featured-banner__chev" id="nightlife-flyer-prev" aria-label="Previous flyer">‹</button>
-              <span id="nightlife-flyer-index" class="featured-banner__date-text">0 / 0</span>
-              <button type="button" class="featured-banner__chev" id="nightlife-flyer-next" aria-label="Next flyer">›</button>
+        <div class="nl-all-clubs__filters">
+          <button
+            type="button"
+            class="cc-btn cc-btn--ghost nl-all-clubs__filter-toggle"
+            id="nl-filter-toggle"
+            aria-expanded="false"
+            aria-controls="nl-filter-panel"
+            aria-label="Open venue filters"
+            title="Filter venues"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3 5h18l-7 8v5l-4 2v-7z"></path>
+            </svg>
+          </button>
+          <div class="nl-all-clubs__filter-panel" id="nl-filter-panel" hidden>
+            <div class="cc-field">
+              <label for="nl-filter-date">Date</label>
+              <input id="nl-filter-date" type="date" />
             </div>
+            <div class="cc-field">
+              <label for="nl-filter-location">Location</label>
+              <select id="nl-filter-location">
+                <option value="">All locations</option>
+              </select>
+            </div>
+            <button type="button" class="cc-btn cc-btn--ghost" id="nl-filter-reset">Reset</button>
           </div>
-          <article class="nightlife-flyers__card" id="nightlife-flyer-card"></article>
-        </section>
+          <p class="nl-all-clubs__filter-status" id="nl-filter-status" aria-live="polite" hidden></p>
+        </div>
+        <div class="nl-card-grid" id="clubs-grid"></div>
       </section>
 
       <section class="nl-lead" id="nightlife-lead">

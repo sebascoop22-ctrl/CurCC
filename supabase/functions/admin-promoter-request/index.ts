@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
   const fullName = String(reqRow.full_name ?? "").trim();
   const email = String(reqRow.email ?? "").trim().toLowerCase();
   const site = Deno.env.get("SITE_URL") ?? "https://www.cooperconcierge.co.uk";
-  const portalPath = Deno.env.get("PROMOTER_PORTAL_PATH") ?? "/promoter.html";
+  const portalPath = Deno.env.get("PROMOTER_PORTAL_PATH") ?? "/portal";
 
   if (action === "deny") {
     const reason = (payload.denialReason ?? "").trim();

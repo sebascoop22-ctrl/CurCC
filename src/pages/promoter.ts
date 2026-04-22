@@ -1,15 +1,27 @@
-import { gatePromoterUser, signInPromoter, signOutAdmin } from "../admin/auth";
 import {
+  gateAdminUser,
+  gatePromoterUser,
+  signInPromoter,
+  signOutAdmin,
+} from "../admin/auth";
+import {
+  deletePromoterClientAttendance,
   insertPromoterGuestlistEntry,
   insertPromoterTableSale,
   loadPromoterAvailability,
   loadPromoterByUser,
+  loadPromotersForAdmin,
   loadPromoterGuestlistEntriesForJobs,
   loadPromoterInvoices,
   loadPromoterJobs,
   loadPromoterNightAdjustments,
   loadPromoterPreferences,
+  loadPromoterClients,
+  loadPromoterClientAttendances,
   loadPromoterTableSales,
+  insertPromoterJobSelf,
+  savePromoterClient,
+  savePromoterClientAttendance,
   savePromoterAvailability,
   savePromoterPreference,
   submitPromoterRevision,
@@ -37,7 +49,18 @@ import "../styles/pages/promoter.css";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-type PromoterView = "overview" | "profile" | "preferences" | "jobs" | "tables" | "invoices";
+type PromoterView =
+  | "overview"
+  | "profile"
+  | "preferences"
+  | "jobs"
+  | "tables"
+  | "clients"
+  | "invoices"
+  | "job_history"
+  | "table_history";
+
+type PromoterNavSection = "overview" | "account" | "work" | "finance";
 
 const PROMOTER_VIEW_HEADINGS: Record<
   PromoterView,
@@ -68,10 +91,25 @@ const PROMOTER_VIEW_HEADINGS: Record<
     subtitle:
       "Log table bookings and reported min spend for your nights. Cooper also records office-side entries so both views can be compared in reports.",
   },
+  clients: {
+    title: "Clients",
+    subtitle:
+      "Create and manage your own client records with duplicate detection by email, phone, or Instagram.",
+  },
   invoices: {
     title: "Invoices",
     subtitle:
       "Period statements from completed earnings. Download a PDF anytime; your coordinator can also email a copy to your login address.",
+  },
+  job_history: {
+    title: "Jobs history",
+    subtitle:
+      "Completed and cancelled work history with quick filtering by service type and status.",
+  },
+  table_history: {
+    title: "Tables sold history",
+    subtitle:
+      "Historical table-sale records logged for your account across clubs and date ranges.",
   },
 };
 
@@ -112,7 +150,7 @@ function jobsTableRows(
   return rows
     .map(
       (j) =>
-        `<tr><td>${esc(j.jobDate)}</td><td>${esc(j.clubSlug ?? "—")}</td><td>${esc(j.service)}</td><td>${esc(j.status)}</td><td>${j.guestsCount}</td><td>${money(j.shiftFee)} + ${money(j.guestlistFee)}/guest</td></tr>`,
+        `<tr><td>${esc(j.jobDate)}</td><td>${esc(j.clubSlug ?? "—")}</td><td>${esc(j.service)}</td><td>${esc(j.clientName || "—")}</td><td>${esc(j.clientContact || "—")}</td><td>${esc(j.status)}</td><td>${j.guestsCount}</td><td>${money(j.shiftFee)} + ${money(j.guestlistFee)}/guest</td></tr>`,
     )
     .join("");
 }
@@ -131,12 +169,54 @@ export async function initPromoterPortal(): Promise<void> {
   let preferences: PromoterClubPreference[] = [];
   let jobs: PromoterJob[] = [];
   let guestlistEntries: PromoterGuestlistEntry[] = [];
+  let promoterClients: Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    instagram: string;
+    notes: string;
+    createdAt: string;
+  }> = [];
+  let selectedClientId: string | null = null;
+  let selectedClientAttendanceId: string | null = null;
+  let promoterClientAttendances: Array<{
+    id: string;
+    clientId: string;
+    eventDate: string;
+    clubSlug: string;
+    promoterId: string | null;
+    spendGbp: number;
+    source: string;
+    notes: string;
+    createdAt: string;
+  }> = [];
   let nightAdjustments: PromoterNightAdjustment[] = [];
   let tableSales: PromoterTableSale[] = [];
   let invoices: PromoterInvoice[] = [];
   let promoterView: PromoterView = "overview";
+  let promoterNavExpanded: PromoterNavSection = "overview";
+  let jobTypeFilter = "all";
+  let jobStatusFilter = "all";
+  let tableStatusFilter = "all";
+  let promoterAccount = {
+    userId: "",
+    email: "",
+    username: "",
+  };
   let promoterUiDelegateBound = false;
   let promoterInvoicePdfBound = false;
+  let createJobClients: Array<{
+    mode: "existing" | "blank" | "new";
+    clientId?: string;
+    name: string;
+    contact: string;
+    newEmail?: string;
+    newPhone?: string;
+  }> = [];
+  let adminMode = false;
+  let adminPromoters: PromoterProfile[] = [];
+  let adminSelectedPromoterId: string | null = null;
   const clubs = await fetchClubs().catch(() => [] as Club[]);
 
   function flash(msg: string, bad = false): void {
@@ -154,7 +234,11 @@ export async function initPromoterPortal(): Promise<void> {
 
   async function reloadPromoterData(userId: string): Promise<void> {
     const p = await loadPromoterByUser(supabase, userId);
-    if (!p.ok || !p.row) {
+    await reloadPromoterDataByProfile(p.ok ? p.row : null);
+  }
+
+  async function reloadPromoterDataByProfile(nextProfile: PromoterProfile | null): Promise<void> {
+    if (!nextProfile) {
       profile = null;
       availability = [];
       preferences = [];
@@ -165,14 +249,14 @@ export async function initPromoterPortal(): Promise<void> {
       invoices = [];
       return;
     }
-    profile = p.row;
+    profile = nextProfile;
     const [a, pref, j, inv, na, ts] = await Promise.all([
-      loadPromoterAvailability(supabase, p.row.id),
-      loadPromoterPreferences(supabase, p.row.id),
-      loadPromoterJobs(supabase, p.row.id),
-      loadPromoterInvoices(supabase, p.row.id),
-      loadPromoterNightAdjustments(supabase, p.row.id),
-      loadPromoterTableSales(supabase, p.row.id),
+      loadPromoterAvailability(supabase, profile.id),
+      loadPromoterPreferences(supabase, profile.id),
+      loadPromoterJobs(supabase, profile.id),
+      loadPromoterInvoices(supabase, profile.id),
+      loadPromoterNightAdjustments(supabase, profile.id),
+      loadPromoterTableSales(supabase, profile.id),
     ]);
     availability = a.ok ? a.rows : [];
     preferences = pref.ok ? pref.rows : [];
@@ -180,6 +264,21 @@ export async function initPromoterPortal(): Promise<void> {
     invoices = inv.ok ? inv.rows : [];
     nightAdjustments = na.ok ? na.rows : [];
     tableSales = ts.ok ? ts.rows : [];
+    const c = await loadPromoterClients(supabase, profile.id);
+    promoterClients = c.ok ? c.rows : [];
+    if (!selectedClientId || !promoterClients.some((x) => x.id === selectedClientId)) {
+      selectedClientId = promoterClients[0]?.id ?? null;
+    }
+    promoterClientAttendances = [];
+    selectedClientAttendanceId = null;
+    if (selectedClientId) {
+      const at = await loadPromoterClientAttendances(
+        supabase,
+        profile.id,
+        selectedClientId,
+      );
+      promoterClientAttendances = at.ok ? at.rows : [];
+    }
     const assignedGlJobIds = jobs
       .filter(
         (job) =>
@@ -270,8 +369,45 @@ export async function initPromoterPortal(): Promise<void> {
   }
 
   function renderWorkspaceBody(): string {
-    if (!profile) return "";
     const v = promoterView;
+    if (v === "job_history") {
+      const rows = jobs.filter((j) => j.status !== "assigned");
+      return `
+      <div class="promoter-panel">
+        <p class="promoter-panel__title">Jobs history</p>
+        <div class="promoter-table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Client</th><th>Contact</th><th>Status</th><th>Guests</th><th>Comp</th></tr></thead>
+            <tbody>${jobsTableRows(rows, 8, "No completed/cancelled jobs yet.")}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+    if (v === "table_history") {
+      const rows = tableSales
+        .slice()
+        .sort((a, b) => (a.saleDate < b.saleDate ? 1 : a.saleDate > b.saleDate ? -1 : 0));
+      return `
+      <div class="promoter-panel">
+        <p class="promoter-panel__title">Table history</p>
+        <div class="promoter-table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Club</th><th>Tier</th><th>Tables</th><th>Min spend</th><th>Status</th></tr></thead>
+            <tbody>${
+              rows.length
+                ? rows
+                    .map(
+                      (r) =>
+                        `<tr><td>${esc(r.saleDate)}</td><td>${esc(r.clubSlug || "—")}</td><td>${esc(r.tableTier || "—")}</td><td>${r.tablesCount}</td><td>${money(r.totalMinSpend)}</td><td>${esc(r.status)}</td></tr>`,
+                    )
+                    .join("")
+                : "<tr><td colspan='6'>No table-sale history yet.</td></tr>"
+            }</tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+    if (!profile) return "";
 
     if (v === "overview") {
       const jobsDone = jobs.filter((j) => j.status === "completed");
@@ -337,6 +473,19 @@ export async function initPromoterPortal(): Promise<void> {
       const previewFirst = (baseUrls[0] ?? "").trim();
       const previewSrc = previewFirst ? ` src="${esc(previewFirst)}"` : "";
       return `
+        <div class="promoter-panel">
+          <section class="admin-form">
+            <h4 class="full">Account settings</h4>
+            <p class="promoter-main__subtitle full" style="margin-top:0">Manage your login email and password for this promoter account.</p>
+            <div class="cc-field"><label>Email</label><input id="p-account-email" type="email" autocomplete="email" value="${esc(promoterAccount.email)}" placeholder="name@example.com" /></div>
+            <div class="cc-field"><label>Username</label><input id="p-account-username" value="${esc(promoterAccount.username)}" placeholder="Display username" /></div>
+            <div class="cc-field"><label>New password</label><input id="p-account-password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
+            <div class="cc-field"><label>Confirm new password</label><input id="p-account-password-confirm" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
+            <div class="admin-actions full">
+              <button class="cc-btn cc-btn--gold" id="p-save-account-settings" type="button">Save account settings</button>
+            </div>
+          </section>
+        </div>
         <div class="promoter-panel">
           <section class="admin-form">
             <h4 class="full">Profile revision</h4>
@@ -477,10 +626,19 @@ export async function initPromoterPortal(): Promise<void> {
             `<option value="${esc(j.id)}">${esc(j.jobDate)} · ${esc(j.clubSlug ?? "—")} · ${esc(j.service)} · ${esc(j.status)}</option>`,
         )
         .join("");
+      const visibleRows = tableSales.filter((r) =>
+        tableStatusFilter === "all" ? true : r.approvalStatus === tableStatusFilter,
+      );
+      const clientOptions = promoterClients
+        .map(
+          (c) =>
+            `<option value="${esc(c.id)}">${esc(c.name)}${c.phone ? ` · ${esc(c.phone)}` : c.instagram ? ` · @${esc(c.instagram.replace(/^@/, ""))}` : ""}</option>`,
+        )
+        .join("");
       const hist =
-        tableSales.length === 0
+        visibleRows.length === 0
           ? "<tr><td colspan=\"8\">No rows yet.</td></tr>"
-          : tableSales
+          : visibleRows
               .map(
                 (r) =>
                   `<tr><td>${esc(r.saleDate)}</td><td><code>${esc(r.clubSlug)}</code></td><td>${esc(r.entryChannel)}</td><td>${esc(r.tier)}</td><td>${r.tableCount}</td><td>${money(r.totalMinSpend)}</td><td><span class="promoter-gl-status promoter-gl-status--${esc(r.approvalStatus)}">${esc(r.approvalStatus)}</span></td><td>${esc(r.notes || "—")}</td></tr>`,
@@ -495,6 +653,7 @@ export async function initPromoterPortal(): Promise<void> {
             <div class="cc-field"><label>Club</label>
               <select name="clubSlug" required>${clubOpts}</select>
             </div>
+            <div class="cc-field"><label>Client</label><select name="clientId"><option value="">— Select client —</option>${clientOptions}</select></div>
             <div class="cc-field full"><label>Link to job (optional)</label>
               <select name="promoterJobId"><option value="">— None —</option>${jobOpts}</select>
             </div>
@@ -509,6 +668,17 @@ export async function initPromoterPortal(): Promise<void> {
         </div>
         <div class="promoter-panel">
           <p class="promoter-panel__title">Your submissions</p>
+          <div class="admin-actions" style="margin-bottom:0.7rem">
+            <label class="cc-field" style="max-width:220px">
+              <span>Status filter</span>
+              <select id="promoter-table-status-filter">
+                <option value="all" ${tableStatusFilter === "all" ? "selected" : ""}>All</option>
+                <option value="pending" ${tableStatusFilter === "pending" ? "selected" : ""}>Pending</option>
+                <option value="approved" ${tableStatusFilter === "approved" ? "selected" : ""}>Approved</option>
+                <option value="rejected" ${tableStatusFilter === "rejected" ? "selected" : ""}>Rejected</option>
+              </select>
+            </label>
+          </div>
           <div class="promoter-table-wrap">
             <table>
               <thead><tr><th>Date</th><th>Club</th><th>Channel</th><th>Tier</th><th>Tables</th><th>Min spend</th><th>Status</th><th>Notes</th></tr></thead>
@@ -518,18 +688,210 @@ export async function initPromoterPortal(): Promise<void> {
         </div>`;
     }
 
-    if (v === "jobs") {
-      const upcoming = jobs.filter((j) => j.status === "assigned");
-      const completed = jobs.filter((j) => j.status === "completed");
-      const cancelled = jobs.filter((j) => j.status === "cancelled");
+    if (v === "clients") {
+      const selected = promoterClients.find((c) => c.id === selectedClientId) ?? null;
+      const selectedAttendance =
+        (selectedClientAttendanceId &&
+          promoterClientAttendances.find((a) => a.id === selectedClientAttendanceId)) ||
+        null;
+      const rows =
+        promoterClients.length === 0
+          ? "<tr><td colspan='5'>No clients yet.</td></tr>"
+          : promoterClients
+              .map((c) => {
+                const active = c.id === selectedClientId ? " is-active" : "";
+                return `<tr class="promoter-client-row${active}" data-client-id="${esc(c.id)}">
+                  <td>${esc(c.name)}</td>
+                  <td>${esc(c.email || "—")}</td>
+                  <td>${esc(c.phone || "—")}</td>
+                  <td>${esc(c.instagram || "—")}</td>
+                  <td>${esc(c.createdAt.slice(0, 10) || "—")}</td>
+                </tr>`;
+              })
+              .join("");
+      const attendanceRows =
+        promoterClientAttendances.length === 0
+          ? "<tr><td colspan='6'>No attendance history yet.</td></tr>"
+          : promoterClientAttendances
+              .map((a) => {
+                const active = a.id === selectedClientAttendanceId ? " is-active" : "";
+                return `<tr class="promoter-client-row${active}" data-client-attendance-id="${esc(a.id)}">
+                  <td>${esc(a.eventDate)}</td>
+                  <td>${esc(a.clubSlug)}</td>
+                  <td>£${Number(a.spendGbp || 0).toFixed(2)}</td>
+                  <td>${esc(a.source || "manual")}</td>
+                  <td>${esc(a.notes || "—")}</td>
+                  <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-attendance-delete="${esc(a.id)}">Delete</button></td>
+                </tr>`;
+              })
+              .join("");
+      const clubSelect = clubs
+        .map(
+          (club) =>
+            `<option value="${esc(club.slug)}"${club.slug === selectedAttendance?.clubSlug ? " selected" : ""}>${esc(club.name)}</option>`,
+        )
+        .join("");
       return `
+        <div class="promoter-panel">
+          <h4>Client directory</h4>
+          <p class="promoter-main__subtitle" style="margin-top:0">Create or update clients; duplicates are merged by email, phone, or Instagram for your account.</p>
+          <div class="promoter-table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Instagram</th><th>Added</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="promoter-panel">
+          <h4>${selected ? "Edit client" : "Create client"}</h4>
+          <form class="admin-form" id="promoter-client-form">
+            <input type="hidden" name="id" value="${esc(selected?.id || "")}" />
+            <div class="cc-field"><label>Name</label><input name="name" required value="${esc(selected?.name || "")}" /></div>
+            <div class="cc-field"><label>Email</label><input name="email" type="email" value="${esc(selected?.email || "")}" /></div>
+            <div class="cc-field"><label>Phone</label><input name="phone" value="${esc(selected?.phone || "")}" /></div>
+            <div class="cc-field"><label>Instagram</label><input name="instagram" value="${esc(selected?.instagram || "")}" placeholder="@handle" /></div>
+            <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="3">${esc(selected?.notes || "")}</textarea></div>
+            <div class="admin-actions full">
+              <button class="cc-btn cc-btn--gold" type="submit">${selected ? "Save client" : "Create client"}</button>
+              <button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-new">New client</button>
+            </div>
+          </form>
+          ${
+            selected
+              ? `<h4 style="margin-top:1rem">Past visits</h4>
+          <div class="promoter-table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Club</th><th>Spend</th><th>Source</th><th>Details</th><th>Action</th></tr></thead>
+              <tbody>${attendanceRows}</tbody>
+            </table>
+          </div>
+          <form class="admin-form" id="promoter-client-attendance-form" style="margin-top:0.8rem">
+            <input type="hidden" name="attendanceId" value="${esc(selectedAttendance?.id || "")}" />
+            <div class="cc-field"><label>Date</label><input type="date" name="eventDate" required value="${esc(selectedAttendance?.eventDate || new Date().toISOString().slice(0, 10))}" /></div>
+            <div class="cc-field"><label>Club</label><select name="clubSlug">${clubSelect}</select></div>
+            <div class="cc-field"><label>Spend (£)</label><input type="number" name="spendGbp" min="0" step="0.01" value="${esc(String(selectedAttendance?.spendGbp ?? 0))}" /></div>
+            <div class="cc-field"><label>Source</label><input name="source" value="${esc(selectedAttendance?.source || "manual")}" /></div>
+            <div class="cc-field full"><label>Details</label><textarea name="notes" rows="2">${esc(selectedAttendance?.notes || "")}</textarea></div>
+            <div class="admin-actions full">
+              <button class="cc-btn cc-btn--gold" type="submit">${selectedAttendance ? "Save visit" : "Add visit"}</button>
+              ${
+                selectedAttendance
+                  ? `<button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-attendance-new">New visit</button>`
+                  : ""
+              }
+            </div>
+          </form>`
+              : ""
+          }
+        </div>`;
+    }
+
+    if (v === "jobs") {
+      const filtered = jobs.filter((j) => {
+        const service = String(j.service || "").toLowerCase();
+        const serviceOk = jobTypeFilter === "all" ? true : service === jobTypeFilter;
+        const statusOk = jobStatusFilter === "all" ? true : j.status === jobStatusFilter;
+        return serviceOk && statusOk;
+      });
+      const upcoming = filtered.filter((j) => j.status === "assigned");
+      const completed = filtered.filter((j) => j.status === "completed");
+      const cancelled = filtered.filter((j) => j.status === "cancelled");
+      const serviceOpts = Array.from(
+        new Set(jobs.map((j) => String(j.service || "other").toLowerCase()).filter(Boolean)),
+      );
+      return `
+        <div class="promoter-panel">
+          <p class="promoter-panel__title">Create new job or guestlist</p>
+          <form class="admin-form" id="promoter-create-job-form">
+            <div class="cc-field"><label>Date</label><input type="date" name="jobDate" required value="${esc(new Date().toISOString().slice(0, 10))}" /></div>
+            <div class="cc-field"><label>Club</label><select name="clubSlug" required>${clubs.map((c) => `<option value="${esc(c.slug)}">${esc(c.name)}</option>`).join("")}</select></div>
+            <div class="cc-field"><label>Service</label>
+              <select name="service">
+                <option value="guestlist">guestlist</option>
+                <option value="table_sale">table_sale</option>
+                <option value="tickets">tickets</option>
+                <option value="other">other</option>
+              </select>
+            </div>
+            <div class="cc-field"><label>Status</label>
+              <select name="status">
+                <option value="assigned">assigned (upcoming)</option>
+                <option value="completed">completed (already happened)</option>
+              </select>
+            </div>
+            <div class="cc-field"><label>Client mode</label>
+              <select name="clientMode">
+                <option value="existing">Find client</option>
+                <option value="blank">Create blank client</option>
+                <option value="new">Create new client profile</option>
+              </select>
+            </div>
+            <div class="cc-field full" id="promoter-job-find-client-block"><label>Find client</label>
+              <input name="clientSearch" type="text" placeholder="Type client name/email/phone" />
+              <select name="existingClientId" style="margin-top:0.4rem">
+                <option value="">(none)</option>
+                ${promoterClients.map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`).join("")}
+              </select>
+            </div>
+            <div class="cc-field" id="promoter-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
+            <div class="cc-field" id="promoter-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
+            <div class="cc-field" id="promoter-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
+            <div class="admin-actions full">
+              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-job-add-client">+ Add client</button>
+            </div>
+            <div class="full promoter-table-wrap">
+              <table>
+                <thead><tr><th>Type</th><th>Name</th><th>Contact</th><th>Remove</th></tr></thead>
+                <tbody id="promoter-job-clients-body">${
+                  createJobClients.length
+                    ? createJobClients
+                        .map(
+                          (c, idx) =>
+                            `<tr><td>${esc(c.mode === "existing" ? "existing" : c.mode === "blank" ? "blank" : "new profile")}</td><td>${esc(c.name || "New client")}</td><td>${esc(c.contact || "—")}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-job-remove-client="${idx}">Remove</button></td></tr>`,
+                        )
+                        .join("")
+                    : "<tr><td colspan='4'>No clients added yet.</td></tr>"
+                }</tbody>
+              </table>
+            </div>
+            <div class="cc-field"><label>Guests count</label><input type="number" name="guestsCount" min="0" step="1" value="0" /></div>
+            <div class="cc-field"><label>Shift fee (£)</label><input type="number" name="shiftFee" min="0" step="0.01" value="0" /></div>
+            <div class="cc-field"><label>Guestlist fee (£/guest)</label><input type="number" name="guestlistFee" min="0" step="0.01" value="0" /></div>
+            <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2" placeholder="Client/brief details"></textarea></div>
+            <div class="admin-actions full">
+              <button type="submit" class="cc-btn cc-btn--gold">Create job</button>
+              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-create-guestlist-job">Quick guestlist shift</button>
+            </div>
+          </form>
+        </div>
+        <div class="promoter-panel">
+          <p class="promoter-panel__title">Job filters</p>
+          <div class="admin-actions">
+            <label class="cc-field" style="max-width:220px">
+              <span>Type</span>
+              <select id="promoter-job-type-filter">
+                <option value="all" ${jobTypeFilter === "all" ? "selected" : ""}>All</option>
+                ${serviceOpts.map((s) => `<option value="${esc(s)}" ${jobTypeFilter === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+              </select>
+            </label>
+            <label class="cc-field" style="max-width:220px">
+              <span>Status</span>
+              <select id="promoter-job-status-filter">
+                <option value="all" ${jobStatusFilter === "all" ? "selected" : ""}>All</option>
+                <option value="assigned" ${jobStatusFilter === "assigned" ? "selected" : ""}>Assigned</option>
+                <option value="completed" ${jobStatusFilter === "completed" ? "selected" : ""}>Completed</option>
+                <option value="cancelled" ${jobStatusFilter === "cancelled" ? "selected" : ""}>Cancelled</option>
+              </select>
+            </label>
+          </div>
+        </div>
         <div class="promoter-job-section">
           <h4>Upcoming</h4>
           <p class="promoter-job-hint">Assigned shifts you have not completed yet.</p>
           <div class="promoter-table-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
-              <tbody>${jobsTableRows(upcoming, 6, "No upcoming jobs.")}</tbody>
+              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Client</th><th>Contact</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
+              <tbody>${jobsTableRows(upcoming, 8, "No upcoming jobs.")}</tbody>
             </table>
           </div>
         </div>
@@ -538,8 +900,8 @@ export async function initPromoterPortal(): Promise<void> {
           <p class="promoter-job-hint">Finished shifts — totals feed your overview earnings figure.</p>
           <div class="promoter-table-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
-              <tbody>${jobsTableRows(completed, 6, "No completed jobs yet.")}</tbody>
+              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Client</th><th>Contact</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
+              <tbody>${jobsTableRows(completed, 8, "No completed jobs yet.")}</tbody>
             </table>
           </div>
         </div>
@@ -548,8 +910,8 @@ export async function initPromoterPortal(): Promise<void> {
           <p class="promoter-job-hint">Assignments that were called off or removed.</p>
           <div class="promoter-table-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
-              <tbody>${jobsTableRows(cancelled, 6, "No cancelled jobs.")}</tbody>
+              <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Client</th><th>Contact</th><th>Status</th><th>Guests</th><th>Earnings basis</th></tr></thead>
+              <tbody>${jobsTableRows(cancelled, 8, "No cancelled jobs.")}</tbody>
             </table>
           </div>
         </div>`;
@@ -589,6 +951,10 @@ export async function initPromoterPortal(): Promise<void> {
 
   function renderDashboard(): void {
     if (!profile) {
+      if (adminMode) {
+        root.innerHTML = `<div class="admin-card"><p>No promoter profiles found yet. Create a promoter in admin portal, then switch back here.</p></div>`;
+        return;
+      }
       renderAuth();
       return;
     }
@@ -596,6 +962,19 @@ export async function initPromoterPortal(): Promise<void> {
     const vh = PROMOTER_VIEW_HEADINGS[v];
     const tab = (id: PromoterView, label: string) =>
       `<button type="button" class="promoter-view-tab ${v === id ? "is-active" : ""}" data-promoter-view="${id}">${esc(label)}</button>`;
+    const navSection = (
+      section: PromoterNavSection,
+      label: string,
+      body: string,
+    ): string => {
+      const open = promoterNavExpanded === section;
+      return `<div class="promoter-nav-block ${open ? "is-open" : ""}">
+        <button type="button" class="promoter-nav-heading" data-promoter-nav-toggle="${section}" aria-expanded="${open ? "true" : "false"}">${esc(label)}</button>
+        <div class="promoter-nav-items"${open ? "" : " hidden"}>
+          ${body}
+        </div>
+      </div>`;
+    };
 
     root.innerHTML = `
       <div class="promoter-shell">
@@ -605,12 +984,10 @@ export async function initPromoterPortal(): Promise<void> {
             <p class="promoter-sidebar__title">Promoter</p>
           </div>
           <nav class="promoter-sidebar__nav">
-            ${tab("overview", "Overview")}
-            ${tab("profile", "My profile")}
-            ${tab("preferences", "Work preferences")}
-            ${tab("jobs", "Jobs")}
-            ${tab("tables", "Tables")}
-            ${tab("invoices", "Invoices")}
+            ${navSection("overview", "Overview", `${tab("overview", "Overview")}`)}
+            ${navSection("account", "Account", `${tab("profile", "My profile")}${tab("preferences", "Work preferences")}`)}
+            ${navSection("work", "Work", `${tab("jobs", "Jobs")}${tab("job_history", "Jobs history")}${tab("tables", "Tables sold")}${tab("table_history", "Tables history")}${tab("clients", "Clients")}`)}
+            ${navSection("finance", "Finance", `${tab("invoices", "Invoices")}`)}
           </nav>
           <div class="promoter-sidebar__footer">
             <button class="promoter-sidebar__btn" id="promoter-signout" type="button">Sign out</button>
@@ -621,6 +998,34 @@ export async function initPromoterPortal(): Promise<void> {
             <div>
               <h2 class="promoter-main__title">${esc(vh.title)}</h2>
               <p class="promoter-main__subtitle">${esc(vh.subtitle)}</p>
+              ${
+                adminMode && adminPromoters.length
+                  ? `<div class="cc-field" style="margin-top:0.6rem; max-width:360px">
+                      <label>Admin view: promoter account</label>
+                      <select id="promoter-admin-target">
+                        ${adminPromoters
+                          .map(
+                            (p) =>
+                              `<option value="${esc(p.id)}"${p.id === adminSelectedPromoterId ? " selected" : ""}>${esc(p.displayName || p.fullName || p.email || p.id.slice(0, 8))}</option>`,
+                          )
+                          .join("")}
+                      </select>
+                    </div>`
+                  : ""
+              }
+            </div>
+            <div class="promoter-account">
+              <button type="button" class="promoter-account__btn" id="promoter-account-btn" aria-haspopup="menu" aria-expanded="false">Account</button>
+              <div class="promoter-account__menu" id="promoter-account-menu" role="menu" hidden>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="profile">Edit profile</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="preferences">Work preferences</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="jobs">Manage jobs</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="tables">Manage tables sold</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="clients">Manage clients</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="job_history">Jobs history</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="table_history">Tables history</button>
+                <button type="button" role="menuitem" class="promoter-account__item promoter-account__item--danger" id="promoter-account-signout">Sign out</button>
+              </div>
             </div>
           </header>
           <div class="promoter-workspace">
@@ -638,6 +1043,23 @@ export async function initPromoterPortal(): Promise<void> {
           | undefined;
         if (!id) return;
         promoterView = id;
+        promoterNavExpanded =
+          id === "overview"
+            ? "overview"
+            : id === "profile" || id === "preferences"
+              ? "account"
+              : id === "invoices"
+                ? "finance"
+                : "work";
+        renderDashboard();
+      });
+    });
+    root.querySelectorAll("[data-promoter-nav-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = (btn as HTMLButtonElement).dataset
+          .promoterNavToggle as PromoterNavSection | undefined;
+        if (!section) return;
+        promoterNavExpanded = promoterNavExpanded === section ? "overview" : section;
         renderDashboard();
       });
     });
@@ -647,6 +1069,39 @@ export async function initPromoterPortal(): Promise<void> {
         promoterView = "overview";
         renderAuth();
       });
+    });
+    const accountBtn = root.querySelector("#promoter-account-btn") as HTMLButtonElement | null;
+    const accountMenu = root.querySelector("#promoter-account-menu") as HTMLElement | null;
+    const setAccountMenu = (open: boolean): void => {
+      if (!accountBtn || !accountMenu) return;
+      accountBtn.setAttribute("aria-expanded", String(open));
+      accountMenu.hidden = !open;
+    };
+    accountBtn?.addEventListener("click", () => {
+      const open = accountBtn.getAttribute("aria-expanded") === "true";
+      setAccountMenu(!open);
+    });
+    accountMenu?.addEventListener("click", (ev) => {
+      const t = ev.target as HTMLElement | null;
+      if (!t) return;
+      const v = t.getAttribute("data-promoter-menu-view") as PromoterView | null;
+      if (v) {
+        promoterView = v;
+        renderDashboard();
+        return;
+      }
+      if (t.id === "promoter-account-signout") {
+        void signOutAdmin(supabase).then(() => {
+          promoterView = "overview";
+          renderAuth();
+        });
+      }
+    });
+    root.addEventListener("click", (ev) => {
+      const target = ev.target as Node | null;
+      if (!target) return;
+      if (accountBtn?.contains(target) || accountMenu?.contains(target)) return;
+      setAccountMenu(false);
     });
 
     const syncPrimaryPhotoPreview = (): void => {
@@ -839,6 +1294,104 @@ export async function initPromoterPortal(): Promise<void> {
         flash("Profile revision submitted for approval.");
       })();
     });
+    root.querySelector("#p-save-account-settings")?.addEventListener("click", () => {
+      const email = String(
+        (root.querySelector("#p-account-email") as HTMLInputElement | null)?.value || "",
+      )
+        .trim()
+        .toLowerCase();
+      const username = String(
+        (root.querySelector("#p-account-username") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      const password = String(
+        (root.querySelector("#p-account-password") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      const passwordConfirm = String(
+        (root.querySelector("#p-account-password-confirm") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      if (!promoterAccount.userId) {
+        flash("Missing account session context. Reload and try again.", true);
+        return;
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        flash("Enter a valid email address.", true);
+        return;
+      }
+      if (!username) {
+        flash("Username is required.", true);
+        return;
+      }
+      if (password && password.length < 8) {
+        flash("New password must be at least 8 characters.", true);
+        return;
+      }
+      if (password && password !== passwordConfirm) {
+        flash("Password confirmation does not match.", true);
+        return;
+      }
+      const emailChanged = email !== promoterAccount.email;
+      const usernameChanged = username !== promoterAccount.username;
+      const passwordChanged = Boolean(password);
+      if (!emailChanged && !usernameChanged && !passwordChanged) {
+        flash("No account changes to save.");
+        return;
+      }
+      void (async () => {
+        const { data: profileRow, error: profileReadError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", promoterAccount.userId)
+          .maybeSingle();
+        if (profileReadError) {
+          flash(`Could not verify profile: ${profileReadError.message}`, true);
+          return;
+        }
+        const role = String(profileRow?.role || "promoter");
+        const { error: profileWriteError } = await supabase.from("profiles").upsert(
+          {
+            id: promoterAccount.userId,
+            role,
+            display_name: username,
+          },
+          { onConflict: "id" },
+        );
+        if (profileWriteError) {
+          flash(`Could not save username: ${profileWriteError.message}`, true);
+          return;
+        }
+        const authPayload: {
+          email?: string;
+          password?: string;
+          data?: Record<string, unknown>;
+        } = {};
+        if (emailChanged) authPayload.email = email;
+        if (passwordChanged) authPayload.password = password;
+        if (usernameChanged) {
+          authPayload.data = {
+            username,
+            display_name: username,
+          };
+        }
+        if (Object.keys(authPayload).length) {
+          const { error: authError } = await supabase.auth.updateUser(authPayload);
+          if (authError) {
+            flash(`Could not update account: ${authError.message}`, true);
+            return;
+          }
+        }
+        promoterAccount = {
+          ...promoterAccount,
+          email,
+          username,
+        };
+        flash(
+          emailChanged
+            ? "Account settings updated. Confirm the new email from your inbox if prompted."
+            : "Account settings updated.",
+        );
+        renderDashboard();
+      })();
+    });
 
     root.querySelector("#p-save-availability")?.addEventListener("click", () => {
       if (!profile) return;
@@ -932,11 +1485,16 @@ export async function initPromoterPortal(): Promise<void> {
       const fd = new FormData(e.target as HTMLFormElement);
       const saleDate = String(fd.get("saleDate") || "").trim();
       const clubSlug = String(fd.get("clubSlug") || "").trim();
+      const clientId = String(fd.get("clientId") || "").trim();
       const promoterJobId = String(fd.get("promoterJobId") || "").trim() || null;
       const tier = String(fd.get("tier") || "other").trim();
       const tableCount = Number(fd.get("tableCount") || 1) || 1;
       const totalMinSpend = Number(fd.get("totalMinSpend") || 0) || 0;
       const notes = String(fd.get("notes") || "").trim();
+      const selectedClient = promoterClients.find((c) => c.id === clientId);
+      const clientNote = selectedClient
+        ? `Client: ${selectedClient.name}${selectedClient.phone ? ` (${selectedClient.phone})` : selectedClient.instagram ? ` (@${selectedClient.instagram.replace(/^@/, "")})` : ""}`
+        : "";
       void (async () => {
         const r = await insertPromoterTableSale(supabase, {
           saleDate,
@@ -945,7 +1503,7 @@ export async function initPromoterPortal(): Promise<void> {
           tier,
           tableCount,
           totalMinSpend,
-          notes,
+          notes: [clientNote, notes].filter(Boolean).join(" | "),
         });
         if (!r.ok) {
           flash(r.message, true);
@@ -960,6 +1518,266 @@ export async function initPromoterPortal(): Promise<void> {
         flash("Table sale logged — pending review.");
       })();
     });
+    root.querySelector("#promoter-client-new")?.addEventListener("click", () => {
+      selectedClientId = null;
+      selectedClientAttendanceId = null;
+      void loadAndRender();
+    });
+    root.querySelectorAll(".promoter-client-row").forEach((row) => {
+      row.addEventListener("click", () => {
+        selectedClientId =
+          (row as HTMLElement).dataset.clientId?.trim() || null;
+        selectedClientAttendanceId = null;
+        void loadAndRender();
+      });
+    });
+    root.querySelector("#promoter-client-form")?.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      if (!profile) return;
+      const fd = new FormData(ev.target as HTMLFormElement);
+      const id = String(fd.get("id") || "").trim();
+      const name = String(fd.get("name") || "").trim();
+      const email = String(fd.get("email") || "").trim();
+      const phone = String(fd.get("phone") || "").trim();
+      const instagram = String(fd.get("instagram") || "").trim();
+      const notes = String(fd.get("notes") || "").trim();
+      void (async () => {
+        const res = await savePromoterClient(supabase, {
+          id: id || undefined,
+          promoterId: profile.id,
+          name,
+          email,
+          phone,
+          instagram,
+          notes,
+        });
+        if (!res.ok) {
+          flash(res.message, true);
+          return;
+        }
+        await loadAndRender();
+        selectedClientId = res.id;
+        flash(res.deduped ? "Existing client matched and updated." : "Client saved.");
+      })();
+    });
+    root.querySelectorAll("[data-client-attendance-id]").forEach((row) => {
+      row.addEventListener("click", () => {
+        selectedClientAttendanceId =
+          (row as HTMLElement).dataset.clientAttendanceId?.trim() || null;
+        renderDashboard();
+      });
+    });
+    root.querySelectorAll("[data-promoter-attendance-delete]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!profile) return;
+        const id = (btn as HTMLElement).dataset.promoterAttendanceDelete?.trim();
+        if (!id) return;
+        void (async () => {
+          const res = await deletePromoterClientAttendance(supabase, profile.id, id);
+          if (!res.ok) {
+            flash(res.message, true);
+            return;
+          }
+          await loadAndRender();
+          flash("Visit deleted.");
+        })();
+      });
+    });
+    root.querySelector("#promoter-client-attendance-new")?.addEventListener("click", () => {
+      selectedClientAttendanceId = null;
+      renderDashboard();
+    });
+    root.querySelector("#promoter-client-attendance-form")?.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      if (!profile || !selectedClientId) return;
+      const fd = new FormData(ev.target as HTMLFormElement);
+      void (async () => {
+        const res = await savePromoterClientAttendance(supabase, {
+          id: String(fd.get("attendanceId") || "").trim() || undefined,
+          clientId: selectedClientId,
+          promoterId: profile.id,
+          eventDate: String(fd.get("eventDate") || "").trim(),
+          clubSlug: String(fd.get("clubSlug") || "").trim(),
+          spendGbp: Number(fd.get("spendGbp") || 0) || 0,
+          source: String(fd.get("source") || "").trim() || "manual",
+          notes: String(fd.get("notes") || "").trim(),
+        });
+        if (!res.ok) {
+          flash(res.message, true);
+          return;
+        }
+        selectedClientAttendanceId = res.id;
+        await loadAndRender();
+        flash("Visit saved. Preferences recalculated.");
+      })();
+    });
+    root.querySelector("#promoter-create-guestlist-job")?.addEventListener("click", () => {
+      const form = root.querySelector("#promoter-create-job-form") as HTMLFormElement | null;
+      if (!form) return;
+      const svc = form.querySelector("[name=service]") as HTMLSelectElement | null;
+      const guests = form.querySelector("[name=guestsCount]") as HTMLInputElement | null;
+      if (svc) svc.value = "guestlist";
+      if (guests && Number(guests.value || 0) <= 0) guests.value = "1";
+    });
+    root.querySelector("#promoter-create-job-form")?.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const form = ev.target as HTMLFormElement;
+      const fd = new FormData(form);
+      const jobDate = String(fd.get("jobDate") || "").trim();
+      const clubSlug = String(fd.get("clubSlug") || "").trim();
+      const service = String(fd.get("service") || "guestlist").trim();
+      const status = String(fd.get("status") || "assigned").trim() as
+        | "assigned"
+        | "completed"
+        | "cancelled";
+      const guestsCount = Number(fd.get("guestsCount") || 0) || 0;
+      const shiftFee = Number(fd.get("shiftFee") || 0) || 0;
+      const guestlistFee = Number(fd.get("guestlistFee") || 0) || 0;
+      const notes = String(fd.get("notes") || "").trim();
+      void (async () => {
+        const resolvedClients: Array<{ name: string; contact: string }> = [];
+        for (const item of createJobClients) {
+          if (item.mode === "existing") {
+            if (item.name.trim()) {
+              resolvedClients.push({ name: item.name.trim(), contact: item.contact.trim() });
+            }
+            continue;
+          }
+          if (item.mode === "blank") {
+            const c = await savePromoterClient(supabase, {
+              promoterId: profile?.id || "",
+              name: "New client",
+              email: "",
+              phone: "",
+              instagram: "",
+              notes: "",
+            });
+            if (!c.ok) {
+              flash(c.message, true);
+              return;
+            }
+            resolvedClients.push({ name: "New client", contact: "" });
+            continue;
+          }
+          const c = await savePromoterClient(supabase, {
+            promoterId: profile?.id || "",
+            name: item.name.trim() || "New client",
+            email: String(item.newEmail || "").trim(),
+            phone: String(item.newPhone || "").trim(),
+            instagram: "",
+            notes: "",
+          });
+          if (!c.ok) {
+            flash(c.message, true);
+            return;
+          }
+          resolvedClients.push({
+            name: item.name.trim() || "New client",
+            contact: String(item.newPhone || item.newEmail || "").trim(),
+          });
+        }
+        const clientName = resolvedClients.map((c) => c.name).filter(Boolean).join("; ");
+        const clientContact = resolvedClients.map((c) => c.contact).filter(Boolean).join("; ");
+        const res = await insertPromoterJobSelf(supabase, {
+          clubSlug,
+          jobDate,
+          service,
+          status,
+          clientName,
+          clientContact,
+          guestsCount,
+          shiftFee,
+          guestlistFee,
+          notes,
+        });
+        if (!res.ok) {
+          flash(res.message, true);
+          return;
+        }
+        createJobClients = [];
+        await loadAndRender();
+        flash(service === "guestlist" ? "Guestlist shift created." : "Job created.");
+      })();
+    });
+    root.querySelector("#promoter-job-add-client")?.addEventListener("click", () => {
+      const form = root.querySelector("#promoter-create-job-form") as HTMLFormElement | null;
+      if (!form) return;
+      const fd = new FormData(form);
+      const mode = String(fd.get("clientMode") || "existing").trim();
+      if (mode === "existing") {
+        const existingId = String(fd.get("existingClientId") || "").trim();
+        const existing = promoterClients.find((c) => c.id === existingId);
+        if (!existing) {
+          flash("Select a client from the find results first.", true);
+          return;
+        }
+        createJobClients.push({
+          mode: "existing",
+          clientId: existing.id,
+          name: String(existing.name || "").trim() || "Client",
+          contact: String(existing.phone || existing.email || existing.instagram || "").trim(),
+        });
+      } else if (mode === "blank") {
+        createJobClients.push({ mode: "blank", name: "New client", contact: "" });
+      } else {
+        const newName = String(fd.get("newClientName") || "").trim();
+        const newEmail = String(fd.get("newClientEmail") || "").trim();
+        const newPhone = String(fd.get("newClientPhone") || "").trim();
+        if (!newName) {
+          flash("New client name is required.", true);
+          return;
+        }
+        createJobClients.push({
+          mode: "new",
+          name: newName,
+          contact: String(newPhone || newEmail || "").trim(),
+          newEmail,
+          newPhone,
+        });
+      }
+      renderDashboard();
+    });
+    root.querySelectorAll("[data-promoter-job-remove-client]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(
+          (btn as HTMLElement).getAttribute("data-promoter-job-remove-client") || "-1",
+        );
+        if (idx < 0 || idx >= createJobClients.length) return;
+        createJobClients.splice(idx, 1);
+        renderDashboard();
+      });
+    });
+    root.querySelector("[name=clientMode]")?.addEventListener("change", (ev) => {
+      const mode = String((ev.target as HTMLSelectElement).value || "existing").trim();
+      const findBlock = root.querySelector("#promoter-job-find-client-block") as HTMLElement | null;
+      const newName = root.querySelector("#promoter-job-new-client-name") as HTMLElement | null;
+      const newEmail = root.querySelector("#promoter-job-new-client-email") as HTMLElement | null;
+      const newPhone = root.querySelector("#promoter-job-new-client-phone") as HTMLElement | null;
+      const showNew = mode === "new";
+      if (findBlock) findBlock.hidden = mode !== "existing";
+      if (newName) newName.hidden = !showNew;
+      if (newEmail) newEmail.hidden = !showNew;
+      if (newPhone) newPhone.hidden = !showNew;
+    });
+    root.querySelector("[name=clientSearch]")?.addEventListener("input", (ev) => {
+      const q = String((ev.target as HTMLInputElement).value || "").trim().toLowerCase();
+      const sel = root.querySelector("[name=existingClientId]") as HTMLSelectElement | null;
+      if (!sel) return;
+      const filtered = promoterClients.filter((c) => {
+        const hay = `${c.name || ""} ${c.email || ""} ${c.phone || ""}`.toLowerCase();
+        return !q || hay.includes(q);
+      });
+      sel.innerHTML = `<option value="">(none)</option>${filtered
+        .map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`)
+        .join("")}`;
+    });
+    root.querySelector("#promoter-admin-target")?.addEventListener("change", (ev) => {
+      const id = String((ev.target as HTMLSelectElement).value || "").trim();
+      if (!id || id === adminSelectedPromoterId) return;
+      adminSelectedPromoterId = id;
+      void loadAndRender();
+    });
 
     root.querySelectorAll("form.promoter-gl-add-form").forEach((form) => {
       form.addEventListener("submit", (e) => {
@@ -970,6 +1788,16 @@ export async function initPromoterPortal(): Promise<void> {
         const fd = new FormData(form as HTMLFormElement);
         const guestName = String(fd.get("guestName") || "").trim();
         const guestContact = String(fd.get("guestContact") || "").trim();
+        const duplicate = guestlistEntries.some(
+          (x) =>
+            x.promoterJobId === jobId &&
+            x.guestName.trim().toLowerCase() === guestName.toLowerCase() &&
+            x.guestContact.trim().toLowerCase() === guestContact.toLowerCase(),
+        );
+        if (duplicate) {
+          flash("Guest already exists for this job.");
+          return;
+        }
         void (async () => {
           const r = await insertPromoterGuestlistEntry(supabase, {
             jobId,
@@ -986,15 +1814,59 @@ export async function initPromoterPortal(): Promise<void> {
         })();
       });
     });
+    root.querySelector("#promoter-job-type-filter")?.addEventListener("change", (ev) => {
+      jobTypeFilter = String((ev.target as HTMLSelectElement).value || "all");
+      renderDashboard();
+    });
+    root.querySelector("#promoter-job-status-filter")?.addEventListener("change", (ev) => {
+      jobStatusFilter = String((ev.target as HTMLSelectElement).value || "all");
+      renderDashboard();
+    });
+    root.querySelector("#promoter-table-status-filter")?.addEventListener("change", (ev) => {
+      tableStatusFilter = String((ev.target as HTMLSelectElement).value || "all");
+      renderDashboard();
+    });
   }
 
   async function loadAndRender(): Promise<void> {
     const gate = await gatePromoterUser(supabase);
-    if (!gate.ok) {
+    if (gate.ok) {
+      adminMode = false;
+      await reloadPromoterData(gate.user.id);
+      const userMetadata = (gate.user.user_metadata ?? {}) as Record<string, unknown>;
+      promoterAccount = {
+        userId: gate.user.id,
+        email: String(gate.user.email ?? "")
+          .trim()
+          .toLowerCase(),
+        username: String(
+          userMetadata.username ?? userMetadata.display_name ?? gate.user.email ?? "",
+        ).trim(),
+      };
+      renderDashboard();
+      return;
+    }
+    const adminGate = await gateAdminUser(supabase);
+    if (!adminGate.ok) {
       renderAuth();
       return;
     }
-    await reloadPromoterData(gate.user.id);
+    adminMode = true;
+    const promoterRows = await loadPromotersForAdmin(supabase);
+    adminPromoters = promoterRows.ok ? promoterRows.rows : [];
+    adminSelectedPromoterId =
+      adminSelectedPromoterId && adminPromoters.some((p) => p.id === adminSelectedPromoterId)
+        ? adminSelectedPromoterId
+        : (adminPromoters[0]?.id ?? null);
+    const picked = adminPromoters.find((p) => p.id === adminSelectedPromoterId) ?? null;
+    await reloadPromoterDataByProfile(picked);
+    promoterAccount = {
+      userId: adminGate.user.id,
+      email: String(adminGate.user.email ?? "")
+        .trim()
+        .toLowerCase(),
+      username: "admin",
+    };
     renderDashboard();
   }
 

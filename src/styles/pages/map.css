@@ -558,9 +558,28 @@
 .map-marker-root {
   /* Outer node: MapLibre applies translate for geo position; no transform here. */
   display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.map-marker-root.is-hovered,
+.map-marker-root.is-active {
+  z-index: 5000;
 }
 
 .marker-wrap {
   position: relative;
   will-change: transform;
+  z-index: 1;
+}
+
+.map-marker-root.is-hovered .marker-wrap,
+.map-marker-root.is-active .marker-wrap {
+  z-index: 5001;
+}
+
+.map-marker-root.is-hovered .cc-marker-label,
+.map-marker-root.is-active .cc-marker-label {
+  z-index: 5002;
+  border-color: rgba(212, 196, 168, 0.5);
 }
