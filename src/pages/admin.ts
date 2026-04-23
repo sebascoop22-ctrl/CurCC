@@ -230,7 +230,6 @@ function cloneClub(c?: Partial<Club>): Club {
     name: c?.name ?? "",
     shortDescription: c?.shortDescription ?? "",
     longDescription: c?.longDescription ?? "",
-    reviews: c?.reviews ?? [],
     locationTag: c?.locationTag ?? "",
     address: c?.address ?? "",
     daysOpen: c?.daysOpen ?? "",
@@ -345,7 +344,6 @@ function asClubsCsv(rows: Club[]): string {
     "name",
     "short_description",
     "long_description",
-    "reviews",
     "location_tag",
     "address",
     "days_open",
@@ -372,7 +370,6 @@ function asClubsCsv(rows: Club[]): string {
       c.name,
       c.shortDescription,
       c.longDescription,
-      c.reviews.join("; "),
       c.locationTag,
       c.address,
       c.daysOpen,
@@ -2129,7 +2126,6 @@ export async function initAdminPortal(): Promise<void> {
                   <option value="false" ${!club.featured ? "selected" : ""}>No</option>
                 </select>
               </div>
-              <div class="cc-field full"><label>Reviews (one per line)</label><textarea name="reviews">${escapeAttr(club.reviews.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${escapeAttr(club.knownFor.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Amenities (one per line)</label><textarea name="amenities">${escapeAttr(club.amenities.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="club-images-text">${escapeAttr(club.images.join("\n"))}</textarea></div>
@@ -3702,7 +3698,6 @@ export async function initAdminPortal(): Promise<void> {
             name: String(fd.get("name") || "").trim(),
             shortDescription: String(fd.get("shortDescription") || "").trim(),
             longDescription: String(fd.get("longDescription") || "").trim(),
-            reviews: parseLines(String(fd.get("reviews") || "")),
             locationTag: String(fd.get("locationTag") || "").trim(),
             address: String(fd.get("address") || "").trim(),
             daysOpen: String(fd.get("daysOpen") || "").trim(),

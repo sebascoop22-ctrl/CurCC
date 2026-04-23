@@ -152,17 +152,6 @@ function selectSingleFlyerForDate(flyers: ClubFlyer[], d: Date): ClubFlyer | nul
   return flyers[0] ?? null;
 }
 
-function parseTestimonial(raw: string): { name: string; text: string } {
-  const idx = raw.indexOf(":");
-  if (idx > 0) {
-    return {
-      name: raw.slice(0, idx).trim(),
-      text: raw.slice(idx + 1).trim(),
-    };
-  }
-  return { name: "Client", text: raw };
-}
-
 function escapeHtml(s: string): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -191,7 +180,6 @@ export async function initHome(): Promise<void> {
   const requestHost = document.getElementById("cc-venue-request-root") as HTMLElement | null;
   const promoTitle = document.getElementById("featured-title");
   const promoBlurb = document.getElementById("featured-blurb");
-  const testimonialsEl = document.getElementById("testimonials-grid");
 
   if (
     !thumbEl ||
@@ -515,44 +503,6 @@ export async function initHome(): Promise<void> {
   });
 
   refreshFeatured();
-
-  if (testimonialsEl) {
-    const rows: { name: string; text: string }[] = [];
-    for (const c of clubs) {
-      for (const r of c.reviews) {
-        rows.push(parseTestimonial(r));
-        if (rows.length >= 3) break;
-      }
-      if (rows.length >= 3) break;
-    }
-    while (rows.length < 3) {
-      rows.push({
-        name: "Member",
-        text: "Cooper Concierge arranged a flawless evening with absolute discretion.",
-      });
-    }
-    const max = 3;
-    testimonialsEl.innerHTML = rows
-      .slice(0, max)
-      .map(
-        () => `
-      <article class="testimonial">
-        <div class="testimonial__stars" aria-hidden="true">★★★★★</div>
-        <div class="testimonial__name"></div>
-        <p></p>
-      </article>`,
-      )
-      .join("");
-    const articles = testimonialsEl.querySelectorAll(".testimonial");
-    rows.slice(0, max).forEach((t, i) => {
-      const a = articles[i];
-      if (!a) return;
-      const nameEl = a.querySelector(".testimonial__name");
-      const p = a.querySelector("p");
-      if (nameEl) nameEl.textContent = t.name;
-      if (p) p.textContent = t.text;
-    });
-  }
 
   const form = document.getElementById("home-lead-form") as HTMLFormElement | null;
   const successEl = document.getElementById("home-lead-success");

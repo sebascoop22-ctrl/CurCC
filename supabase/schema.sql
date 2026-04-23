@@ -563,6 +563,12 @@ begin
   end if;
 end $$;
 
+-- Legacy cleanup: reviews now fully removed from site and catalog payloads.
+update public.clubs
+set payload = payload - 'reviews',
+    updated_at = now()
+where payload ? 'reviews';
+
 do $$
 begin
   if not exists (

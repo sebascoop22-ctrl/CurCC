@@ -3,17 +3,17 @@
  */
 export const ssrAssetHashes = {
   "nightlife": {
-    "js": "/assets/nightlife-yRIwvQkr.js",
+    "js": "/assets/nightlife-B565fiBu.js",
     "css": [
-      "/assets/chrome-BRvOqMdn.css",
+      "/assets/chrome-CMYULn_j.css",
       "/assets/venue-request-modal-Dcpx4a3a.css",
       "/assets/nightlife-C343fTUa.css"
     ]
   },
   "clubDetail": {
-    "js": "/assets/clubDetail-1hKEcJPd.js",
+    "js": "/assets/clubDetail-CKnGp1uB.js",
     "css": [
-      "/assets/chrome-BRvOqMdn.css",
+      "/assets/chrome-CMYULn_j.css",
       "/assets/venue-request-modal-Dcpx4a3a.css",
       "/assets/clubDetail-Dwa1jnlz.css"
     ]

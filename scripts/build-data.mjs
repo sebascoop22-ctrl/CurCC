@@ -85,7 +85,7 @@ function splitPipe(s) {
     .filter(Boolean);
 }
 
-function splitReviews(s) {
+function splitSemicolon(s) {
   if (!s) return [];
   return s
     .split(";")
@@ -95,7 +95,7 @@ function splitReviews(s) {
 
 /** Known-for bullets in clubs.csv (semicolon-separated) */
 function splitKnownFor(s) {
-  return splitReviews(s);
+  return splitSemicolon(s);
 }
 
 function bool(s) {
@@ -172,7 +172,6 @@ function buildClubs() {
       name: row.name || slug,
       shortDescription: row.short_description || "",
       longDescription: row.long_description || "",
-      reviews: splitReviews(row.reviews || ""),
       locationTag: row.location_tag || "",
       address: row.address || "",
       daysOpen: row.days_open || "",

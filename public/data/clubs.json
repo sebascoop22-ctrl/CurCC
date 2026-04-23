@@ -4,9 +4,6 @@
     "name": "Gallery Club",
     "shortDescription": "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
     "longDescription": "Where art meets nightlife. A distinguished space offering cultural sophistication alongside premium hospitality.",
-    "reviews": [
-      "Alexandra M.: A standout Knightsbridge evening with impeccable table service."
-    ],
     "locationTag": "LONDON • KNIGHTSBRIDGE",
     "address": "2 Kensington High Street London GB W8 4RE",
     "daysOpen": "Wed-Sat",
@@ -45,9 +42,6 @@
     "name": "Paloma Chelsea",
     "shortDescription": "A refined venue where sophistication meets contemporary style hosting London's most exclusive gatherings.",
     "longDescription": "A refined venue where sophistication meets contemporary style, hosting London's most exclusive gatherings.",
-    "reviews": [
-      "Jordan K.: Elegant crowd and flawless hospitality."
-    ],
     "locationTag": "LONDON • SOUTH KENSINGTON",
     "address": "South Kensington London SW7",
     "daysOpen": "Thu-Sat",
@@ -85,9 +79,6 @@
     "name": "Maddox Club",
     "shortDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
     "longDescription": "An exclusive private members' establishment known for its sophisticated ambiance and discerning clientele.",
-    "reviews": [
-      "T. H.: The Mayfair room we return to for closing deals."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "3-5 Mill St London W1S 2AU England",
     "daysOpen": "Thu-Sat",
@@ -125,9 +116,6 @@
     "name": "The Rex Rooms",
     "shortDescription": "Chelsea's most exclusive private members' club known for discretion and exceptional service.",
     "longDescription": "Chelsea's most exclusive private members' club, known for discretion and exceptional service.",
-    "reviews": [
-      "Oliver S.: The Chelsea room our principals ask for by name."
-    ],
     "locationTag": "LONDON • CHELSEA",
     "address": "Chelsea London SW3",
     "daysOpen": "Mon|Wed|Thu|Fri|Sat",
@@ -166,9 +154,6 @@
     "name": "Selene Club",
     "shortDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
     "longDescription": "An intimate members-only club offering exceptional service and curated experiences in an elegant setting.",
-    "reviews": [
-      "Elena V.: Quiet luxury—the room feels bespoke."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Thu|Fri|Sat|Sun",
@@ -206,9 +191,6 @@
     "name": "Cirque Le Soir",
     "shortDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
     "longDescription": "An avant-garde venue combining theatrical spectacle with world-class entertainment and premium service.",
-    "reviews": [
-      "Leo P.: Pure theatre—handled with discretion."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "15-21 Ganton Street Soho London GB W1F 9BN",
     "daysOpen": "Mon|Wed|Fri|Sat",
@@ -246,9 +228,6 @@
     "name": "Tape London",
     "shortDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
     "longDescription": "A sophisticated establishment offering refined experiences for the most discerning patrons.",
-    "reviews": [
-      "Marcus D.: Music-forward without losing polish."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Tue|Fri|Sat|Sun",
@@ -286,9 +265,6 @@
     "name": "Dear Darling",
     "shortDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
     "longDescription": "An exclusive private members' club renowned for its elegance and exceptional hospitality.",
-    "reviews": [
-      "Amelia C.: Effortlessly chic—from door to car."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "91 Jermyn St London SW1Y 6JB England",
     "daysOpen": "Thu|Fri|Sat|Sun",
@@ -328,9 +304,6 @@
     "name": "Tabu London",
     "shortDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience combining underground energy with refined sophistication.",
     "longDescription": "A distinctive Mayfair venue offering an immersive Tokyo-inspired nightlife experience, combining underground energy with refined sophistication.",
-    "reviews": [
-      "James L.: Tokyo energy in W1—perfectly controlled."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Wed-Sat",
@@ -368,9 +341,6 @@
     "name": "The London Reign",
     "shortDescription": "A vibrant Mayfair establishment known for theatrical performances dynamic atmosphere and world-class entertainment.",
     "longDescription": "A vibrant Mayfair establishment known for its theatrical performances, dynamic atmosphere, and world-class entertainment.",
-    "reviews": [
-      "Priya N.: Performance-led nights without feeling public."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Tue|Thu|Fri|Sat",
@@ -407,9 +377,6 @@
     "name": "The Cuckoo Club",
     "shortDescription": "A legendary venue combining vintage glamour with contemporary luxury frequented by London's elite.",
     "longDescription": "A legendary venue combining vintage glamour with contemporary luxury, frequented by London's elite.",
-    "reviews": [
-      "Sofia R.: Timeless glamour without the crowds."
-    ],
     "locationTag": "LONDON • MAYFAIR",
     "address": "Mayfair London W1",
     "daysOpen": "Wed|Fri|Sat",
@@ -446,9 +413,6 @@
     "name": "77 London",
     "shortDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
     "longDescription": "Upscale central London nightlife with DJs, special events, and bottle service.",
-    "reviews": [
-      "Concierge note: Central London table routing."
-    ],
     "locationTag": "LONDON • CENTRAL",
     "address": "Central London",
     "daysOpen": "Thu-Sat",

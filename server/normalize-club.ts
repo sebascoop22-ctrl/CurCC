@@ -26,8 +26,6 @@ export function normalizeClubPayload(raw: Club): Club {
   const videos = Array.isArray(vid) ? vid.map((x) => String(x)).filter(Boolean) : [];
   const gl = raw.guestlists as unknown;
   const guestlists = Array.isArray(gl) ? (gl as Club["guestlists"]) : [];
-  const rev = raw.reviews as unknown;
-  const reviews = Array.isArray(rev) ? rev.map(String) : [];
   const am = raw.amenities as unknown;
   const amenities = Array.isArray(am) ? am.map(String) : [];
   const dTitle = (raw as { discoveryCardTitle?: unknown }).discoveryCardTitle;
@@ -43,7 +41,6 @@ export function normalizeClubPayload(raw: Club): Club {
     videos: videos.length ? videos : undefined,
     hasPartnership: raw.hasPartnership !== false,
     guestlists,
-    reviews,
     amenities,
     discoveryCardTitle:
       typeof dTitle === "string" && dTitle.trim() ? dTitle.trim() : undefined,

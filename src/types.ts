@@ -34,7 +34,6 @@ export interface Club {
   name: string;
   shortDescription: string;
   longDescription: string;
-  reviews: string[];
   locationTag: string;
   address: string;
   daysOpen: string;
