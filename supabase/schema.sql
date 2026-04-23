@@ -3281,3 +3281,653 @@ as $$
 $$;
 
 grant execute on function public.guestlist_hosts_for_date(date) to anon, authenticated;
+
+-- Club account domain (invite-only + moderation + disputes).
+create table if not exists public.club_accounts (
+  id uuid primary key default gen_random_uuid(),
+  club_slug text not null references public.clubs (slug) on delete cascade,
+  user_id uuid references auth.users (id) on delete set null,
+  role text not null default 'owner' check (role in ('owner', 'manager', 'editor')),
+  status text not null default 'invited' check (status in ('invited', 'active', 'suspended', 'revoked')),
+  invite_email text,
+  invite_code text unique,
+  created_by uuid references auth.users (id) on delete set null,
+  approved_by uuid references auth.users (id) on delete set null,
+  approved_at timestamptz,
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (club_slug, user_id)
+);
+
+create index if not exists club_accounts_club_slug_idx on public.club_accounts (club_slug, status);
+create index if not exists club_accounts_user_idx on public.club_accounts (user_id, status);
+create index if not exists club_accounts_invite_code_idx on public.club_accounts (invite_code);
+
+create table if not exists public.club_edit_revisions (
+  id uuid primary key default gen_random_uuid(),
+  club_slug text not null references public.clubs (slug) on delete cascade,
+  submitted_by uuid not null references auth.users (id) on delete cascade,
+  target_type text not null check (target_type in ('club_payload', 'flyer', 'media')),
+  target_id uuid,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  review_notes text not null default '',
+  reviewed_by uuid references auth.users (id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists club_edit_revisions_slug_idx on public.club_edit_revisions (club_slug, status, created_at desc);
+
+create table if not exists public.job_disputes (
+  id uuid primary key default gen_random_uuid(),
+  club_slug text not null references public.clubs (slug) on delete cascade,
+  promoter_job_id uuid references public.promoter_jobs (id) on delete set null,
+  promoter_table_sale_id uuid references public.promoter_table_sales (id) on delete set null,
+  promoter_guestlist_entry_id uuid references public.promoter_guestlist_entries (id) on delete set null,
+  raised_by_user_id uuid not null references auth.users (id) on delete cascade,
+  raised_by_role text not null default 'club' check (raised_by_role in ('club', 'admin', 'promoter')),
+  reason_code text not null default 'other',
+  description text not null default '',
+  evidence jsonb not null default '{}'::jsonb,
+  status text not null default 'open' check (status in ('open', 'under_review', 'resolved', 'rejected')),
+  resolution_notes text not null default '',
+  resolved_by uuid references auth.users (id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists job_disputes_club_status_idx on public.job_disputes (club_slug, status, created_at desc);
+
+-- Club helper checks.
+create or replace function public.club_account_for_user(
+  p_user_id uuid,
+  p_club_slug text
+) returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = p_user_id
+      and ca.club_slug = p_club_slug
+      and ca.status = 'active'
+  );
+$$;
+
+drop function if exists public.admin_issue_club_invite(text, text, text, text);
+create or replace function public.admin_issue_club_invite(
+  p_club_slug text,
+  p_invite_email text,
+  p_role text default 'owner',
+  p_notes text default ''
+) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code text;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+  if not exists (select 1 from public.clubs c where c.slug = p_club_slug) then
+    raise exception 'club not found';
+  end if;
+  if p_role not in ('owner', 'manager', 'editor') then
+    raise exception 'invalid role';
+  end if;
+
+  v_code := md5(
+    random()::text
+    || clock_timestamp()::text
+    || coalesce(auth.uid()::text, '')
+    || coalesce(p_club_slug, '')
+    || coalesce(p_invite_email, '')
+  );
+  insert into public.club_accounts (
+    club_slug, role, status, invite_email, invite_code, created_by, notes
+  )
+  values (
+    p_club_slug,
+    p_role,
+    'invited',
+    nullif(trim(both from p_invite_email), ''),
+    v_code,
+    auth.uid(),
+    coalesce(p_notes, '')
+  );
+  return v_code;
+end;
+$$;
+
+drop function if exists public.accept_club_invite(text);
+create or replace function public.accept_club_invite(
+  p_invite_code text
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'sign in required';
+  end if;
+
+  update public.club_accounts
+  set user_id = auth.uid(),
+      status = 'active',
+      approved_by = auth.uid(),
+      approved_at = now(),
+      updated_at = now()
+  where invite_code = p_invite_code
+    and status = 'invited'
+  returning id into v_id;
+
+  if v_id is null then
+    raise exception 'invite not found';
+  end if;
+
+  insert into public.profiles (id, role, display_name)
+  values (auth.uid(), 'club', null)
+  on conflict (id) do update set role = 'club';
+
+  return v_id;
+end;
+$$;
+
+drop function if exists public.submit_club_edit_revision(text, text, uuid, jsonb);
+create or replace function public.submit_club_edit_revision(
+  p_club_slug text,
+  p_target_type text,
+  p_target_id uuid,
+  p_payload jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'sign in required';
+  end if;
+  if p_target_type not in ('club_payload', 'flyer', 'media') then
+    raise exception 'invalid target_type';
+  end if;
+  if not (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or public.club_account_for_user(auth.uid(), p_club_slug)
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  insert into public.club_edit_revisions (
+    club_slug, submitted_by, target_type, target_id, payload, status
+  )
+  values (
+    p_club_slug, auth.uid(), p_target_type, p_target_id, coalesce(p_payload, '{}'::jsonb), 'pending'
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+drop function if exists public.review_club_edit_revision(uuid, boolean, text);
+create or replace function public.review_club_edit_revision(
+  p_revision_id uuid,
+  p_approve boolean,
+  p_review_notes text default ''
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_slug text;
+  v_target_type text;
+  v_target_id uuid;
+  v_payload jsonb;
+  v_status text := case when p_approve then 'approved' else 'rejected' end;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+
+  update public.club_edit_revisions
+  set status = v_status,
+      review_notes = coalesce(p_review_notes, ''),
+      reviewed_by = auth.uid(),
+      reviewed_at = now(),
+      updated_at = now()
+  where id = p_revision_id
+  returning club_slug, target_type, target_id, payload
+  into v_slug, v_target_type, v_target_id, v_payload;
+
+  if v_slug is null then
+    raise exception 'revision not found';
+  end if;
+
+  if p_approve then
+    if v_target_type = 'club_payload' then
+      update public.clubs
+      set payload = coalesce(v_payload, '{}'::jsonb),
+          name = coalesce(nullif(trim(both from (coalesce(v_payload, '{}'::jsonb)->>'name')), ''), name),
+          updated_at = now()
+      where slug = v_slug;
+    elsif v_target_type = 'flyer' and v_target_id is not null then
+      update public.club_weekly_flyers
+      set title = coalesce(nullif((coalesce(v_payload, '{}'::jsonb)->>'title'), ''), title),
+          description = coalesce(nullif((coalesce(v_payload, '{}'::jsonb)->>'description'), ''), description),
+          image_path = coalesce(nullif((coalesce(v_payload, '{}'::jsonb)->>'image_path'), ''), image_path),
+          image_url = coalesce(nullif((coalesce(v_payload, '{}'::jsonb)->>'image_url'), ''), image_url),
+          sort_order = coalesce(((coalesce(v_payload, '{}'::jsonb)->>'sort_order')::int), sort_order),
+          is_active = coalesce(((coalesce(v_payload, '{}'::jsonb)->>'is_active')::boolean), is_active),
+          updated_at = now()
+      where id = v_target_id;
+    end if;
+  end if;
+
+  return p_revision_id;
+end;
+$$;
+
+drop function if exists public.club_set_promoter_preference_access(uuid, boolean, text);
+create or replace function public.club_set_promoter_preference_access(
+  p_preference_id uuid,
+  p_allow boolean,
+  p_note text default ''
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_slug text;
+begin
+  select club_slug into v_slug
+  from public.promoter_club_preferences
+  where id = p_preference_id;
+
+  if v_slug is null then
+    raise exception 'preference not found';
+  end if;
+
+  if not (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or public.club_account_for_user(auth.uid(), v_slug)
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  update public.promoter_club_preferences
+  set status = case when p_allow then 'approved' else 'rejected' end,
+      notes = trim(
+        both from concat_ws(
+          E'\n',
+          nullif(notes, ''),
+          case
+            when coalesce(trim(both from p_note), '') = '' then null
+            else '[club_access] ' || trim(both from p_note)
+          end
+        )
+      )
+  where id = p_preference_id;
+
+  return p_preference_id;
+end;
+$$;
+
+drop function if exists public.club_decide_promoter_job(uuid, text, text);
+create or replace function public.club_decide_promoter_job(
+  p_job_id uuid,
+  p_decision text,
+  p_note text default ''
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_slug text;
+begin
+  select club_slug into v_slug
+  from public.promoter_jobs
+  where id = p_job_id;
+
+  if v_slug is null then
+    raise exception 'job not found';
+  end if;
+
+  if p_decision not in ('approve', 'deny') then
+    raise exception 'invalid decision';
+  end if;
+
+  if not (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or public.club_account_for_user(auth.uid(), v_slug)
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  update public.promoter_jobs
+  set status = case
+    when p_decision = 'deny' then 'cancelled'
+    else status
+  end,
+  notes = trim(
+    both from concat_ws(
+      E'\n',
+      nullif(notes, ''),
+      case
+        when coalesce(trim(both from p_note), '') = '' then null
+        else '[club_' || p_decision || '] ' || trim(both from p_note)
+      end
+    )
+  )
+  where id = p_job_id;
+
+  return p_job_id;
+end;
+$$;
+
+drop function if exists public.submit_job_dispute(uuid, text, text, jsonb);
+create or replace function public.submit_job_dispute(
+  p_promoter_job_id uuid,
+  p_reason_code text default 'other',
+  p_description text default '',
+  p_evidence jsonb default '{}'::jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_slug text;
+  v_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'sign in required';
+  end if;
+
+  select club_slug into v_slug
+  from public.promoter_jobs
+  where id = p_promoter_job_id;
+  if v_slug is null then
+    raise exception 'job not found';
+  end if;
+
+  if not (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or public.club_account_for_user(auth.uid(), v_slug)
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  insert into public.job_disputes (
+    club_slug,
+    promoter_job_id,
+    raised_by_user_id,
+    raised_by_role,
+    reason_code,
+    description,
+    evidence,
+    status
+  )
+  values (
+    v_slug,
+    p_promoter_job_id,
+    auth.uid(),
+    case when exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin') then 'admin' else 'club' end,
+    coalesce(nullif(trim(both from p_reason_code), ''), 'other'),
+    coalesce(p_description, ''),
+    coalesce(p_evidence, '{}'::jsonb),
+    'open'
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+drop function if exists public.review_job_dispute(uuid, text, text);
+create or replace function public.review_job_dispute(
+  p_dispute_id uuid,
+  p_status text,
+  p_resolution_notes text default ''
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+  if p_status not in ('under_review', 'resolved', 'rejected') then
+    raise exception 'invalid status';
+  end if;
+
+  update public.job_disputes
+  set status = p_status,
+      resolution_notes = coalesce(p_resolution_notes, ''),
+      resolved_by = case when p_status in ('resolved', 'rejected') then auth.uid() else resolved_by end,
+      resolved_at = case when p_status in ('resolved', 'rejected') then now() else resolved_at end,
+      updated_at = now()
+  where id = p_dispute_id;
+
+  if not found then
+    raise exception 'dispute not found';
+  end if;
+  return p_dispute_id;
+end;
+$$;
+
+alter table public.club_accounts enable row level security;
+alter table public.club_edit_revisions enable row level security;
+alter table public.job_disputes enable row level security;
+
+drop policy if exists club_accounts_admin_or_owner_read on public.club_accounts;
+create policy club_accounts_admin_or_owner_read
+on public.club_accounts
+for select
+to authenticated
+using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  or user_id = auth.uid()
+);
+
+drop policy if exists club_accounts_admin_write on public.club_accounts;
+create policy club_accounts_admin_write
+on public.club_accounts
+for all
+to authenticated
+using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+)
+with check (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+);
+
+drop policy if exists club_edit_revisions_admin_or_scoped on public.club_edit_revisions;
+create policy club_edit_revisions_admin_or_scoped
+on public.club_edit_revisions
+for all
+to authenticated
+using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  or submitted_by = auth.uid()
+  or public.club_account_for_user(auth.uid(), club_slug)
+)
+with check (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  or submitted_by = auth.uid()
+  or public.club_account_for_user(auth.uid(), club_slug)
+);
+
+drop policy if exists job_disputes_admin_or_scoped on public.job_disputes;
+create policy job_disputes_admin_or_scoped
+on public.job_disputes
+for all
+to authenticated
+using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  or raised_by_user_id = auth.uid()
+  or public.club_account_for_user(auth.uid(), club_slug)
+)
+with check (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  or raised_by_user_id = auth.uid()
+  or public.club_account_for_user(auth.uid(), club_slug)
+);
+
+grant execute on function public.admin_issue_club_invite(text, text, text, text) to authenticated;
+grant execute on function public.accept_club_invite(text) to authenticated;
+grant execute on function public.submit_club_edit_revision(text, text, uuid, jsonb) to authenticated;
+grant execute on function public.review_club_edit_revision(uuid, boolean, text) to authenticated;
+grant execute on function public.club_set_promoter_preference_access(uuid, boolean, text) to authenticated;
+grant execute on function public.club_decide_promoter_job(uuid, text, text) to authenticated;
+grant execute on function public.submit_job_dispute(uuid, text, text, jsonb) to authenticated;
+grant execute on function public.review_job_dispute(uuid, text, text) to authenticated;
+
+-- Recreate catalog/storage write policies after club_accounts exists.
+drop policy if exists clubs_admin_write on public.clubs;
+create policy clubs_admin_write
+on public.clubs
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.status = 'active'
+      and ca.club_slug = public.clubs.slug
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.status = 'active'
+      and ca.club_slug = public.clubs.slug
+  )
+);
+
+drop policy if exists flyers_admin_write on public.club_weekly_flyers;
+create policy flyers_admin_write
+on public.club_weekly_flyers
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.status = 'active'
+      and ca.club_slug = public.club_weekly_flyers.club_slug
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.status = 'active'
+      and ca.club_slug = public.club_weekly_flyers.club_slug
+  )
+);
+
+drop policy if exists flyers_storage_write on storage.objects;
+create policy flyers_storage_write
+on storage.objects
+for all
+to authenticated
+using (
+  (
+    bucket_id = 'club-flyers'
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'admin'
+    )
+  )
+  or (
+    bucket_id = 'club-flyers'
+    and exists (
+      select 1
+      from public.club_accounts ca
+      where ca.user_id = auth.uid()
+        and ca.status = 'active'
+        and (
+          split_part(storage.objects.name, '/', 1) = ca.club_slug
+          or split_part(storage.objects.name, '/', 2) = ca.club_slug
+        )
+    )
+  )
+)
+with check (
+  (
+    bucket_id = 'club-flyers'
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'admin'
+    )
+  )
+  or (
+    bucket_id = 'club-flyers'
+    and exists (
+      select 1
+      from public.club_accounts ca
+      where ca.user_id = auth.uid()
+        and ca.status = 'active'
+        and (
+          split_part(storage.objects.name, '/', 1) = ca.club_slug
+          or split_part(storage.objects.name, '/', 2) = ca.club_slug
+        )
+    )
+  )
+);

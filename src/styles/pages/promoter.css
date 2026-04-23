@@ -28,20 +28,20 @@
   min-height: min(72vh, 880px);
   margin-top: var(--cc-space-md, 1rem);
   border: 1px solid #e4e7ec;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
   box-shadow: 0 8px 28px rgba(16, 24, 40, 0.08);
   overflow: hidden;
 }
 
 .promoter-sidebar {
-  width: 220px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 1rem 0.85rem;
+  padding: 0.9rem;
   border-right: 1px solid #e4e7ec;
-  background: #f8fafc;
+  background: var(--cc-bg-card, #0b1c34);
 }
 
 .promoter-sidebar__brand {
@@ -75,7 +75,7 @@
 }
 
 .promoter-nav-block {
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.8rem;
 }
 
 .promoter-nav-heading {
@@ -87,7 +87,7 @@
   background: transparent;
   margin: 0 0 0.3rem;
   padding: 0;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -114,7 +114,7 @@
   width: 100%;
   text-align: left;
   margin-bottom: 0.28rem;
-  padding: 0.5rem 0.6rem;
+  padding: 0.45rem 0.55rem;
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
@@ -122,7 +122,7 @@
   font-size: 0.86rem;
   font-weight: 500;
   cursor: pointer;
-  min-height: 42px;
+  min-height: 38px;
 }
 
 .promoter-sidebar .promoter-view-tab:hover {
@@ -175,7 +175,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem 1rem;
-  padding: 1rem 1.1rem 0.75rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid #e4e7ec;
   background: #fafbfc;
 }
@@ -249,7 +249,7 @@
 
 .promoter-workspace {
   flex: 1;
-  padding: 1rem 1.1rem 1.15rem;
+  padding: 1rem;
   min-height: 0;
   overflow-y: auto;
 }

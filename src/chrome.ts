@@ -39,6 +39,12 @@ const homeHref = "/";
 const classicHomeHref = "/classic";
 const servicesHref = `${classicHomeHref}#services`;
 
+const THEME_LOGOS: Record<"dark" | "light" | "ocean", string> = {
+  dark: "/media/home/logo_darkmode.svg",
+  light: "/media/home/logo_lightmode.svg",
+  ocean: "/media/home/logo_bluemode.svg",
+};
+
 function drawerLinks(active: ActivePage): string {
   const cls = (p: ActivePage | "nightlife-map") =>
     active === p ? ' class="is-active"' : "";
@@ -55,7 +61,7 @@ function drawerLinks(active: ActivePage): string {
 function accountMenuHtml(
   state: {
   signedIn: boolean;
-  role: "admin" | "promoter" | "host" | null;
+  role: "admin" | "promoter" | "club" | "host" | null;
   },
   active: ActivePage,
 ): string {
@@ -74,6 +80,8 @@ function accountMenuHtml(
       links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
     }
   } else if (state.role === "promoter") {
+    links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
+  } else if (state.role === "club") {
     links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
   } else {
     links.push(`<a class="site-account__item" href="/portal">Portal</a>`);
@@ -100,7 +108,7 @@ export function initChrome(active: ActivePage): void {
   header.innerHTML = `
     <div class="site-header__inner">
       <a href="${homeHref}" class="site-header__brand">
-        <img src="/media/home/brand-logo.jpeg" alt="Cooper Concierge" width="160" height="48" class="site-header__logo-img" />
+        <img src="${THEME_LOGOS[getCurrentThemeId()]}" alt="Cooper Concierge" width="160" height="48" class="site-header__logo-img" id="site-brand-logo" />
       </a>
       ${desktopNav()}
       <div class="site-header__actions">
@@ -123,7 +131,7 @@ export function initChrome(active: ActivePage): void {
   footer.innerHTML = `
     <div class="cc-container site-footer__minimal">
       <div class="site-footer__legal">
-        <img src="/media/home/brand-logo.jpeg" alt="" class="site-footer__logo-mark" width="28" height="28" />
+        <img src="${THEME_LOGOS[getCurrentThemeId()]}" alt="" class="site-footer__logo-mark" width="28" height="28" id="site-footer-logo" />
         <span>© ${new Date().getFullYear()} Cooper Concierge</span>
       </div>
       <div class="site-footer__cluster">
@@ -172,6 +180,8 @@ export function initChrome(active: ActivePage): void {
   const themeBtn = document.getElementById("cc-theme-toggle");
   const accountBtn = document.getElementById("site-account-btn") as HTMLButtonElement | null;
   const accountMenu = document.getElementById("site-account-menu") as HTMLElement | null;
+  const brandLogo = document.getElementById("site-brand-logo") as HTMLImageElement | null;
+  const footerLogo = document.getElementById("site-footer-logo") as HTMLImageElement | null;
   const consentBanner = document.getElementById("cc-consent-banner");
   const consentAccept = document.getElementById("cc-consent-accept");
   const consentReject = document.getElementById("cc-consent-reject");
@@ -185,6 +195,9 @@ export function initChrome(active: ActivePage): void {
     const name = themeLabel(id);
     themeBtn.title = `Theme: ${name} — click for next`;
     themeBtn.setAttribute("aria-label", `Color theme: ${name}. Click to switch theme.`);
+    const logoSrc = THEME_LOGOS[id];
+    if (brandLogo) brandLogo.src = logoSrc;
+    if (footerLogo) footerLogo.src = logoSrc;
   }
 
   refreshThemeToggle();

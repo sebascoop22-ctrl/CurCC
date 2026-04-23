@@ -36,6 +36,17 @@ import {
   type ClientRow,
 } from "../admin/clients";
 import {
+  issueClubInvite,
+  loadClubAccounts,
+  loadClubEditRevisions,
+  loadJobDisputes,
+  reviewClubEditRevision,
+  reviewJobDispute,
+  type ClubAccountRow,
+  type ClubEditRevisionRow,
+  type JobDisputeRow,
+} from "../admin/clubs";
+import {
   applyRecurringFinancialTransactions,
   deleteFinancialRecurringTemplate,
   getFinancialPeriodSummary,
@@ -115,10 +126,13 @@ type AdminView =
   | "table_sales"
   | "invoices"
   | "financials"
+  | "club_accounts"
+  | "club_edits"
+  | "job_disputes"
   | "clubs"
   | "cars"
   | "flyers";
-type AdminNavSection = "account" | "enquiries" | "promoters" | "website";
+type AdminNavSection = "account" | "enquiries" | "promoters" | "clubs" | "website";
 
 const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }> = {
   admin_profile: {
@@ -172,6 +186,18 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
     title: "Financials",
     subtitle:
       "Ledger entries, recurring templates, and period summaries from financial_transactions.",
+  },
+  club_accounts: {
+    title: "Club accounts",
+    subtitle: "Issue invite-only club logins and manage account ownership/status.",
+  },
+  club_edits: {
+    title: "Club edit moderation",
+    subtitle: "Review submitted club/flyer/media edits and approve, reject, or suggest changes.",
+  },
+  job_disputes: {
+    title: "Job disputes",
+    subtitle: "Resolve club-raised disputes linked to promoter jobs and related records.",
   },
   clubs: {
     title: "Clubs",
@@ -851,6 +877,12 @@ export async function initAdminPortal(): Promise<void> {
   let tableSalesReportFrom = "";
   let tableSalesReportTo = "";
   let tableSalesReportClub = "";
+  let clubAccounts: ClubAccountRow[] = [];
+  let selectedClubAccountId: string | null = null;
+  let clubEditRevisions: ClubEditRevisionRow[] = [];
+  let selectedClubRevisionId: string | null = null;
+  let clubJobDisputes: JobDisputeRow[] = [];
+  let selectedClubDisputeId: string | null = null;
   let tableSaleQueueDelegationBound = false;
   let tableSaleFormDelegationBound = false;
   let invoiceEdgeActionsBound = false;
@@ -1124,6 +1156,30 @@ export async function initAdminPortal(): Promise<void> {
     }
   }
 
+  async function reloadClubAccounts(): Promise<void> {
+    const r = await loadClubAccounts(supabase);
+    clubAccounts = r.ok ? r.rows : [];
+    if (!selectedClubAccountId || !clubAccounts.some((x) => x.id === selectedClubAccountId)) {
+      selectedClubAccountId = clubAccounts[0]?.id ?? null;
+    }
+  }
+
+  async function reloadClubRevisions(): Promise<void> {
+    const r = await loadClubEditRevisions(supabase);
+    clubEditRevisions = r.ok ? r.rows : [];
+    if (!selectedClubRevisionId || !clubEditRevisions.some((x) => x.id === selectedClubRevisionId)) {
+      selectedClubRevisionId = clubEditRevisions[0]?.id ?? null;
+    }
+  }
+
+  async function reloadClubDisputes(): Promise<void> {
+    const r = await loadJobDisputes(supabase);
+    clubJobDisputes = r.ok ? r.rows : [];
+    if (!selectedClubDisputeId || !clubJobDisputes.some((x) => x.id === selectedClubDisputeId)) {
+      selectedClubDisputeId = clubJobDisputes[0]?.id ?? null;
+    }
+  }
+
   async function reloadAllFromDb(): Promise<void> {
     clubEntries = await loadClubEntries();
     carEntries = await loadCarEntries();
@@ -1140,6 +1196,9 @@ export async function initAdminPortal(): Promise<void> {
       await reloadTableSalesQueue();
       await reloadTableSalesReport();
     }
+    if (view === "club_accounts") await reloadClubAccounts();
+    if (view === "club_edits") await reloadClubRevisions();
+    if (view === "job_disputes") await reloadClubDisputes();
     selectedClub = Math.min(selectedClub, Math.max(0, clubEntries.length - 1));
     selectedCar = Math.min(selectedCar, Math.max(0, carEntries.length - 1));
   }
@@ -1981,6 +2040,7 @@ export async function initAdminPortal(): Promise<void> {
             ${adminNavSection("account", "Account", `<button type="button" class="admin-view-tab ${view === "admin_profile" ? "is-active" : ""}" data-view="admin_profile">Profile settings</button>`)}
             ${adminNavSection("enquiries", "Enquiries", `<button type="button" class="admin-view-tab ${view === "enquiries" ? "is-active" : ""}" data-view="enquiries">Enquiries</button><button type="button" class="admin-view-tab ${view === "clients" ? "is-active" : ""}" data-view="clients">Clients</button>`)}
             ${adminNavSection("promoters", "Promoters", `<button type="button" class="admin-view-tab ${view === "promoter_requests" ? "is-active" : ""}" data-view="promoter_requests">Requests</button><button type="button" class="admin-view-tab ${view === "promoters" ? "is-active" : ""}" data-view="promoters">Profiles</button><button type="button" class="admin-view-tab ${view === "jobs" ? "is-active" : ""}" data-view="jobs">Jobs</button><button type="button" class="admin-view-tab ${view === "guestlist_queue" ? "is-active" : ""}" data-view="guestlist_queue">Guestlist</button><button type="button" class="admin-view-tab ${view === "night_adjustments" ? "is-active" : ""}" data-view="night_adjustments">Nights</button><button type="button" class="admin-view-tab ${view === "table_sales" ? "is-active" : ""}" data-view="table_sales">Tables</button><button type="button" class="admin-view-tab ${view === "invoices" ? "is-active" : ""}" data-view="invoices">Invoices</button><button type="button" class="admin-view-tab ${view === "financials" ? "is-active" : ""}" data-view="financials">Financials</button>`)}
+            ${adminNavSection("clubs", "Club accounts", `<button type="button" class="admin-view-tab ${view === "club_accounts" ? "is-active" : ""}" data-view="club_accounts">Accounts</button><button type="button" class="admin-view-tab ${view === "club_edits" ? "is-active" : ""}" data-view="club_edits">Edit queue</button><button type="button" class="admin-view-tab ${view === "job_disputes" ? "is-active" : ""}" data-view="job_disputes">Disputes</button>`)}
             ${adminNavSection("website", "Website", `<button type="button" class="admin-view-tab ${view === "clubs" ? "is-active" : ""}" data-view="clubs">Clubs</button><button type="button" class="admin-view-tab ${view === "cars" ? "is-active" : ""}" data-view="cars">Cars</button><button type="button" class="admin-view-tab ${view === "flyers" ? "is-active" : ""}" data-view="flyers">Flyers</button>`)}
           </nav>
           <div class="admin-sidebar__footer">
@@ -2020,6 +2080,9 @@ export async function initAdminPortal(): Promise<void> {
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clients">Operations: client management</button>
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="jobs">Operations: job management</button>
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="financials">Operations: financial management</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_accounts">Operations: club accounts</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_edits">Operations: club edit queue</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="job_disputes">Operations: job disputes</button>
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clubs">Website editing: clubs</button>
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="cars">Website editing: cars</button>
                   <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="flyers">Website editing: flyers</button>
@@ -2055,6 +2118,12 @@ export async function initAdminPortal(): Promise<void> {
                                     ? "Choose a promoter for invoice tools."
                                     : view === "financials"
                                       ? "Reporting uses financial_transactions."
+                                      : view === "club_accounts"
+                                        ? "Invite-only club users mapped by club slug."
+                                        : view === "club_edits"
+                                          ? "Pending and reviewed club edit submissions."
+                                          : view === "job_disputes"
+                                            ? "Open and resolved disputes raised by club accounts."
                                       : "Choose an item to edit in the panel."
                 }</p>
                 <div class="admin-list" id="admin-list"></div>
@@ -2320,7 +2389,55 @@ export async function initAdminPortal(): Promise<void> {
                   : ""
               }
             </div>`
-                      : view === "jobs"
+                      : view === "club_accounts"
+                        ? (() => {
+                            const acct = clubAccounts.find((x) => x.id === selectedClubAccountId) ?? clubAccounts[0];
+                            const clubOptions = clubEntries
+                              .map((c) => `<option value="${escapeAttr(c.club.slug)}"${acct?.club_slug === c.club.slug ? " selected" : ""}>${escapeAttr(c.club.slug)}</option>`)
+                              .join("");
+                            return `<div class="admin-form">
+                              <h4 class="full">Invite-only club account generation</h4>
+                              <div class="cc-field"><label>Club slug</label><select id="club-account-slug">${clubOptions}</select></div>
+                              <div class="cc-field"><label>Email</label><input id="club-account-email" type="email" placeholder="club@domain.com" /></div>
+                              <div class="cc-field"><label>Role</label><select id="club-account-role"><option value="owner">owner</option><option value="manager">manager</option><option value="editor">editor</option></select></div>
+                              <div class="cc-field full"><label>Notes</label><textarea id="club-account-notes"></textarea></div>
+                              <div class="admin-actions full"><button class="cc-btn cc-btn--gold" type="button" id="club-account-create">Generate invite code</button></div>
+                              <p class="admin-note full" id="club-account-output"></p>
+                              ${acct ? `<h4 class="full">Selected account</h4>
+                              <div class="cc-field"><label>Club</label><input readonly value="${escapeAttr(acct.club_slug)}" /></div>
+                              <div class="cc-field"><label>Status</label><input readonly value="${escapeAttr(acct.status)}" /></div>
+                              <div class="cc-field"><label>Role</label><input readonly value="${escapeAttr(acct.role)}" /></div>
+                              <div class="cc-field full"><label>Invite code</label><input readonly value="${escapeAttr(acct.invite_code || "—")}" /></div>` : `<p class="admin-note full">No club accounts yet.</p>`}
+                            </div>`;
+                          })()
+                        : view === "club_edits"
+                          ? (() => {
+                              const rev = clubEditRevisions.find((x) => x.id === selectedClubRevisionId);
+                              if (!rev) return `<p class="admin-note">No club edit revisions yet.</p>`;
+                              return `<div class="admin-form">
+                                <div class="cc-field"><label>Club</label><input readonly value="${escapeAttr(rev.club_slug)}" /></div>
+                                <div class="cc-field"><label>Target</label><input readonly value="${escapeAttr(rev.target_type)}" /></div>
+                                <div class="cc-field"><label>Status</label><input readonly value="${escapeAttr(rev.status)}" /></div>
+                                <div class="cc-field full"><label>Payload</label><pre class="admin-json">${escapeAttr(JSON.stringify(rev.payload, null, 2))}</pre></div>
+                                <div class="cc-field full"><label>Review notes</label><textarea id="club-revision-review-notes">${escapeAttr(rev.review_notes || "")}</textarea></div>
+                                <div class="admin-actions full"><button class="cc-btn cc-btn--gold" type="button" id="club-revision-approve">Approve</button><button class="cc-btn cc-btn--ghost" type="button" id="club-revision-reject">Reject</button></div>
+                              </div>`;
+                            })()
+                          : view === "job_disputes"
+                            ? (() => {
+                                const d = clubJobDisputes.find((x) => x.id === selectedClubDisputeId);
+                                if (!d) return `<p class="admin-note">No disputes recorded yet.</p>`;
+                                return `<div class="admin-form">
+                                  <div class="cc-field"><label>Club</label><input readonly value="${escapeAttr(d.club_slug)}" /></div>
+                                  <div class="cc-field"><label>Job</label><input readonly value="${escapeAttr(d.promoter_job_id || "—")}" /></div>
+                                  <div class="cc-field"><label>Status</label><input readonly value="${escapeAttr(d.status)}" /></div>
+                                  <div class="cc-field"><label>Reason</label><input readonly value="${escapeAttr(d.reason_code)}" /></div>
+                                  <div class="cc-field full"><label>Description</label><textarea readonly>${escapeAttr(d.description)}</textarea></div>
+                                  <div class="cc-field full"><label>Resolution notes</label><textarea id="club-dispute-review-notes">${escapeAttr(d.resolution_notes || "")}</textarea></div>
+                                  <div class="admin-actions full"><button class="cc-btn cc-btn--ghost" type="button" data-dispute-status="under_review">Mark under review</button><button class="cc-btn cc-btn--gold" type="button" data-dispute-status="resolved">Resolve</button><button class="cc-btn cc-btn--ghost" type="button" data-dispute-status="rejected">Reject</button></div>
+                                </div>`;
+                              })()
+                            : view === "jobs"
                         ? renderJobsViewHtml()
                         : view === "guestlist_queue"
                           ? renderGuestlistQueueDetailHtml()
@@ -3067,6 +3184,8 @@ export async function initAdminPortal(): Promise<void> {
             ? "account"
             : v === "enquiries" || v === "clients"
               ? "enquiries"
+              : v === "club_accounts" || v === "club_edits" || v === "job_disputes"
+                ? "clubs"
               : v === "clubs" || v === "cars" || v === "flyers"
                 ? "website"
                 : "promoters";
@@ -3093,6 +3212,12 @@ export async function initAdminPortal(): Promise<void> {
           })();
         else if (v === "financials")
           void reloadFinancialReport().then(() => renderDashboard());
+        else if (v === "club_accounts")
+          void reloadClubAccounts().then(() => renderDashboard());
+        else if (v === "club_edits")
+          void reloadClubRevisions().then(() => renderDashboard());
+        else if (v === "job_disputes")
+          void reloadClubDisputes().then(() => renderDashboard());
         else renderDashboard();
       });
     });
@@ -3142,6 +3267,8 @@ export async function initAdminPortal(): Promise<void> {
             ? "account"
             : v === "enquiries" || v === "clients"
               ? "enquiries"
+              : v === "club_accounts" || v === "club_edits" || v === "job_disputes"
+                ? "clubs"
               : v === "clubs" || v === "cars" || v === "flyers"
                 ? "website"
                 : "promoters";
@@ -3514,6 +3641,69 @@ export async function initAdminPortal(): Promise<void> {
               if (view === "jobs") await reloadJobsCalendar();
               renderDashboard();
             })();
+          });
+        }
+      } else if (view === "club_accounts") {
+        listEl.className = "admin-list admin-list--table";
+        if (!clubAccounts.length) {
+          listEl.innerHTML = `<p class="admin-note">No club accounts yet.</p>`;
+        } else {
+          const rows = clubAccounts
+            .map((a) => {
+              const active = a.id === selectedClubAccountId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-club-account-id="${escapeAttr(a.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(a.club_slug)}</td>
+                <td>${escapeAttr(a.role)}</td>
+                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(a.status)}">${escapeAttr(a.status)}</span></td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Role</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
+          bindAdminListRows(listEl, "tr[data-club-account-id]", (row) => {
+            selectedClubAccountId = row.dataset.clubAccountId ?? null;
+            renderDashboard();
+          });
+        }
+      } else if (view === "club_edits") {
+        listEl.className = "admin-list admin-list--table";
+        if (!clubEditRevisions.length) {
+          listEl.innerHTML = `<p class="admin-note">No club edit revisions yet.</p>`;
+        } else {
+          const rows = clubEditRevisions
+            .map((r) => {
+              const active = r.id === selectedClubRevisionId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-club-revision-id="${escapeAttr(r.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(r.club_slug)}</td>
+                <td>${escapeAttr(r.target_type)}</td>
+                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(r.status)}">${escapeAttr(r.status)}</span></td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Target</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
+          bindAdminListRows(listEl, "tr[data-club-revision-id]", (row) => {
+            selectedClubRevisionId = row.dataset.clubRevisionId ?? null;
+            renderDashboard();
+          });
+        }
+      } else if (view === "job_disputes") {
+        listEl.className = "admin-list admin-list--table";
+        if (!clubJobDisputes.length) {
+          listEl.innerHTML = `<p class="admin-note">No disputes found.</p>`;
+        } else {
+          const rows = clubJobDisputes
+            .map((d) => {
+              const active = d.id === selectedClubDisputeId ? " is-active" : "";
+              return `<tr class="admin-list-row${active}" data-club-dispute-id="${escapeAttr(d.id)}" tabindex="0" role="button">
+                <td>${escapeAttr(d.club_slug)}</td>
+                <td>${escapeAttr(d.reason_code)}</td>
+                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(d.status)}">${escapeAttr(d.status)}</span></td>
+              </tr>`;
+            })
+            .join("");
+          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Reason</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
+          bindAdminListRows(listEl, "tr[data-club-dispute-id]", (row) => {
+            selectedClubDisputeId = row.dataset.clubDisputeId ?? null;
+            renderDashboard();
           });
         }
       } else if (view === "guestlist_queue") {
@@ -3975,6 +4165,97 @@ export async function initAdminPortal(): Promise<void> {
         flash("Revision rejected.");
         renderDashboard();
       })();
+    });
+
+    adminRoot.querySelector("#club-account-create")?.addEventListener("click", () => {
+      const clubSlug = String(
+        (adminRoot.querySelector("#club-account-slug") as HTMLSelectElement | null)?.value || "",
+      ).trim();
+      const inviteEmail = String(
+        (adminRoot.querySelector("#club-account-email") as HTMLInputElement | null)?.value || "",
+      ).trim();
+      const role = String(
+        (adminRoot.querySelector("#club-account-role") as HTMLSelectElement | null)?.value || "owner",
+      ).trim() as "owner" | "manager" | "editor";
+      const notes = String(
+        (adminRoot.querySelector("#club-account-notes") as HTMLTextAreaElement | null)?.value || "",
+      ).trim();
+      const output = adminRoot.querySelector("#club-account-output") as HTMLElement | null;
+      void (async () => {
+        const res = await issueClubInvite(supabase, { clubSlug, inviteEmail, role, notes });
+        if (!res.ok) {
+          if (output) output.textContent = `Create invite failed: ${res.message}`;
+          flash(`Create invite failed: ${res.message}`, "error");
+          return;
+        }
+        if (output) output.textContent = `Invite code generated: ${res.row.inviteCode}`;
+        await reloadClubAccounts();
+        flash("Club invite generated.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#club-revision-approve")?.addEventListener("click", () => {
+      const rev = clubEditRevisions.find((x) => x.id === selectedClubRevisionId);
+      if (!rev) return;
+      const notes = String(
+        (adminRoot.querySelector("#club-revision-review-notes") as HTMLTextAreaElement | null)
+          ?.value || "",
+      ).trim();
+      void (async () => {
+        const res = await reviewClubEditRevision(supabase, rev.id, true, notes);
+        if (!res.ok) {
+          flash(`Approve failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadClubRevisions();
+        flash("Club edit approved.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelector("#club-revision-reject")?.addEventListener("click", () => {
+      const rev = clubEditRevisions.find((x) => x.id === selectedClubRevisionId);
+      if (!rev) return;
+      const notes = String(
+        (adminRoot.querySelector("#club-revision-review-notes") as HTMLTextAreaElement | null)
+          ?.value || "",
+      ).trim();
+      void (async () => {
+        const res = await reviewClubEditRevision(supabase, rev.id, false, notes);
+        if (!res.ok) {
+          flash(`Reject failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadClubRevisions();
+        flash("Club edit rejected.");
+        renderDashboard();
+      })();
+    });
+
+    adminRoot.querySelectorAll("[data-dispute-status]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dispute = clubJobDisputes.find((x) => x.id === selectedClubDisputeId);
+        if (!dispute) return;
+        const status = String((btn as HTMLElement).getAttribute("data-dispute-status") || "").trim() as
+          | "under_review"
+          | "resolved"
+          | "rejected";
+        const notes = String(
+          (adminRoot.querySelector("#club-dispute-review-notes") as HTMLTextAreaElement | null)
+            ?.value || "",
+        ).trim();
+        void (async () => {
+          const res = await reviewJobDispute(supabase, dispute.id, status, notes);
+          if (!res.ok) {
+            flash(`Dispute update failed: ${res.message}`, "error");
+            return;
+          }
+          await reloadClubDisputes();
+          flash(`Dispute marked ${status.replace("_", " ")}.`);
+          renderDashboard();
+        })();
+      });
     });
 
     adminRoot.querySelector("#promoter-request-approve")?.addEventListener("click", () => {

@@ -9,6 +9,7 @@ import {
   validatePhone,
 } from "../forms";
 import { openVenueRequestModal } from "../components/venue-request-modal";
+import { getCurrentThemeId } from "../theme";
 import "../styles/pages/home.css";
 
 const MO_SHORT = [
@@ -26,6 +27,11 @@ const MO_SHORT = [
   "DEC",
 ];
 const DOW_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const THEME_LOGOS: Record<"dark" | "light" | "ocean", string> = {
+  dark: "/media/home/logo_darkmode.svg",
+  light: "/media/home/logo_lightmode.svg",
+  ocean: "/media/home/logo_bluemode.svg",
+};
 
 function toYMD(d: Date): string {
   const y = d.getFullYear();
@@ -162,6 +168,18 @@ function escapeHtml(s: string): string {
 }
 
 export async function initHome(): Promise<void> {
+  const heroMark = document.querySelector(".hero__mark") as HTMLImageElement | null;
+  const applyHeroThemeLogo = (): void => {
+    if (!heroMark) return;
+    heroMark.src = THEME_LOGOS[getCurrentThemeId()];
+  };
+  applyHeroThemeLogo();
+  const observer = new MutationObserver(() => applyHeroThemeLogo());
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-cc-theme"],
+  });
+
   const [clubs, flyers] = await Promise.all([
     fetchClubs().catch(() => [] as Club[]),
     fetchClubFlyers().catch(() => [] as ClubFlyer[]),

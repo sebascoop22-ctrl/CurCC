@@ -24,19 +24,19 @@
   min-height: min(78vh, 920px);
   margin-top: var(--cc-space-md);
   border: 1px solid var(--cc-border);
-  border-radius: calc(var(--cc-radius) + 4px);
+  border-radius: 14px;
   background: var(--cc-bg-card);
   overflow: hidden;
 }
 
 .admin-sidebar {
-  width: 230px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 1.1rem 0.9rem;
+  padding: 0.9rem;
   border-right: 1px solid var(--cc-border);
-  background: var(--cc-bg-deep);
+  background: var(--cc-bg-card);
 }
 
 .admin-sidebar__brand {
@@ -70,12 +70,12 @@
 }
 
 .admin-nav-block {
-  margin-bottom: 1.1rem;
+  margin-bottom: 0.8rem;
 }
 
 .admin-nav-heading {
   margin: 0 0 0.4rem;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -114,7 +114,7 @@
   width: 100%;
   text-align: left;
   margin-bottom: 0.28rem;
-  padding: 0.5rem 0.65rem;
+  padding: 0.45rem 0.55rem;
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
@@ -122,7 +122,7 @@
   font-size: 0.86rem;
   font-weight: 500;
   cursor: pointer;
-  min-height: 40px;
+  min-height: 38px;
 }
 
 .admin-sidebar .admin-view-tab:hover {
@@ -186,7 +186,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem 1.25rem;
-  padding: 1rem 1.15rem 0.75rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--cc-border);
   background: rgba(0, 0, 0, 0.12);
 }
@@ -281,7 +281,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 0.85rem 1rem 1rem;
+  padding: 1rem;
   min-height: 0;
 }
 

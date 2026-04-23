@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
-export type AppRole = "admin" | "host" | "promoter";
+export type AppRole = "admin" | "host" | "promoter" | "club";
 
 export type AdminGateResult =
   | { ok: true; user: User; role: "admin" }
@@ -8,6 +8,10 @@ export type AdminGateResult =
 
 export type PromoterGateResult =
   | { ok: true; user: User; role: "promoter"; promoterId: string | null }
+  | { ok: false; reason: string };
+
+export type ClubGateResult =
+  | { ok: true; user: User; role: "club"; clubSlug: string | null }
   | { ok: false; reason: string };
 
 type ProfileRow = {
@@ -30,10 +34,23 @@ async function ensurePromoterRows(
   },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const displayName = (input.displayName || input.email).trim() || input.email;
+  const { data: existingProfile, error: existingProfileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", input.userId)
+    .maybeSingle();
+  if (existingProfileError) return { ok: false, message: existingProfileError.message };
+  const existingRole = String((existingProfile as { role?: string } | null)?.role ?? "")
+    .trim()
+    .toLowerCase();
+  const roleToWrite =
+    existingRole === "admin" || existingRole === "club" || existingRole === "host"
+      ? existingRole
+      : "promoter";
   const { error: profileError } = await supabase.from("profiles").upsert(
     {
       id: input.userId,
-      role: "promoter",
+      role: roleToWrite,
       display_name: displayName,
     },
     { onConflict: "id" },
@@ -136,6 +153,30 @@ export async function gatePromoterUser(
     user: gate.user,
     role: "promoter",
     promoterId: promoter?.id ? String(promoter.id) : null,
+  };
+}
+
+export async function gateClubUser(
+  supabase: SupabaseClient,
+): Promise<ClubGateResult> {
+  const gate = await fetchSessionAndRole(supabase);
+  if (!gate.ok) return gate;
+  if (gate.role !== "club") {
+    return { ok: false, reason: "not_club" };
+  }
+  const { data: account, error } = await supabase
+    .from("club_accounts")
+    .select("club_slug")
+    .eq("user_id", gate.user.id)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+  if (error) return { ok: false, reason: "club_account_error" };
+  return {
+    ok: true,
+    user: gate.user,
+    role: "club",
+    clubSlug: account?.club_slug ? String(account.club_slug) : null,
   };
 }
 
