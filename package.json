@@ -8,6 +8,10 @@
     "dev": "vite",
     "prebuild": "node scripts/build-data.mjs",
     "build": "vite build && node scripts/write-ssr-asset-map.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:routes": "node scripts/smoke-routes.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run build && npm run smoke:routes",
     "preview": "vite preview",
     "fleet-images": "node scripts/download-fleet-images.mjs",
     "seed:supabase": "node scripts/seed-supabase.mjs",
@@ -15,8 +19,11 @@
     "backfill:guest-intel": "node scripts/backfill-guest-intelligence.mjs"
   },
   "devDependencies": {
-    "@vercel/node": "^3.2.29",
     "@types/google.maps": "^3.58.1",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "@vercel/node": "^3.2.29",
+    "eslint": "^10.2.1",
     "supabase": "^2.92.1",
     "typescript": "~5.6.3",
     "vite": "^8.0.3"

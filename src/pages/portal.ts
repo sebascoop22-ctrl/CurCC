@@ -7,13 +7,15 @@ import "../styles/pages/portal.css";
 type PortalMode = "admin" | "promoter";
 
 export async function initPortalPage(): Promise<void> {
-  const root = document.getElementById("portal-root");
-  if (!root) return;
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    root.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Supabase is not configured.</p></div>`;
+  const rootEl = document.getElementById("portal-root");
+  if (!rootEl) return;
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    rootEl.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Supabase is not configured.</p></div>`;
     return;
   }
+  const root = rootEl;
+  const supabase = supabaseClient;
 
   let currentMode: PortalMode = "promoter";
   let adminInitialized = false;

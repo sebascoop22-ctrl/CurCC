@@ -29,13 +29,15 @@ function downloadCsv(name: string, headers: string[], rows: string[][]): void {
 }
 
 export async function initWorkspacePage(): Promise<void> {
-  const root = document.getElementById("workspace-root");
-  if (!root) return;
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    root.innerHTML = `<div class="admin-card"><p>Supabase is not configured.</p></div>`;
+  const rootEl = document.getElementById("workspace-root");
+  if (!rootEl) return;
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    rootEl.innerHTML = `<div class="admin-card"><p>Supabase is not configured.</p></div>`;
     return;
   }
+  const root = rootEl;
+  const supabase = supabaseClient;
   const adminGate = await gateAdminUser(supabase);
   const promoterGate = adminGate.ok ? null : await gatePromoterUser(supabase);
   if (!adminGate.ok && !promoterGate?.ok) {

@@ -1,6 +1,6 @@
 import { ssrAssetHashes } from "./ssr-asset-hashes.js";
 
-export type SsrAssetBundle = { js: string; css: string[] };
+export type SsrAssetBundle = { js: string; css: readonly string[] };
 
 export type SsrAssetMap = {
   nightlife?: SsrAssetBundle;

@@ -17,13 +17,15 @@ function roleDestination(role: AppRole): string {
 }
 
 export async function initAccountPage(): Promise<void> {
-  const root = document.getElementById("account-root");
-  if (!root) return;
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    root.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Supabase is not configured.</p></div>`;
+  const rootEl = document.getElementById("account-root");
+  if (!rootEl) return;
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    rootEl.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Supabase is not configured.</p></div>`;
     return;
   }
+  const root = rootEl;
+  const supabase = supabaseClient;
 
   function getInitialMode(): "signin" | "signup" {
     const raw = new URLSearchParams(window.location.search).get("mode") || "";

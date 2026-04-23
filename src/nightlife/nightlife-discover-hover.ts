@@ -266,7 +266,7 @@ export function initNightlifeDiscoverHover(): void {
       root.addEventListener(
         "pointerleave",
         (ev) => {
-          const related = ev.relatedTarget as Node | null;
+          const related = (ev as PointerEvent).relatedTarget as Node | null;
           if (related && (tip.contains(related) || root.contains(related)))
             return;
           hideSoon();

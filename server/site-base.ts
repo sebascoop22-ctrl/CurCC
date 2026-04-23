@@ -6,7 +6,12 @@ export function siteOrigin(): string {
   if (explicit) return explicit.replace(/\/$/, "");
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) {
-    const host = vercel.replace(/^https?:\/\//, "");
+    const host = vercel.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const bareHost = host.replace(/^www\./, "");
+    // Keep canonicals stable on production/previews and force preferred www domain.
+    if (host.endsWith(".vercel.app") || bareHost === "cooperconcierge.co.uk") {
+      return DEFAULT_SITE_ORIGIN;
+    }
     return `https://${host}`;
   }
   return DEFAULT_SITE_ORIGIN;

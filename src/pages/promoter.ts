@@ -156,13 +156,15 @@ function jobsTableRows(
 }
 
 export async function initPromoterPortal(): Promise<void> {
-  const root = document.getElementById("promoter-root");
-  if (!root) return;
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    root.innerHTML = `<div class="admin-card"><p>Supabase is not configured.</p></div>`;
+  const rootEl = document.getElementById("promoter-root");
+  if (!rootEl) return;
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    rootEl.innerHTML = `<div class="admin-card"><p>Supabase is not configured.</p></div>`;
     return;
   }
+  const root = rootEl;
+  const supabase = supabaseClient;
 
   let profile: PromoterProfile | null = null;
   let availability: PromoterAvailabilitySlot[] = [];
@@ -398,7 +400,7 @@ export async function initPromoterPortal(): Promise<void> {
                 ? rows
                     .map(
                       (r) =>
-                        `<tr><td>${esc(r.saleDate)}</td><td>${esc(r.clubSlug || "—")}</td><td>${esc(r.tableTier || "—")}</td><td>${r.tablesCount}</td><td>${money(r.totalMinSpend)}</td><td>${esc(r.status)}</td></tr>`,
+                        `<tr><td>${esc(r.saleDate)}</td><td>${esc(r.clubSlug || "—")}</td><td>${esc(r.tier || "—")}</td><td>${r.tableCount}</td><td>${money(r.totalMinSpend)}</td><td>${esc(r.approvalStatus)}</td></tr>`,
                     )
                     .join("")
                 : "<tr><td colspan='6'>No table-sale history yet.</td></tr>"
@@ -1006,7 +1008,7 @@ export async function initPromoterPortal(): Promise<void> {
                         ${adminPromoters
                           .map(
                             (p) =>
-                              `<option value="${esc(p.id)}"${p.id === adminSelectedPromoterId ? " selected" : ""}>${esc(p.displayName || p.fullName || p.email || p.id.slice(0, 8))}</option>`,
+                              `<option value="${esc(p.id)}"${p.id === adminSelectedPromoterId ? " selected" : ""}>${esc(p.displayName || p.id.slice(0, 8))}</option>`,
                           )
                           .join("")}
                       </select>
@@ -1148,6 +1150,10 @@ export async function initPromoterPortal(): Promise<void> {
           const res = await callPromoterInvoiceEdge(anonKey.trim(), token, invoiceId, "pdf");
           if (!res.ok) {
             flash(res.message || "Could not load PDF.", true);
+            return;
+          }
+          if (res.action !== "pdf") {
+            flash("Unexpected invoice response for PDF action.", true);
             return;
           }
           downloadPdfFromBase64(res.pdfBase64, res.filename);

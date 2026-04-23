@@ -14,8 +14,10 @@ export function buildNightlifeSsrHtml(opts: {
   pathname: string;
   clubRows: ClubRow[];
   rankedFlyers: {
+    clubSlug?: string;
     imageUrl: string;
     title: string;
+    description?: string;
     clubName: string;
     eventDate: string;
   }[];
@@ -83,7 +85,16 @@ export function buildNightlifeSsrHtml(opts: {
               <a class="cc-btn cc-btn--ghost" href="/nightlife-map">Full venue map</a>
             </div>
             <div class="nl-hero-flyer-wrap" aria-label="Featured flyer">
-              ${renderTopFlyerHostHtml(opts.rankedFlyers)}
+              ${renderTopFlyerHostHtml(
+                opts.rankedFlyers.map((f) => ({
+                  clubSlug: String(f.clubSlug ?? ""),
+                  imageUrl: f.imageUrl,
+                  title: f.title,
+                  description: String(f.description ?? ""),
+                  clubName: f.clubName,
+                  eventDate: f.eventDate,
+                })),
+              )}
             </div>
           </div>
           <div class="nl-landing-hero__map-wrap">

@@ -79,6 +79,7 @@ import { adminPromoterRequestDecision } from "../lib/promoter-request-edge";
 import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
+  FinancialDirection,
   FinancialPeriodSummary,
   FinancialPayee,
   FinancialStatus,
@@ -771,18 +772,20 @@ function renderClientDetail(
 }
 
 export async function initAdminPortal(): Promise<void> {
-  const adminRoot = document.getElementById("admin-root");
-  if (!adminRoot) return;
+  const adminRootEl = document.getElementById("admin-root");
+  if (!adminRootEl) return;
 
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    adminRoot.innerHTML = `
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    adminRootEl.innerHTML = `
       <div class="admin-card">
         <h3>Supabase not configured</h3>
         <p class="admin-note">Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in <code>.env.local</code>, then restart the dev server.</p>
       </div>`;
     return;
   }
+  const adminRoot = adminRootEl;
+  const supabase = supabaseClient;
 
   let view: AdminView = "enquiries";
   let adminNavExpanded: AdminNavSection = "enquiries";
@@ -806,8 +809,8 @@ export async function initAdminPortal(): Promise<void> {
   let selectedPromoterRequestId: string | null = null;
   let promoters: PromoterProfile[] = [];
   let promoterRevisions: PromoterRevisionRow[] = [];
-  let promoterAvailability: PromoterAvailabilitySlot[] = [];
-  let promoterPreferences: Array<{ clubSlug: string; weekdays: string[]; status: string }> = [];
+  let _promoterAvailability: PromoterAvailabilitySlot[] = [];
+  let _promoterPreferences: Array<{ clubSlug: string; weekdays: string[]; status: string }> = [];
   let promoterJobs: PromoterJob[] = [];
   let jobsCalendarYear = new Date().getFullYear();
   let jobsCalendarMonth = new Date().getMonth();
@@ -816,7 +819,7 @@ export async function initAdminPortal(): Promise<void> {
   let jobsFilterClubSlug = "";
   let editingJobId: string | null = null;
   let promoterInvoices: PromoterInvoice[] = [];
-  let financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
+  let _financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
   let financialPeriodFrom = "";
   let financialPeriodTo = "";
   let financialCalendarYear = new Date().getFullYear();
@@ -869,6 +872,7 @@ export async function initAdminPortal(): Promise<void> {
     email: "",
     username: "",
   };
+  void [_promoterAvailability, _promoterPreferences, _financialRows];
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
     const db = await loadClubsForAdmin(supabase);
@@ -982,8 +986,8 @@ export async function initAdminPortal(): Promise<void> {
         loadPromoterJobs(supabase, selectedPromoterId),
         loadPromoterInvoices(supabase, selectedPromoterId),
       ]);
-      promoterAvailability = a.ok ? a.rows : [];
-      promoterPreferences = (pref.ok ? pref.rows : []).map((x) => ({
+      _promoterAvailability = a.ok ? a.rows : [];
+      _promoterPreferences = (pref.ok ? pref.rows : []).map((x) => ({
         clubSlug: x.clubSlug,
         weekdays: x.weekdays,
         status: x.status,
@@ -991,8 +995,8 @@ export async function initAdminPortal(): Promise<void> {
       promoterJobs = j.ok ? j.rows : [];
       promoterInvoices = inv.ok ? inv.rows : [];
     } else {
-      promoterAvailability = [];
-      promoterPreferences = [];
+      _promoterAvailability = [];
+      _promoterPreferences = [];
       promoterJobs = [];
       promoterInvoices = [];
     }
@@ -1045,7 +1049,7 @@ export async function initAdminPortal(): Promise<void> {
       loadFinancialTransactions(supabase, { from, to, ...filters }),
       loadFinancialRecurringTemplates(supabase),
     ]);
-    financialRows = r.ok ? r.rows : [];
+    _financialRows = r.ok ? r.rows : [];
     financialSummary = summary.ok
       ? summary.row
       : { income: 0, expense: 0, net: 0, txCount: 0 };
@@ -2616,6 +2620,10 @@ export async function initAdminPortal(): Promise<void> {
               flash(res.message || "PDF failed.", "error");
               return;
             }
+            if (res.action !== "pdf") {
+              flash("Unexpected invoice response for PDF action.", "error");
+              return;
+            }
             downloadPdfFromBase64(res.pdfBase64, res.filename);
             flash("PDF downloaded.");
             return;
@@ -2623,6 +2631,10 @@ export async function initAdminPortal(): Promise<void> {
           const res = await callPromoterInvoiceEdge(anonKey, token, invoiceId, "send");
           if (!res.ok) {
             flash(res.message || "Email failed.", "error");
+            return;
+          }
+          if (res.action !== "send") {
+            flash("Unexpected invoice response for email action.", "error");
             return;
           }
           await reloadPromoters();
@@ -2926,7 +2938,8 @@ export async function initAdminPortal(): Promise<void> {
           ev.preventDefault();
           const fd = new FormData(entryForm as HTMLFormElement);
           const entryType = String(fd.get("entryType") || "one_off");
-          const direction = String(fd.get("direction") || "expense").trim() === "income" ? "income" : "expense";
+          const direction: FinancialDirection =
+            String(fd.get("direction") || "expense").trim() === "income" ? "income" : "expense";
           const statusRaw = String(fd.get("status") || "pending").trim();
           const status: FinancialStatus =
             statusRaw === "paid" || statusRaw === "cancelled" || statusRaw === "failed" || statusRaw === "pending"

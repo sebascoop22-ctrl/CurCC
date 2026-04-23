@@ -30,10 +30,12 @@ export default async function handler(
     return;
   }
   const origin = siteOrigin();
+  const lastMod = new Date().toISOString();
   const rows = await loadClubCatalog();
   const clubUrls = rows.map(
     (r) => `  <url>
     <loc>${xmlEscape(`${origin}/club/${encodeURIComponent(r.club.slug)}`)}</loc>
+    <lastmod>${xmlEscape(lastMod)}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.85</priority>
   </url>`,
@@ -41,12 +43,14 @@ export default async function handler(
   const staticUrls = STATIC_PATHS.map(
     (p) => `  <url>
     <loc>${xmlEscape(`${origin}${p}`)}</loc>
+    <lastmod>${xmlEscape(lastMod)}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>${p === "/classic" ? "0.75" : "0.9"}</priority>
   </url>`,
   );
   const rootUrl = `  <url>
     <loc>${xmlEscape(origin + "/")}</loc>
+    <lastmod>${xmlEscape(lastMod)}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1</priority>
   </url>`;
