@@ -960,3 +960,73 @@ p {
   border: 1px solid var(--cc-lux-card-shine);
   box-shadow: var(--cc-lux-card-shadow);
 }
+
+.site-footer__prefs-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--cc-muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-family: inherit;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.site-footer__prefs-btn:hover {
+  color: var(--cc-gold);
+}
+
+.cc-consent {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1100;
+  display: none;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(10, 10, 10, 0.94);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  padding: 0.85rem;
+  backdrop-filter: blur(4px);
+}
+
+.cc-consent.is-visible {
+  display: flex;
+}
+
+.cc-consent__text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--cc-muted);
+  max-width: 48rem;
+}
+
+.cc-consent__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .cc-consent {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cc-consent__actions {
+    width: 100%;
+  }
+
+  .cc-consent__actions .cc-btn {
+    width: 100%;
+    text-align: center;
+  }
+}

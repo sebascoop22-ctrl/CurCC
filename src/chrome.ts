@@ -1,5 +1,3 @@
-import { inject } from "@vercel/analytics";
-import { injectSpeedInsights } from '@vercel/speed-insights';
 import { getSocialLinkItems, whatsappHref } from "./site-config";
 import {
   cycleTheme,
@@ -10,11 +8,15 @@ import {
 } from "./theme";
 import { getSupabaseClient } from "./lib/supabase";
 import { resolveSignedInRole } from "./lib/session-role";
+import {
+  acceptAllConsent,
+  analyticsConsentGranted,
+  buildConsentBannerHtml,
+  initConsentState,
+  loadAnalyticsIntegrations,
+  rejectAllConsent,
+} from "./lib/consent";
 import "./styles/global.css";
-
-/** Vite/static sites use `inject()` — not `@vercel/analytics/next` (Next.js only). */
-inject();
-injectSpeedInsights();
 
 initThemeFromStorage();
 
@@ -137,8 +139,10 @@ export function initChrome(active: ActivePage): void {
         ${socialHtml ? `<nav class="site-footer__social" aria-label="Social">${socialHtml}</nav>` : ""}
         <nav class="site-footer__links" aria-label="Legal">
           <a href="/privacy">Privacy</a>
+          <a href="/privacy#privacy-choices">Do Not Sell or Share</a>
           <a href="/terms">Terms</a>
           <a href="/sitemap.xml">Sitemap</a>
+          <button type="button" class="site-footer__prefs-btn" id="cc-open-consent">Cookie preferences</button>
         </nav>
       </div>
     </div>`;
@@ -154,7 +158,8 @@ export function initChrome(active: ActivePage): void {
           <a class="cc-btn cc-btn--ghost" href="/enquiry">Enquiry form</a>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${buildConsentBannerHtml()}`;
 
   if (drawer) {
     drawer.innerHTML = drawerLinks(active);
@@ -167,6 +172,10 @@ export function initChrome(active: ActivePage): void {
   const themeBtn = document.getElementById("cc-theme-toggle");
   const accountBtn = document.getElementById("site-account-btn") as HTMLButtonElement | null;
   const accountMenu = document.getElementById("site-account-menu") as HTMLElement | null;
+  const consentBanner = document.getElementById("cc-consent-banner");
+  const consentAccept = document.getElementById("cc-consent-accept");
+  const consentReject = document.getElementById("cc-consent-reject");
+  const consentOpen = document.getElementById("cc-open-consent");
   const supabase = getSupabaseClient();
 
   function refreshThemeToggle(): void {
@@ -249,5 +258,28 @@ export function initChrome(active: ActivePage): void {
 
   drawer?.querySelectorAll("a").forEach((a) => {
     a.addEventListener("click", () => setDrawer(false));
+  });
+
+  const consentState = initConsentState();
+  if (analyticsConsentGranted(consentState)) {
+    loadAnalyticsIntegrations();
+    consentBanner?.classList.remove("is-visible");
+  } else {
+    consentBanner?.classList.add("is-visible");
+  }
+
+  consentAccept?.addEventListener("click", () => {
+    acceptAllConsent();
+    loadAnalyticsIntegrations();
+    consentBanner?.classList.remove("is-visible");
+  });
+
+  consentReject?.addEventListener("click", () => {
+    rejectAllConsent();
+    consentBanner?.classList.remove("is-visible");
+  });
+
+  consentOpen?.addEventListener("click", () => {
+    consentBanner?.classList.add("is-visible");
   });
 }

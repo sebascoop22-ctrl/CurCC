@@ -129,6 +129,12 @@ function selectClubsForDate(clubs: Club[], d: Date): Club[] {
   return clubs.slice(0, 1);
 }
 
+function selectSingleFeaturedClub(clubs: Club[], d: Date): Club | null {
+  const dated = selectClubsForDate(clubs, d);
+  if (dated.length) return dated[0] ?? null;
+  return clubs[0] ?? null;
+}
+
 function selectFlyersForDate(flyers: ClubFlyer[], d: Date): ClubFlyer[] {
   const ymd = toYMD(d);
   const exact = flyers.filter((f) => f.eventDate === ymd);
@@ -138,6 +144,12 @@ function selectFlyersForDate(flyers: ClubFlyer[], d: Date): ClubFlyer[] {
     .sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : 0));
   if (upcoming.length) return upcoming.slice(0, 5);
   return flyers.slice(0, 5);
+}
+
+function selectSingleFlyerForDate(flyers: ClubFlyer[], d: Date): ClubFlyer | null {
+  const dated = selectFlyersForDate(flyers, d);
+  if (dated.length) return dated[0] ?? null;
+  return flyers[0] ?? null;
 }
 
 function parseTestimonial(raw: string): { name: string; text: string } {
@@ -200,6 +212,8 @@ export async function initHome(): Promise<void> {
   const modeLabel = modeLabelEl;
   const modeClubs = modeClubsBtn;
   const modeFlyers = modeFlyersBtn;
+  const dateNav = prevDateBtn?.parentElement ?? null;
+  const itemNav = prevItemBtn?.parentElement ?? null;
 
   const today = startOfToday();
   let featuredDate = new Date(today);
@@ -412,24 +426,24 @@ export async function initHome(): Promise<void> {
     modeClubs.setAttribute("aria-selected", String(mode === "clubs"));
     modeFlyers.setAttribute("aria-selected", String(mode === "flyers"));
     if (mode === "clubs") {
-      modeLabel.textContent = "Tonight’s featured venue";
+      modeLabel.textContent = "Featured venue";
       if (detailsLnk) detailsLnk.textContent = "Open club";
-      const items = selectClubsForDate(clubs, featuredDate);
-      const total = items.length;
-      itemIndex = total ? ((itemIndex % total) + total) % total : 0;
-      applyClub(items[itemIndex] ?? null, total);
-      prevItemBtn?.removeAttribute("disabled");
-      nextItemBtn?.removeAttribute("disabled");
+      dateNav?.removeAttribute("hidden");
+      if (itemNav) itemNav.style.display = "none";
+      itemIndex = 0;
+      applyClub(selectSingleFeaturedClub(clubs, featuredDate), 1);
+      prevItemBtn?.setAttribute("disabled", "true");
+      nextItemBtn?.setAttribute("disabled", "true");
       return;
     }
     modeLabel.textContent = "Tonight’s club flyer";
     if (detailsLnk) detailsLnk.textContent = "Open flyer";
-    const items = selectFlyersForDate(flyers, featuredDate);
-    const total = items.length;
-    itemIndex = total ? ((itemIndex % total) + total) % total : 0;
-    applyFlyer(items[itemIndex] ?? null, total);
-    prevItemBtn?.removeAttribute("disabled");
-    nextItemBtn?.removeAttribute("disabled");
+    dateNav?.removeAttribute("hidden");
+    if (itemNav) itemNav.style.display = "none";
+    itemIndex = 0;
+    applyFlyer(selectSingleFlyerForDate(flyers, featuredDate), 1);
+    prevItemBtn?.setAttribute("disabled", "true");
+    nextItemBtn?.setAttribute("disabled", "true");
   }
 
   function setFeaturedDate(d: Date): void {
