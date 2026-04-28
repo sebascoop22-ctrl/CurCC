@@ -105,20 +105,20 @@ export function initChrome(active: ActivePage): void {
       <button type="button" class="site-nav__trigger ${nightlifeActive ? "is-active" : ""}">Access</button>
       <div class="site-nav__menu" role="menu" aria-label="Nightlife">
         <a href="/nightlife" class="site-nav__item ${nightlifeActive ? "is-active" : ""}" role="menuitem">Clubs</a>
-        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Events</span>
+        <!--<span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Events</span>-->
       </div>
     </div>
     <div class="site-nav__group">
       <button type="button" class="site-nav__trigger ${travelActive ? "is-active" : ""}">Travel</button>
       <div class="site-nav__menu" role="menu" aria-label="Travel">
         <a href="/chauffeuring" class="site-nav__item ${travelActive ? "is-active" : ""}" role="menuitem">Chauffeur</a>
-        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Yachts</span>
+        <!--<span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Yachts</span>-->
       </div>
     </div>
     <div class="site-nav__group">
       <button type="button" class="site-nav__trigger ${operationsActive ? "is-active" : ""}">Protection</button>
       <div class="site-nav__menu" role="menu" aria-label="Protection">
-        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Close protection</span>
+        <!--<span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Close protection</span>-->
         <a href="/security" class="site-nav__item ${operationsActive ? "is-active" : ""}" role="menuitem">Security</a>
       </div>
     </div>

@@ -590,24 +590,24 @@ export async function initPromoterPortal(): Promise<void> {
       return `
         <div class="promoter-panel">
           <section class="admin-form">
-            <h4 class="full">Account settings</h4>
+            <h4 class="full">Account & Security</h4>
             <p class="promoter-main__subtitle full" style="margin-top:0">Manage your login email and password for this promoter account.</p>
             <div class="cc-field"><label>Email</label><input id="p-account-email" type="email" autocomplete="email" value="${esc(promoterAccount.email)}" placeholder="name@example.com" /></div>
             <div class="cc-field"><label>Username</label><input id="p-account-username" value="${esc(promoterAccount.username)}" placeholder="Display username" /></div>
             <div class="cc-field"><label>New password</label><input id="p-account-password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
             <div class="cc-field"><label>Confirm new password</label><input id="p-account-password-confirm" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
             <div class="admin-actions full">
-              <button class="cc-btn cc-btn--gold" id="p-save-account-settings" type="button">Save account settings</button>
+              <button class="cc-btn cc-btn--gold" id="p-save-account-settings" type="button">Save Changes</button>
             </div>
           </section>
         </div>
         <div class="promoter-panel">
           <section class="admin-form">
-            <h4 class="full">Profile revision</h4>
+            <h4 class="full">Profile Details</h4>
             <p class="promoter-main__subtitle full" style="margin-top:0">The team reviews each submission. Use photos you are allowed to publish.</p>
             <div class="cc-field"><label>Display name</label><input id="p-display-name" value="${esc(profile.displayName)}" /></div>
             <div class="cc-field full"><label>Bio</label><textarea id="p-bio" rows="6" placeholder="Experience, venues, languages…">${esc(profile.bio)}</textarea></div>
-            <h4 class="full">Payment details</h4>
+            <h4 class="full">Payment Details</h4>
             <div class="cc-field"><label>Method</label><input id="p-payment-method" value="${esc(profile.paymentDetails.method)}" placeholder="bank_transfer / card / cash" /></div>
             <div class="cc-field"><label>Beneficiary</label><input id="p-beneficiary-name" value="${esc(profile.paymentDetails.beneficiaryName)}" /></div>
             <div class="cc-field"><label>Account no</label><input id="p-account-number" value="${esc(profile.paymentDetails.accountNumber)}" /></div>
@@ -616,14 +616,14 @@ export async function initPromoterPortal(): Promise<void> {
             <div class="cc-field"><label>SWIFT/BIC</label><input id="p-swift-bic" value="${esc(profile.paymentDetails.swiftBic)}" /></div>
             <div class="cc-field"><label>Reference</label><input id="p-payment-reference" value="${esc(profile.paymentDetails.reference)}" /></div>
             <div class="cc-field"><label>Payout email</label><input id="p-payout-email" value="${esc(profile.paymentDetails.payoutEmail)}" /></div>
-            <h4 class="full">Tax details</h4>
+            <h4 class="full">Tax Details</h4>
             <div class="cc-field"><label>Registered name</label><input id="p-tax-registered-name" value="${esc(profile.taxDetails.registeredName)}" /></div>
             <div class="cc-field"><label>Tax ID</label><input id="p-tax-id" value="${esc(profile.taxDetails.taxId)}" /></div>
             <div class="cc-field"><label>VAT number</label><input id="p-vat-number" value="${esc(profile.taxDetails.vatNumber)}" /></div>
             <div class="cc-field"><label>Tax country</label><input id="p-tax-country-code" value="${esc(profile.taxDetails.countryCode)}" /></div>
             <div class="cc-field"><label>VAT registered</label><select id="p-is-vat-registered"><option value="true"${profile.taxDetails.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!profile.taxDetails.isVatRegistered ? " selected" : ""}>no</option></select></div>
             <div class="cc-field full"><label>Tax notes</label><textarea id="p-tax-notes" rows="3">${esc(profile.taxDetails.notes)}</textarea></div>
-            <h4 class="full">Photos (up to 12)</h4>
+            <h4 class="full">Media</h4>
             <div id="p-profile-img-rows">${imgRows}</div>
             <div class="admin-actions full">
               <button type="button" class="cc-btn cc-btn--ghost" id="p-add-profile-image"${baseUrls.length >= 12 ? " disabled" : ""}>Add another photo</button>
@@ -632,14 +632,14 @@ export async function initPromoterPortal(): Promise<void> {
             <div id="p-image-preview-wrap" class="promoter-image-preview-wrap${previewFirst ? "" : " is-empty"}">
               <img id="p-image-preview" class="promoter-image-preview__img"${previewSrc} alt="Primary photo preview" referrerpolicy="no-referrer"${previewFirst ? "" : " hidden"} />
             </div>
-            <h4 class="full">Clubs to highlight</h4>
+            <h4 class="full">Portfolio Clubs</h4>
             <p class="promoter-main__subtitle full" style="margin-top:0">Choose venues for your public-facing profile (Ctrl/Command + click for multiple).</p>
             <div class="cc-field full">
               <label for="p-portfolio-clubs">Venues</label>
               <select id="p-portfolio-clubs" multiple size="8" class="promoter-portfolio-select">${clubOpts}</select>
             </div>
             <div class="admin-actions full">
-              <button class="cc-btn cc-btn--gold" id="p-save-profile" type="button">Submit profile for approval</button>
+              <button class="cc-btn cc-btn--gold" id="p-save-profile" type="button">Submit for Approval</button>
             </div>
           </section>
         </div>`;
@@ -673,7 +673,7 @@ export async function initPromoterPortal(): Promise<void> {
           <section class="admin-form" style="margin-top:0.75rem">
             ${availabilityBlock}
             <div class="admin-actions full">
-              <button class="cc-btn cc-btn--gold" id="p-save-availability" type="button">Save availability</button>
+              <button class="cc-btn cc-btn--gold" id="p-save-availability" type="button">Save Changes</button>
             </div>
           </section>
         </div>
@@ -687,7 +687,7 @@ export async function initPromoterPortal(): Promise<void> {
             <div class="cc-field"><label>Days (pipe-separated)</label><input id="p-pref-days" placeholder="Thu|Fri|Sat" /></div>
             <div class="cc-field full"><label>Notes</label><textarea id="p-pref-notes" rows="3" placeholder="Door experience, languages, etc."></textarea></div>
             <div class="admin-actions full">
-              <button class="cc-btn cc-btn--ghost" id="p-save-preference" type="button">Submit preference</button>
+              <button class="cc-btn cc-btn--ghost" id="p-save-preference" type="button">Submit for Review</button>
             </div>
           </section>
           <div class="promoter-pref-list">
@@ -827,19 +827,19 @@ export async function initPromoterPortal(): Promise<void> {
             promoterClientFormOpen || selected
               ? `<form class="admin-form" id="promoter-client-form" data-collapsible="true">
             <input type="hidden" name="id" value="${esc(selected?.id || "")}" />
-            <h4 class="full">Client details</h4>
+            <h4 class="full">Contact Details</h4>
             <div class="cc-field pp-col-6"><label>Name</label><input name="name" required value="${esc(selected?.name || "")}" /></div>
             <div class="cc-field pp-col-6"><label>Email</label><input name="email" type="email" value="${esc(selected?.email || "")}" /></div>
             <div class="cc-field pp-col-6"><label>Phone</label><input name="phone" value="${esc(selected?.phone || "")}" /></div>
             <div class="cc-field pp-col-6"><label>Instagram</label><input name="instagram" value="${esc(selected?.instagram || "")}" placeholder="@handle" /></div>
             <h4 class="full">Notes</h4>
-            <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="3">${esc(selected?.notes || "")}</textarea></div>
+            <div class="cc-field full"><label>Notes (Internal)</label><textarea name="notes" rows="3">${esc(selected?.notes || "")}</textarea></div>
             <div class="admin-actions full">
               <button class="cc-btn cc-btn--gold" type="submit">${selected ? "Save client" : "Create client"}</button>
-              <button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-new">New client</button>
+              <button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-new">Create New</button>
             </div>
           </form>`
-              : `<p class="admin-note">Client form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-client-form">Add new client</button>`
+              : `<p class="admin-note">Client form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-client-form">Open Form</button>`
           }
           ${
             selected
@@ -849,22 +849,22 @@ export async function initPromoterPortal(): Promise<void> {
             promoterClientAttendanceFormOpen || selectedAttendance
               ? `<form class="admin-form" id="promoter-client-attendance-form" data-collapsible="true" style="margin-top:0.8rem">
             <input type="hidden" name="attendanceId" value="${esc(selectedAttendance?.id || "")}" />
-            <h4 class="full">Visit details</h4>
+            <h4 class="full">Visit Details</h4>
             <div class="cc-field pp-col-3"><label>Date</label><input type="date" name="eventDate" required value="${esc(selectedAttendance?.eventDate || new Date().toISOString().slice(0, 10))}" /></div>
             <div class="cc-field pp-col-5"><label>Club</label><select name="clubSlug">${clubSelect}</select></div>
             <div class="cc-field pp-col-2"><label>Spend (£)</label><input type="number" name="spendGbp" min="0" step="0.01" value="${esc(String(selectedAttendance?.spendGbp ?? 0))}" /></div>
             <div class="cc-field pp-col-2"><label>Source</label><input name="source" value="${esc(selectedAttendance?.source || "manual")}" /></div>
             <div class="cc-field full"><label>Details</label><textarea name="notes" rows="2">${esc(selectedAttendance?.notes || "")}</textarea></div>
             <div class="admin-actions full">
-              <button class="cc-btn cc-btn--gold" type="submit">${selectedAttendance ? "Save visit" : "Add visit"}</button>
+              <button class="cc-btn cc-btn--gold" type="submit">${selectedAttendance ? "Save Changes" : "Create Visit"}</button>
               ${
                 selectedAttendance
-                  ? `<button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-attendance-new">New visit</button>`
+                  ? `<button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-attendance-new">Create New</button>`
                   : ""
               }
             </div>
           </form>`
-              : `<p class="admin-note">Visit form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-attendance-form">Add visit</button>`
+              : `<p class="admin-note">Visit form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-attendance-form">Open Form</button>`
           }`
               : ""
           }
@@ -888,7 +888,7 @@ export async function initPromoterPortal(): Promise<void> {
         <div class="promoter-panel">
           <p class="promoter-panel__title">Create new job or guestlist</p>
           <form class="admin-form" id="promoter-create-job-form" data-collapsible="true">
-            <h4 class="full">Job details</h4>
+            <h4 class="full">Job Details</h4>
             <div class="cc-field pp-col-3"><label>Date</label><input type="date" name="jobDate" required value="${esc(new Date().toISOString().slice(0, 10))}" /></div>
             <div class="cc-field pp-col-5"><label>Club</label><select name="clubSlug" required>${clubs.map((c) => `<option value="${esc(c.slug)}">${esc(c.name)}</option>`).join("")}</select></div>
             <div class="cc-field pp-col-2"><label>Service</label>
@@ -899,32 +899,32 @@ export async function initPromoterPortal(): Promise<void> {
                 <option value="other">other</option>
               </select>
             </div>
-            <div class="cc-field pp-col-2"><label>Status</label>
+            <div class="cc-field pp-col-2"><label>Job Status</label>
               <select name="status">
                 <option value="assigned">assigned (upcoming)</option>
                 <option value="completed">completed (already happened)</option>
               </select>
             </div>
-            <div class="cc-field pp-col-4"><label>Client mode</label>
+            <div class="cc-field pp-col-4"><label>Client Mode</label>
               <select name="clientMode">
-                <option value="existing">Find client</option>
-                <option value="blank">Create blank client</option>
-                <option value="new">Create new client profile</option>
+                <option value="existing">Select Existing Client</option>
+                <option value="blank">Create Blank Client</option>
+                <option value="new">Create New Client</option>
               </select>
             </div>
-            <h4 class="full">Client assignment</h4>
-            <div class="cc-field full" id="promoter-job-find-client-block"><label>Find client</label>
+            <h4 class="full">Client Assignment</h4>
+            <div class="cc-field full" id="promoter-job-find-client-block"><label>Find Client</label>
               <input name="clientSearch" type="text" placeholder="Type client name/email/phone" />
               <select name="existingClientId" style="margin-top:0.4rem">
                 <option value="">(none)</option>
                 ${promoterClients.map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`).join("")}
               </select>
             </div>
-            <div class="cc-field pp-col-4" id="promoter-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
-            <div class="cc-field pp-col-4" id="promoter-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
-            <div class="cc-field pp-col-4" id="promoter-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-name" hidden><label>New Client Name</label><input name="newClientName" placeholder="Client full name" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-email" hidden><label>New Client Email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-phone" hidden><label>New Client Phone</label><input name="newClientPhone" placeholder="+44…" /></div>
             <div class="admin-actions full">
-              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-job-add-client">+ Add client</button>
+              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-job-add-client">Add Client</button>
             </div>
             <div class="full promoter-table-wrap">
               <table>
@@ -941,14 +941,14 @@ export async function initPromoterPortal(): Promise<void> {
                 }</tbody>
               </table>
             </div>
-            <h4 class="full">Compensation & notes</h4>
-            <div class="cc-field pp-col-4"><label>Guests count</label><input type="number" name="guestsCount" min="0" step="1" value="0" /></div>
-            <div class="cc-field pp-col-4"><label>Shift fee (£)</label><input type="number" name="shiftFee" min="0" step="0.01" value="0" /></div>
-            <div class="cc-field pp-col-4"><label>Guestlist fee (£/guest)</label><input type="number" name="guestlistFee" min="0" step="0.01" value="0" /></div>
-            <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2" placeholder="Client/brief details"></textarea></div>
+            <h4 class="full">Compensation & Notes</h4>
+            <div class="cc-field pp-col-4"><label>Guest Count</label><input type="number" name="guestsCount" min="0" step="1" value="0" /></div>
+            <div class="cc-field pp-col-4"><label>Shift Fee (£)</label><input type="number" name="shiftFee" min="0" step="0.01" value="0" /></div>
+            <div class="cc-field pp-col-4"><label>Guestlist Fee (£/guest)</label><input type="number" name="guestlistFee" min="0" step="0.01" value="0" /></div>
+            <div class="cc-field full"><label>Notes (Internal)</label><textarea name="notes" rows="2" placeholder="Internal notes for this job"></textarea></div>
             <div class="admin-actions full">
               <button type="submit" class="cc-btn cc-btn--gold">Create job</button>
-              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-create-guestlist-job">Quick guestlist shift</button>
+              <button type="button" class="cc-btn cc-btn--ghost" id="promoter-create-guestlist-job">Create Quick Guestlist Shift</button>
             </div>
           </form>
         </div>

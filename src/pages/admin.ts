@@ -720,7 +720,7 @@ function renderClientDetail(
         <h4 class="admin-subhead" style="margin-top: 0">Client record</h4>
         <form class="admin-form" id="admin-client-form" data-collapsible="true">
           <input type="hidden" name="client_id" value="${escapeAttr(c.id)}" />
-          <h4 class="full">Contact details</h4>
+          <h4 class="full">Contact Details</h4>
           <div class="cc-field"><label for="client-name">Name</label>
             <input id="client-name" name="name" value="${escapeAttr(c.name ?? "")}" /></div>
           <div class="cc-field"><label for="client-email">Email</label>
@@ -738,15 +738,15 @@ function renderClientDetail(
             <select id="client-promoter" name="preferred_promoter_id">${promoOpts}</select></div>
           <div class="cc-field full"><label for="client-club">Preferred club</label>
             <select id="client-club" name="preferred_club_slug"><option value="">— None —</option>${clubOpts}</select></div>
-          <div class="cc-field full"><label for="client-notes">Internal notes</label>
+          <div class="cc-field full"><label for="client-notes">Notes (Internal)</label>
             <textarea id="client-notes" name="notes" rows="4" placeholder="VIP preferences, relationships, spend patterns…">${escapeHtmlText(c.notes ?? "")}</textarea></div>
-          <h4 class="full">System details</h4>
+          <h4 class="full">System Details</h4>
           <div class="cc-field full"><label>Guest profile id</label>
             <input value="${escapeAttr(c.guest_profile_id ?? "—")}" readonly /></div>
           <div class="cc-field full"><label>Added</label>
             <input value="${escapeAttr(c.created_at || "—")}" readonly /></div>
           <div class="admin-actions full">
-            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-save">Save client</button>
+            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-save">Save Changes</button>
           </div>
         </form>
         <h4 class="admin-subhead">Attendance history (editable)</h4>
@@ -767,7 +767,7 @@ function renderClientDetail(
         </div>
         <form class="admin-form" id="admin-client-attendance-form" data-collapsible="true">
           <input type="hidden" name="attendance_id" value="${escapeAttr(selectedAttendance?.id || "")}" />
-          <h4 class="full">Visit details</h4>
+          <h4 class="full">Visit Details</h4>
           <div class="cc-field"><label>Date</label><input name="event_date" type="date" required value="${escapeAttr(selectedAttendance?.event_date || new Date().toISOString().slice(0, 10))}" /></div>
           <div class="cc-field"><label>Club</label><select name="club_slug" required>${attendanceClubOpts}</select></div>
           <div class="cc-field"><label>Promoter</label><select name="promoter_id">${attendancePromoOpts}</select></div>
@@ -775,10 +775,10 @@ function renderClientDetail(
           <div class="cc-field"><label>Source</label><input name="source" value="${escapeAttr(selectedAttendance?.source || "manual")}" /></div>
           <div class="cc-field full"><label>Details</label><textarea name="attendance_notes" rows="2">${escapeHtmlText(selectedAttendance?.notes || "")}</textarea></div>
           <div class="admin-actions full">
-            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-attendance-save">${selectedAttendance ? "Save attendance" : "Add attendance"}</button>
+            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-attendance-save">${selectedAttendance ? "Save Changes" : "Create Visit"}</button>
             ${
               selectedAttendance
-                ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-client-attendance-new">New attendance</button>`
+                ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-client-attendance-new">Create New</button>`
                 : ""
             }
           </div>
@@ -2228,7 +2228,7 @@ export async function initAdminPortal(): Promise<void> {
             ${
               adminProfileFormOpen
                 ? `<form class="admin-form" id="admin-profile-form" data-collapsible="true">
-              <h4 class="full">Account & security</h4>
+              <h4 class="full">Account & Security</h4>
               <div class="cc-field"><label>Email</label><input name="email" type="email" autocomplete="email" value="${escapeAttr(adminProfile.email)}" placeholder="admin@cooperconcierge.co.uk" /></div>
               <div class="cc-field"><label>Username</label><input name="username" value="${escapeAttr(adminProfile.username)}" placeholder="Admin username" /></div>
               <div class="cc-field"><label>New password</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
@@ -2237,7 +2237,7 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="submit" id="admin-save-profile-settings">Save profile settings</button>
               </div>
             </form>`
-                : `<p class="admin-note">Profile form hidden. Click to open.</p><button class="pp-btn pp-btn--primary" type="button" id="open-admin-profile-form">Edit profile</button>`
+                : `<p class="admin-note">Profile form hidden. Click to open.</p><button class="pp-btn pp-btn--primary" type="button" id="open-admin-profile-form">Open Form</button>`
             }
             `
                 : view === "clubs"
@@ -2245,26 +2245,26 @@ export async function initAdminPortal(): Promise<void> {
             ${
               clubFormOpen
                 ? `<form class="admin-form" id="club-form" data-collapsible="true">
-              <h4 class="full">Core details</h4>
+              <h4 class="full">Core Details</h4>
               <div class="cc-field pp-col-4"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
               <div class="cc-field pp-col-8"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
               <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${escapeAttr(club.shortDescription)}</textarea></div>
               <p class="admin-maps-hint" style="margin:0 0 0.75rem">Nightlife discovery cards (carousel + all venues): optional overrides. Leave blank to use name, short description, and the first image URL in the list below.</p>
-              <h4 class="full">Discovery card</h4>
+              <h4 class="full">Discovery Card</h4>
               <div class="cc-field pp-col-4"><label>Card title override</label><input name="discoveryCardTitle" value="${escapeAttr(club.discoveryCardTitle ?? "")}" placeholder="Defaults to name" /></div>
               <div class="cc-field full"><label>Card blurb override</label><textarea name="discoveryCardBlurb" placeholder="Defaults to short description">${escapeAttr(club.discoveryCardBlurb ?? "")}</textarea></div>
               <div class="cc-field full"><label>Card image URL override</label><input name="discoveryCardImage" value="${escapeAttr(club.discoveryCardImage ?? "")}" placeholder="/clubs/… or https://…" /></div>
               <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${escapeAttr(club.longDescription)}</textarea></div>
-              <h4 class="full">Location & schedule</h4>
+              <h4 class="full">Location & Schedule</h4>
               <div class="cc-field pp-col-4"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
               <div class="cc-field full">
                 <label for="club-address-input">Address</label>
                 <input id="club-address-input" name="address" autocomplete="off" value="${escapeAttr(club.address)}" />
                 <p class="admin-maps-hint" id="club-address-maps-hint"></p>
               </div>
-              <div class="cc-field pp-col-4"><label>Days open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
-              <div class="cc-field pp-col-4"><label>Best visit days (pipe)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
-              <div class="cc-field pp-col-4"><label>Featured day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
+              <div class="cc-field pp-col-4"><label>Days Open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
+              <div class="cc-field pp-col-4"><label>Best Visit Days (| separated)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
+              <div class="cc-field pp-col-4"><label>Featured Day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
               <div class="cc-field pp-col-3"><label>Venue type</label>
                 <select name="venueType">
                   <option value="lounge" ${vt === "lounge" ? "selected" : ""}>Lounge</option>
@@ -2275,7 +2275,7 @@ export async function initAdminPortal(): Promise<void> {
               <div class="cc-field pp-col-3"><label>Lat</label><input name="lat" type="number" step="any" value="${club.lat}" /></div>
               <div class="cc-field pp-col-3"><label>Lng</label><input name="lng" type="number" step="any" value="${club.lng}" /></div>
               <div class="cc-field pp-col-6"><label>Website</label><input name="website" placeholder="https://…" value="${escapeAttr(club.website)}" /></div>
-              <h4 class="full">Pricing & positioning</h4>
+              <h4 class="full">Pricing & Positioning</h4>
               <div class="cc-field pp-col-3"><label>Min spend</label><input name="minSpend" value="${escapeAttr(club.minSpend)}" /></div>
               <div class="cc-field pp-col-3"><label>Entry (women)</label><input name="entryPricingWomen" value="${escapeAttr(club.entryPricingWomen)}" /></div>
               <div class="cc-field pp-col-3"><label>Entry (men)</label><input name="entryPricingMen" value="${escapeAttr(club.entryPricingMen)}" /></div>
@@ -2297,25 +2297,25 @@ export async function initAdminPortal(): Promise<void> {
                 <input id="club-image-file" type="file" accept="image/*" />
                 <button type="button" class="cc-btn cc-btn--ghost" id="club-image-upload">Upload to storage &amp; append URL</button>
               </div>
-              <h4 class="full">Payment details</h4>
+              <h4 class="full">Payment Details</h4>
               <div class="cc-field pp-col-4"><label>Method</label><input name="paymentMethod" value="${escapeAttr(club.paymentDetails?.method ?? "")}" /></div>
               <div class="cc-field pp-col-8"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(club.paymentDetails?.beneficiaryName ?? "")}" /></div>
               <div class="cc-field pp-col-4"><label>Account no</label><input name="accountNumber" value="${escapeAttr(club.paymentDetails?.accountNumber ?? "")}" /></div>
               <div class="cc-field pp-col-4"><label>Sort code</label><input name="sortCode" value="${escapeAttr(club.paymentDetails?.sortCode ?? "")}" /></div>
-              <div class="cc-field pp-col-4"><label>Payout email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Payout Email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
               <div class="cc-field pp-col-6"><label>IBAN</label><input name="iban" value="${escapeAttr(club.paymentDetails?.iban ?? "")}" /></div>
               <div class="cc-field pp-col-6"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(club.paymentDetails?.swiftBic ?? "")}" /></div>
               <div class="cc-field full"><label>Reference</label><input name="paymentReference" value="${escapeAttr(club.paymentDetails?.reference ?? "")}" /></div>
-              <h4 class="full">Tax details</h4>
+              <h4 class="full">Tax Details</h4>
               <div class="cc-field pp-col-6"><label>Registered name</label><input name="taxRegisteredName" value="${escapeAttr(club.taxDetails?.registeredName ?? "")}" /></div>
               <div class="cc-field pp-col-3"><label>Tax ID</label><input name="taxId" value="${escapeAttr(club.taxDetails?.taxId ?? "")}" /></div>
               <div class="cc-field pp-col-3"><label>VAT number</label><input name="vatNumber" value="${escapeAttr(club.taxDetails?.vatNumber ?? "")}" /></div>
               <div class="cc-field pp-col-4"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
               <div class="cc-field pp-col-4"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
-              <div class="cc-field full"><label>Tax notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
+              <div class="cc-field full"><label>Tax Notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
               <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
             </form>`
-                : `<p class="admin-note">Club form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-form">Open form</button>`
+                : `<p class="admin-note">Club form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-form">Open Form</button>`
             }
             `
                 : view === "cars"
@@ -2323,10 +2323,10 @@ export async function initAdminPortal(): Promise<void> {
             ${
               carFormOpen
                 ? `<form class="admin-form" id="car-form" data-collapsible="true">
-              <h4 class="full">Core details</h4>
+              <h4 class="full">Core Details</h4>
               <div class="cc-field pp-col-4"><label for="car-slug">Slug</label><input id="car-slug" name="slug" required value="${escapeAttr(car.slug)}" /></div>
               <div class="cc-field pp-col-8"><label for="car-name">Name</label><input id="car-name" name="name" required value="${escapeAttr(car.name)}" /></div>
-              <div class="cc-field pp-col-6"><label>Role label</label><input name="roleLabel" value="${escapeAttr(car.roleLabel)}" /></div>
+              <div class="cc-field pp-col-6"><label>Display Label</label><input name="roleLabel" value="${escapeAttr(car.roleLabel)}" /></div>
               <div class="cc-field pp-col-3"><label>Grid size</label>
                 <select name="gridSize">
                   <option value="large" ${gs === "large" ? "selected" : ""}>Large</option>
@@ -2334,7 +2334,7 @@ export async function initAdminPortal(): Promise<void> {
                   <option value="feature" ${gs === "feature" ? "selected" : ""}>Feature</option>
                 </select>
               </div>
-              <div class="cc-field pp-col-3"><label>Order</label><input name="order" type="number" step="1" value="${car.order}" /></div>
+              <div class="cc-field pp-col-3"><label>Display Order</label><input name="order" type="number" step="1" value="${car.order}" /></div>
               <h4 class="full">Media</h4>
               <div class="cc-field full"><label>Specs (one per line)</label><textarea name="specsHover">${escapeAttr(car.specsHover.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="car-images-text">${escapeAttr(car.images.join("\n"))}</textarea></div>
@@ -2344,7 +2344,7 @@ export async function initAdminPortal(): Promise<void> {
                 <button type="button" class="cc-btn cc-btn--ghost" id="car-image-upload">Upload to storage &amp; append URL</button>
               </div>
             </form>`
-                : `<p class="admin-note">Car form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-car-form">Open form</button>`
+                : `<p class="admin-note">Car form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-car-form">Open Form</button>`
             }
             `
                   : view === "flyers"
@@ -2352,23 +2352,23 @@ export async function initAdminPortal(): Promise<void> {
             ${
               flyerFormOpen
                 ? `<form class="admin-form" id="flyer-form" data-collapsible="true">
-              <h4 class="full">Event details</h4>
+              <h4 class="full">Event Details</h4>
               <div class="cc-field full"><label for="flyer-club-select">Club</label>
                 <select id="flyer-club-select" name="clubSlug" required>${flyerClubSelectOptions(clubEntries, flyer.clubSlug)}</select>
               </div>
               <div class="cc-field pp-col-4"><label for="flyer-event-date">Event date</label><input id="flyer-event-date" name="eventDate" type="date" required value="${escapeAttr(flyer.eventDate)}" /></div>
               <div class="cc-field pp-col-8"><label>Title</label><input name="title" required value="${escapeAttr(flyer.title)}" /></div>
               <div class="cc-field full"><label>Description</label><textarea name="description">${escapeAttr(flyer.description)}</textarea></div>
-              <div class="cc-field pp-col-4"><label>Sort order</label><input name="sortOrder" type="number" step="1" value="${flyer.sortOrder}" /></div>
-              <div class="cc-field pp-col-4"><label>Active</label>
+              <div class="cc-field pp-col-4"><label>Display Order</label><input name="sortOrder" type="number" step="1" value="${flyer.sortOrder}" /></div>
+              <div class="cc-field pp-col-4"><label>Publish Status</label>
                 <select name="isActive">
-                  <option value="true" ${flyer.isActive ? "selected" : ""}>Yes</option>
-                  <option value="false" ${!flyer.isActive ? "selected" : ""}>No</option>
+                  <option value="true" ${flyer.isActive ? "selected" : ""}>Active</option>
+                  <option value="false" ${!flyer.isActive ? "selected" : ""}>Inactive</option>
                 </select>
               </div>
               <h4 class="full">Media</h4>
               <div class="cc-field full"><label>Image URL</label><input name="imageUrl" placeholder="Filled automatically after upload" value="${escapeAttr(flyer.imageUrl)}" /></div>
-              <div class="cc-field full"><label>Image path (storage)</label><input name="imagePath" value="${escapeAttr(flyer.imagePath)}" readonly /></div>
+              <div class="cc-field full"><label>Storage Path</label><input name="imagePath" value="${escapeAttr(flyer.imagePath)}" readonly /></div>
               <div class="cc-field full">
                 <label for="flyer-image-file">Upload image</label>
                 <input id="flyer-image-file" type="file" accept="image/*" />
@@ -2378,7 +2378,7 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="flyer-save-db">${flyer.id ? "Update flyer" : "Create flyer"}</button>
               </div>
             </form>`
-                : `<p class="admin-note">Flyer form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-flyer-form">Open form</button>`
+                : `<p class="admin-note">Flyer form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-flyer-form">Open Form</button>`
             }
             `
                     : view === "promoter_requests"
@@ -2514,7 +2514,7 @@ export async function initAdminPortal(): Promise<void> {
                               <div class="cc-field"><label>Email</label><input id="club-account-email" type="email" placeholder="club@domain.com" /></div>
                               <div class="cc-field"><label>Role</label><select id="club-account-role"><option value="owner">owner</option><option value="manager">manager</option><option value="editor">editor</option></select></div>
                               <div class="cc-field full"><label>Notes</label><textarea id="club-account-notes"></textarea></div>
-                              <div class="admin-actions full"><button class="cc-btn cc-btn--gold" type="button" id="club-account-create">Generate invite code</button></div>
+                              <div class="admin-actions full"><button class="cc-btn cc-btn--gold" type="button" id="club-account-create">Generate Invite Code</button></div>
                               <p class="admin-note full" id="club-account-output"></p>
                               ${acct ? `<h4 class="full">Selected account</h4>
                               <div class="cc-field"><label>Club</label><input readonly value="${escapeAttr(acct.club_slug)}" /></div>
@@ -2522,7 +2522,7 @@ export async function initAdminPortal(): Promise<void> {
                               <div class="cc-field"><label>Role</label><input readonly value="${escapeAttr(acct.role)}" /></div>
                               <div class="cc-field full"><label>Invite code</label><input readonly value="${escapeAttr(acct.invite_code || "—")}" /></div>` : `<p class="admin-note full">No club accounts yet.</p>`}
                             </div>`
-                                : `<p class="admin-note">Club accounts form hidden until Add/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-accounts-form">Open form</button>`
+                                : `<p class="admin-note">Club accounts form hidden until Add/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-accounts-form">Open Form</button>`
                             }`;
                           })()
                         : view === "club_edits"
@@ -2604,7 +2604,7 @@ export async function initAdminPortal(): Promise<void> {
                 </table>
               </div>
             </form>`
-                : `<p class="admin-note">Invoice actions hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-invoice-form">Open invoice tools</button>`
+                : `<p class="admin-note">Invoice actions hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-invoice-form">Open Form</button>`
             }
             `
                           : view === "financials"

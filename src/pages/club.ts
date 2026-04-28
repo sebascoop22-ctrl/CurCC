@@ -261,23 +261,23 @@ export async function initClubPortal(): Promise<void> {
         clubProfileFormOpen
           ? `<form class="admin-form club-form-grid" id="club-profile-form" data-collapsible="true">
         <p class="admin-note full">Basic marketing/display fields auto-publish. Tax/payment fields are submitted for admin review.</p>
-        <h4 class="full">Display details</h4>
+        <h4 class="full">Core Details</h4>
         <div class="cc-field pp-col-8"><label>Name</label><input name="name" value="${esc(club.name || "")}" /></div>
-        <div class="cc-field pp-col-4"><label>Location tag</label><input name="locationTag" value="${esc(club.locationTag || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Location Tag</label><input name="locationTag" value="${esc(club.locationTag || "")}" /></div>
         <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${esc(club.shortDescription || "")}</textarea></div>
         <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${esc(club.longDescription || "")}</textarea></div>
-        <div class="cc-field pp-col-8"><label>Website</label><input name="website" value="${esc(club.website || "")}" /></div>
-        <div class="cc-field pp-col-4"><label>Min spend</label><input name="minSpend" value="${esc(club.minSpend || "")}" /></div>
-        <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${esc((club.knownFor || []).join("\n"))}</textarea></div>
-        <h4 class="full">Sensitive (admin review required)</h4>
+        <div class="cc-field pp-col-8"><label>Website URL</label><input name="website" value="${esc(club.website || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Minimum Spend</label><input name="minSpend" value="${esc(club.minSpend || "")}" /></div>
+        <div class="cc-field full"><label>Known For (one per line)</label><textarea name="knownFor">${esc((club.knownFor || []).join("\n"))}</textarea></div>
+        <h4 class="full">Payment & Tax (Review Required)</h4>
         <div class="cc-field pp-col-4"><label>Payment method</label><input name="paymentMethod" value="${esc(club.paymentDetails?.method || "")}" /></div>
         <div class="cc-field pp-col-8"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
         <div class="admin-actions full">
-          <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save display fields</button>
-          <button type="button" class="cc-btn cc-btn--ghost" data-club-save="review">Submit sensitive edits for review</button>
+          <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save Changes</button>
+          <button type="button" class="cc-btn cc-btn--ghost" data-club-save="review">Submit for Review</button>
         </div>
       </form>`
-          : `<p class="admin-note">Profile form hidden until you click edit/new.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-profile-form">Edit profile</button>`
+          : `<p class="admin-note">Profile form hidden until you click edit/new.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-profile-form">Open Form</button>`
       }
     `;
     const flyersSection = `
@@ -287,18 +287,18 @@ export async function initClubPortal(): Promise<void> {
         clubFlyerFormOpen
           ? `<form class="admin-form club-form-grid" id="club-flyer-form" data-collapsible="true">
         <input type="hidden" name="id" value="" />
-        <h4 class="full">Flyer details</h4>
+        <h4 class="full">Event Details</h4>
         <div class="cc-field pp-col-4"><label>Date</label><input type="date" name="eventDate" required /></div>
         <div class="cc-field pp-col-8"><label>Title</label><input name="title" /></div>
         <div class="cc-field full"><label>Description</label><textarea name="description"></textarea></div>
         <h4 class="full">Media & publishing</h4>
         <div class="cc-field pp-col-6"><label>Image URL</label><input name="imageUrl" /></div>
-        <div class="cc-field pp-col-6"><label>Image path</label><input name="imagePath" /></div>
-        <div class="cc-field pp-col-4"><label>Sort order</label><input type="number" name="sortOrder" value="0" /></div>
-        <div class="cc-field pp-col-4"><label>Status</label><select name="isActive"><option value="true">active</option><option value="false">inactive</option></select></div>
-        <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-save-flyer>Save flyer</button></div>
+        <div class="cc-field pp-col-6"><label>Storage Path</label><input name="imagePath" /></div>
+        <div class="cc-field pp-col-4"><label>Display Order</label><input type="number" name="sortOrder" value="0" /></div>
+        <div class="cc-field pp-col-4"><label>Publish Status</label><select name="isActive"><option value="true">Active</option><option value="false">Inactive</option></select></div>
+        <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-save-flyer>Save Changes</button></div>
       </form>`
-          : `<p class="admin-note">Flyer form hidden until you click Add new or Edit.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-flyer-form">Add new flyer</button>`
+          : `<p class="admin-note">Flyer form hidden until you click Add new or Edit.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-flyer-form">Open Form</button>`
       }
     `;
     const promotersSection = `
@@ -314,8 +314,8 @@ export async function initClubPortal(): Promise<void> {
       <div class="admin-form club-form-grid">
         <div class="cc-field"><label>Email</label><input id="club-invite-email" type="email" placeholder="club@domain.com" /></div>
         <div class="cc-field"><label>Role</label><select id="club-invite-role"><option value="owner">owner</option><option value="manager">manager</option><option value="editor">editor</option></select></div>
-        <div class="cc-field full"><label>Notes</label><input id="club-invite-notes" /></div>
-        <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" id="club-invite-issue">Generate invite code</button></div>
+        <div class="cc-field full"><label>Notes (Internal)</label><input id="club-invite-notes" /></div>
+        <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" id="club-invite-issue">Generate Invite Code</button></div>
         <p class="admin-note full" id="club-invite-code"></p>
       </div>
       `
