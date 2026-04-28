@@ -1344,6 +1344,29 @@ export async function insertFinancialTransaction(
   const txDate = input.txDate.trim().slice(0, 10);
   const category = input.category.trim();
   if (!txDate || !category) return { ok: false, message: "Date and category are required." };
+  let payeeId = input.payeeId?.trim() || null;
+  let payeeLabel = input.payeeLabel.trim();
+  if (payeeId) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .eq("id", payeeId)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    payeeLabel = payeeLabel || String((data as Raw | null)?.name ?? "").trim();
+  } else if (payeeLabel) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .ilike("name", payeeLabel.replace(/%/g, ""))
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    if (data) {
+      payeeId = String((data as Raw).id ?? "");
+      payeeLabel = String((data as Raw).name ?? "").trim() || payeeLabel;
+    }
+  }
   const { error } = await supabase.from("financial_transactions").insert({
     tx_date: txDate,
     category,
@@ -1354,8 +1377,8 @@ export async function insertFinancialTransaction(
     currency: input.currency.trim() || "GBP",
     convert_foreign: Boolean(input.convertForeign),
     source_type: "manual",
-    payee_id: input.payeeId?.trim() || null,
-    payee_label: input.payeeLabel.trim(),
+    payee_id: payeeId,
+    payee_label: payeeLabel,
     notes: input.notes.trim(),
   });
   if (error) return { ok: false, message: error.message };
@@ -1382,6 +1405,29 @@ export async function upsertFinancialTransaction(
   const txDate = input.txDate.trim().slice(0, 10);
   const category = input.category.trim();
   if (!txDate || !category) return { ok: false, message: "Date and category are required." };
+  let payeeId = input.payeeId?.trim() || null;
+  let payeeLabel = input.payeeLabel.trim();
+  if (payeeId) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .eq("id", payeeId)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    payeeLabel = payeeLabel || String((data as Raw | null)?.name ?? "").trim();
+  } else if (payeeLabel) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .ilike("name", payeeLabel.replace(/%/g, ""))
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    if (data) {
+      payeeId = String((data as Raw).id ?? "");
+      payeeLabel = String((data as Raw).name ?? "").trim() || payeeLabel;
+    }
+  }
   const row = {
     id: input.id?.trim() || undefined,
     tx_date: txDate,
@@ -1393,8 +1439,8 @@ export async function upsertFinancialTransaction(
     currency: input.currency.trim() || "GBP",
     convert_foreign: Boolean(input.convertForeign),
     source_type: "manual",
-    payee_id: input.payeeId?.trim() || null,
-    payee_label: input.payeeLabel.trim(),
+    payee_id: payeeId,
+    payee_label: payeeLabel,
     notes: input.notes.trim(),
   };
   const { error } = await supabase.from("financial_transactions").upsert(row, { onConflict: "id" });
@@ -1444,6 +1490,29 @@ export async function upsertFinancialRecurringTemplate(
   if (!label || !category || !nextDueDate) {
     return { ok: false, message: "Label, category, and next due date are required." };
   }
+  let payeeId = input.payeeId?.trim() || null;
+  let payeeLabel = input.payeeLabel.trim();
+  if (payeeId) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .eq("id", payeeId)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    payeeLabel = payeeLabel || String((data as Raw | null)?.name ?? "").trim();
+  } else if (payeeLabel) {
+    const { data, error } = await supabase
+      .from("financial_payees")
+      .select("id,name")
+      .ilike("name", payeeLabel.replace(/%/g, ""))
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false, message: error.message };
+    if (data) {
+      payeeId = String((data as Raw).id ?? "");
+      payeeLabel = String((data as Raw).name ?? "").trim() || payeeLabel;
+    }
+  }
   const row = {
     id: input.id?.trim() || undefined,
     label,
@@ -1454,8 +1523,8 @@ export async function upsertFinancialRecurringTemplate(
     amount: Number(input.amount) || 0,
     currency: input.currency.trim() || "GBP",
     convert_foreign: Boolean(input.convertForeign),
-    payee_id: input.payeeId?.trim() || null,
-    payee_label: input.payeeLabel.trim(),
+    payee_id: payeeId,
+    payee_label: payeeLabel,
     notes: input.notes.trim(),
     interval_days: Math.max(1, Math.round(Number(input.intervalDays) || 1)),
     recurrence_unit: input.recurrenceUnit,

@@ -349,3 +349,91 @@ export interface FinancialPeriodSummary {
   net: number;
   txCount: number;
 }
+
+export type FinancialDepartment = "nightlife" | "transport" | "protection" | "other";
+export type FinancialLogicType = "headcount_pay" | "commission_percent" | "flat_fee";
+export type FinancialBonusType = "flat" | "stacking" | "none";
+export type FinancialPaymentStatus = "expected" | "attended" | "paid_final";
+
+export interface FinancialRule {
+  id: string;
+  department: FinancialDepartment;
+  clubSlug: string | null;
+  venueOrServiceName: string;
+  maleRate: number;
+  femaleRate: number;
+  baseRate: number;
+  logicType: FinancialLogicType;
+  bonusType: FinancialBonusType;
+  bonusGoal: number;
+  bonusAmount: number;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface FinancialPromoterProfile {
+  id: string;
+  userId: string | null;
+  name: string;
+  commissionPercentage: number;
+  isActive: boolean;
+  contact: string;
+  notes: string;
+}
+
+export interface FinancialBooking {
+  id: string;
+  bookingReference: string;
+  bookingDate: string;
+  department: FinancialDepartment;
+  clubSlug: string | null;
+  promoterId: string | null;
+  promoterName: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  ruleId: string | null;
+  venueOrServiceName: string;
+  paymentStatus: FinancialPaymentStatus;
+  maleGuests: number;
+  femaleGuests: number;
+  totalSpend: number;
+  otherCosts: number;
+  totalGuests: number;
+  totalRevenue: number;
+  bonus: number;
+  bonusGoal: number;
+  nearMissBonusGoal: boolean;
+  projectedAgencyProfit: number;
+  realizedAgencyProfit: number;
+}
+
+export interface FinancialDashboardSnapshot {
+  totalRealizedProfit: number;
+  nightlifeRealizedProfit: number;
+  transportRealizedProfit: number;
+  protectionRealizedProfit: number;
+  otherRealizedProfit: number;
+  totalNightlifeGuests: number;
+  avgNightlifeProfitPerGuest: number;
+  outstandingProjectedProfit: number;
+  realizedProjectedProfit: number;
+  topPromoterName: string | null;
+  topPromoterRealizedProfit: number;
+}
+
+export interface FinancialConfigChangeRequest {
+  id: string;
+  targetType: "financial_rule" | "financial_promoter";
+  targetId: string;
+  payload: Record<string, unknown>;
+  requestedBy: string;
+  requestedByLabel: string;
+  clubSlug: string | null;
+  clubName: string | null;
+  status: "pending" | "approved" | "rejected";
+  reviewedBy: string | null;
+  reviewNotes: string;
+  createdAt: string;
+  reviewedAt: string | null;
+}

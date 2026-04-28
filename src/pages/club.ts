@@ -11,6 +11,11 @@ import {
   submitClubEditRevision,
   submitJobDispute,
 } from "../admin/clubs";
+import {
+  listFinancialBookings,
+  listFinancialRules,
+  submitFinancialConfigChangeRequest,
+} from "../admin/financial-tracking";
 import { renderStatusBadge } from "../portal/badge";
 import { mountDataTable } from "../portal/data-table";
 import { getSupabaseClient } from "../lib/supabase";
@@ -221,6 +226,12 @@ export async function initClubPortal(): Promise<void> {
         .eq("club_slug", activeClubSlug)
         .in("status", ["open", "under_review"]),
     ]);
+    const ruleRes = await listFinancialRules(supabase);
+    const year = new Date().getFullYear();
+    const bookingRes = await listFinancialBookings(supabase, {
+      from: `${year}-01-01`,
+      to: `${year}-12-31`,
+    });
     if (!clubRes.ok) {
       root.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">${esc(clubRes.message)}</p></div>`;
       return;
@@ -230,6 +241,24 @@ export async function initClubPortal(): Promise<void> {
     const promoterRows = promoterRes.ok ? promoterRes.rows : [];
     const jobRows = jobsRes.ok ? jobsRes.rows : [];
     const pendingDisputes = disputeRes.count ?? 0;
+    const clubFinancialRule = ruleRes.ok
+      ? ruleRes.data.find(
+          (r) =>
+            r.department === "nightlife" &&
+            r.isActive &&
+            (r.clubSlug?.toLowerCase() === activeClubSlug.toLowerCase() ||
+              r.venueOrServiceName.toLowerCase() === activeClubSlug.toLowerCase() ||
+              r.venueOrServiceName.toLowerCase() === String(club.name || "").toLowerCase()),
+        ) ?? null
+      : null;
+    const clubFinancialBookings = bookingRes.ok
+      ? bookingRes.data.filter(
+          (row) => String(row.clubSlug || "").toLowerCase() === activeClubSlug.toLowerCase(),
+        )
+      : [];
+    const clubPaidFinalProfit = clubFinancialBookings
+      .filter((row) => row.paymentStatus === "paid_final")
+      .reduce((sum, row) => sum + row.realizedAgencyProfit, 0);
 
     const sidebarHtml = navBlocks(actingAsAdmin)
       .map(
@@ -253,8 +282,10 @@ export async function initClubPortal(): Promise<void> {
         <article><p>Promoters</p><strong>${promoterRows.length}</strong></article>
         <article><p>Jobs linked</p><strong>${jobRows.length}</strong></article>
         <article><p>Open disputes</p><strong>${pendingDisputes}</strong></article>
+        <article><p>Finance bookings (YTD)</p><strong>${clubFinancialBookings.length}</strong></article>
+        <article><p>Paid-final profit (YTD)</p><strong>£${clubPaidFinalProfit.toFixed(2)}</strong></article>
       </div>
-      <p class="admin-note">Use the sidebar to jump between profile, flyers, promoters, and jobs/disputes management.</p>
+      <p class="admin-note">Use the sidebar to jump between profile, flyers, promoters, jobs/disputes, and club-linked finance controls.</p>
     `;
     const profileSection = `
       ${
@@ -272,9 +303,23 @@ export async function initClubPortal(): Promise<void> {
         <h4 class="full">Payment & Tax (Review Required)</h4>
         <div class="cc-field pp-col-4"><label>Payment method</label><input name="paymentMethod" value="${esc(club.paymentDetails?.method || "")}" /></div>
         <div class="cc-field pp-col-8"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
+        <h4 class="full">Financial Rates (Club Tracking)</h4>
+        ${
+          clubFinancialRule
+            ? `<div class="cc-field pp-col-4"><label>Male ratio</label><input name="clubMaleRate" type="number" step="0.01" value="${clubFinancialRule.maleRate}" /></div>
+        <div class="cc-field pp-col-4"><label>Female ratio</label><input name="clubFemaleRate" type="number" step="0.01" value="${clubFinancialRule.femaleRate}" /></div>
+        <div class="cc-field pp-col-4"><label>Base rate (£)</label><input name="clubBaseRate" type="number" step="0.01" value="${clubFinancialRule.baseRate}" /></div>
+        <p class="admin-note full">Current rule: ${esc(clubFinancialRule.venueOrServiceName)} (${esc(clubFinancialRule.logicType)}). Base rate is charged per guest; ratio values are for planning/tracking and changes are sent to admin approvals.</p>`
+            : `<p class="admin-note full">No active nightlife financial rule is linked to this club yet. Ask admin to create one first.</p>`
+        }
         <div class="admin-actions full">
           <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save Changes</button>
           <button type="button" class="cc-btn cc-btn--ghost" data-club-save="review">Submit for Review</button>
+          ${
+            clubFinancialRule
+              ? `<button type="button" class="cc-btn cc-btn--ghost" data-club-financial-request="${esc(clubFinancialRule.id)}">Submit rate update for approval</button>`
+              : ""
+          }
         </div>
       </form>`
           : `<p class="admin-note">Profile form hidden until you click edit/new.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-profile-form">Open Form</button>`
@@ -372,6 +417,43 @@ export async function initClubPortal(): Promise<void> {
       </section>
     `;
     applyCollapsibleFormSections(root);
+    const mountFormModal = (
+      formSelector: string,
+      title: string,
+      onClose: () => void,
+    ): void => {
+      const form = root.querySelector(formSelector) as HTMLElement | null;
+      if (!form || form.closest(".pp-modal")) return;
+      const host = document.createElement("div");
+      host.className = "pp-modal-host finx-modal-host";
+      host.innerHTML = `<div class="pp-modal__overlay">
+        <div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+          <div class="pp-modal__header">
+            <h4 class="pp-modal__title">${esc(title)}</h4>
+            <button type="button" class="pp-modal__close" aria-label="Close">×</button>
+          </div>
+          <div class="pp-modal__body"></div>
+        </div>
+      </div>`;
+      (host.querySelector(".pp-modal__body") as HTMLElement | null)?.append(form);
+      host.querySelector(".pp-modal__close")?.addEventListener("click", onClose);
+      host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
+        if (ev.target === ev.currentTarget) onClose();
+      });
+      root.append(host);
+    };
+    if (clubView === "profile" && clubProfileFormOpen) {
+      mountFormModal("#club-profile-form", "Club profile", () => {
+        clubProfileFormOpen = false;
+        void render();
+      });
+    }
+    if (clubView === "flyers" && clubFlyerFormOpen) {
+      mountFormModal("#club-flyer-form", "Flyer editor", () => {
+        clubFlyerFormOpen = false;
+        void render();
+      });
+    }
 
     if (actingAsAdmin) {
       root.querySelector("#club-admin-picker")?.addEventListener("change", (e) => {
@@ -407,7 +489,7 @@ export async function initClubPortal(): Promise<void> {
             key: "action",
             label: "Action",
             render: (f) =>
-              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-flyer-edit="${esc(f.id)}">Load</button>`,
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-flyer-edit="${esc(f.id)}">Edit</button>`,
           },
         ],
         empty: { title: "No flyers yet." },
@@ -616,6 +698,29 @@ export async function initClubPortal(): Promise<void> {
           },
         });
         flash(res.ok ? "Sensitive club edits submitted for admin review." : res.message, !res.ok);
+        await render();
+      })();
+    });
+    root.querySelector("[data-club-financial-request]")?.addEventListener("click", () => {
+      const form = root.querySelector("#club-profile-form") as HTMLFormElement | null;
+      const targetId = String(
+        (root.querySelector("[data-club-financial-request]") as HTMLElement | null)?.getAttribute(
+          "data-club-financial-request",
+        ) || "",
+      ).trim();
+      if (!form || !targetId) return;
+      const fd = new FormData(form);
+      void (async () => {
+        const res = await submitFinancialConfigChangeRequest(supabase, {
+          targetType: "financial_rule",
+          targetId,
+          payload: {
+            male_rate: Number(fd.get("clubMaleRate") || 0) || 0,
+            female_rate: Number(fd.get("clubFemaleRate") || 0) || 0,
+            base_rate: Number(fd.get("clubBaseRate") || 0) || 0,
+          },
+        });
+        flash(res.ok ? "Rate update submitted for admin approval." : res.message, !res.ok);
         await render();
       })();
     });

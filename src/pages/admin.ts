@@ -83,6 +83,20 @@ import {
   updatePromoterJob,
 } from "../admin/promoters";
 import {
+  archiveFinancialBooking,
+  archiveFinancialRule,
+  getFinancialDashboardSnapshot,
+  listFinancialConfigChangeRequests,
+  listFinancialBookings,
+  listFinancialPromoters,
+  listFinancialRules,
+  reviewFinancialConfigChangeRequest,
+  upsertFinancialPromoter,
+  upsertFinancialRule,
+  upsertNightlifeFinancialBooking,
+  upsertServiceFinancialBooking,
+} from "../admin/financial-tracking";
+import {
   callPromoterInvoiceEdge,
   downloadPdfFromBase64,
 } from "../lib/promoter-invoice-edge";
@@ -98,6 +112,11 @@ import type {
   FinancialStatus,
   FinancialRecurringTemplate,
   FinancialTransactionRow,
+  FinancialBooking,
+  FinancialConfigChangeRequest,
+  FinancialDashboardSnapshot,
+  FinancialPromoterProfile,
+  FinancialRule,
   Car,
   Club,
   ClubFlyer,
@@ -861,11 +880,14 @@ export async function initAdminPortal(): Promise<void> {
   let financialPeriodTo = "";
   let financialCalendarYear = new Date().getFullYear();
   let financialCalendarMonth = new Date().getMonth();
-  let financialViewMode: "calendar" | "table" = "calendar";
+  let financialViewMode: "calendar" | "table" = "table";
   let financialFilterDirection: "" | "income" | "expense" = "";
   let financialFilterStatus: "" | FinancialStatus = "";
   let financialFilterTag = "";
   let financialFilterPayeeId = "";
+  let financialScopePaymentStatus: "" | "expected" | "attended" | "paid_final" = "";
+  let financialScopePromoterId = "";
+  let financialScopeSearch = "";
   let financialSummary: FinancialPeriodSummary = {
     income: 0,
     expense: 0,
@@ -875,6 +897,23 @@ export async function initAdminPortal(): Promise<void> {
   let financialTransactions: FinancialTransactionRow[] = [];
   let financialRecurringTemplates: FinancialRecurringTemplate[] = [];
   let financialPayees: FinancialPayee[] = [];
+  let nativeFinancialRules: FinancialRule[] = [];
+  let nativeFinancialPromoters: FinancialPromoterProfile[] = [];
+  let nativeFinancialBookings: FinancialBooking[] = [];
+  let financialChangeRequests: FinancialConfigChangeRequest[] = [];
+  let nativeFinancialSnapshot: FinancialDashboardSnapshot = {
+    totalRealizedProfit: 0,
+    nightlifeRealizedProfit: 0,
+    transportRealizedProfit: 0,
+    protectionRealizedProfit: 0,
+    otherRealizedProfit: 0,
+    totalNightlifeGuests: 0,
+    avgNightlifeProfitPerGuest: 0,
+    outstandingProjectedProfit: 0,
+    realizedProjectedProfit: 0,
+    topPromoterName: null,
+    topPromoterRealizedProfit: 0,
+  };
   let financialEditingTemplateId: string | null = null;
   let financialEditingTxId: string | null = null;
   let financialBulkStatus: FinancialStatus = "paid";
@@ -882,6 +921,14 @@ export async function initAdminPortal(): Promise<void> {
   let financialEntryMode: "one_off" | "recurring" = "one_off";
   let financialPayeeOpen = false;
   let financialEditingPayeeId: string | null = null;
+  let financialRuleEditorOpen = false;
+  let financialEditingRuleId: string | null = null;
+  let financialPromoterEditorOpen = false;
+  let financialBookingEditorOpen = false;
+  let financialEditingBookingId: string | null = null;
+  let financialDeleteConfirmOpen = false;
+  let financialDeleteConfirmType: "rule" | "booking" | null = null;
+  let financialDeleteConfirmId: string | null = null;
   let financialDelegationBound = false;
   let guestlistQueueRows: PromoterGuestlistQueueRow[] = [];
   let guestlistQueueDelegationBound = false;
@@ -917,6 +964,7 @@ export async function initAdminPortal(): Promise<void> {
     email: "",
     username: "",
   };
+  let promoterAccountSeedRows: PromoterProfile[] = [];
   void [_promoterAvailability, _promoterPreferences, _financialRows];
 
   async function loadClubEntries(): Promise<ClubEntry[]> {
@@ -1102,6 +1150,37 @@ export async function initAdminPortal(): Promise<void> {
     financialRecurringTemplates = recurring.ok ? recurring.rows : [];
     const payees = await loadFinancialPayees(supabase);
     financialPayees = payees.ok ? payees.rows : [];
+    const [rulesRes, promotersRes, bookingsRes, snapshotRes] = await Promise.all([
+      listFinancialRules(supabase),
+      listFinancialPromoters(supabase),
+      listFinancialBookings(supabase, {
+        from,
+        to,
+      }),
+      getFinancialDashboardSnapshot(supabase, from, to),
+    ]);
+    nativeFinancialRules = rulesRes.ok ? rulesRes.data : [];
+    nativeFinancialPromoters = promotersRes.ok ? promotersRes.data : [];
+    nativeFinancialBookings = bookingsRes.ok ? bookingsRes.data : [];
+    const promoterSeedRes = await loadPromotersForAdmin(supabase);
+    promoterAccountSeedRows = promoterSeedRes.ok ? promoterSeedRes.rows : [];
+    const reqRes = await listFinancialConfigChangeRequests(supabase, { status: "pending" });
+    financialChangeRequests = reqRes.ok ? reqRes.data : [];
+    nativeFinancialSnapshot = snapshotRes.ok
+      ? snapshotRes.data
+      : {
+          totalRealizedProfit: 0,
+          nightlifeRealizedProfit: 0,
+          transportRealizedProfit: 0,
+          protectionRealizedProfit: 0,
+          otherRealizedProfit: 0,
+          totalNightlifeGuests: 0,
+          avgNightlifeProfitPerGuest: 0,
+          outstandingProjectedProfit: 0,
+          realizedProjectedProfit: 0,
+          topPromoterName: null,
+          topPromoterRealizedProfit: 0,
+        };
   }
 
   async function saveFinancialTxPatch(
@@ -1896,6 +1975,356 @@ export async function initAdminPortal(): Promise<void> {
     const payeeFilterOptions = `<option value="">All payees</option>${financialPayees
       .map((p) => `<option value="${escapeAttr(p.id)}"${financialFilterPayeeId === p.id ? " selected" : ""}>${escapeAttr(p.name)}</option>`)
       .join("")}`;
+    const ruleOptions = nativeFinancialRules
+      .filter((r) => r.isActive)
+      .map(
+        (r) =>
+          `<option value="${escapeAttr(r.id)}" data-male-rate="${r.maleRate}" data-female-rate="${r.femaleRate}" data-bonus-goal="${r.bonusGoal}" data-bonus-type="${escapeAttr(r.bonusType)}" data-bonus-amount="${r.bonusAmount}">${escapeAttr(`${r.department} · ${r.venueOrServiceName}`)}</option>`,
+      )
+      .join("");
+    const promoterOptions = nativeFinancialPromoters
+      .filter((p) => p.isActive)
+      .map((p) => `<option value="${escapeAttr(p.id)}">${escapeAttr(p.name)}</option>`)
+      .join("");
+    const promoterAccountOptions = promoterAccountSeedRows
+      .map(
+        (p) =>
+          `<option value="${escapeAttr(p.userId)}">${escapeAttr(`${p.displayName} (${p.userId.slice(0, 8)}…)`)}</option>`,
+      )
+      .join("");
+    const clubOptions = clubEntries
+      .filter((c) => c.club.slug.trim())
+      .map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name || c.club.slug)}</option>`)
+      .join("");
+    const pendingApprovalRows =
+      financialChangeRequests.length === 0
+        ? "<tr><td colspan='9' class='admin-note'>No pending approvals.</td></tr>"
+        : financialChangeRequests
+            .map(
+              (r) =>
+                `<tr><td>${escapeAttr(r.targetType)}</td><td><code>${escapeAttr(r.targetId.slice(0, 8))}…</code></td><td>${escapeAttr(r.clubName || r.clubSlug || "—")}</td><td>${escapeAttr(r.requestedByLabel || "—")}</td><td>${escapeAttr(r.createdAt.slice(0, 10))}</td><td class="admin-list-col--wide"><code>${escapeAttr(JSON.stringify(r.payload).slice(0, 90))}</code></td><td>${renderStatusBadge(r.status)}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-approval="${escapeAttr(r.id)}" data-approve="true">Approve</button> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-approval="${escapeAttr(r.id)}" data-approve="false">Reject</button></td></tr>`,
+            )
+            .join("");
+    const nightlifeRows = nativeFinancialBookings
+      .filter((b) => b.department === "nightlife")
+      .slice(0, 30)
+      .map((b) => {
+        const statusLabel =
+          b.paymentStatus === "paid_final"
+            ? "Paid & Final"
+            : b.paymentStatus === "attended"
+              ? "Attended"
+              : "Expected";
+        const nearMiss = b.nearMissBonusGoal;
+        return `<tr>
+          <td>${escapeAttr(b.bookingReference)}</td>
+          <td>${escapeAttr(b.bookingDate)}</td>
+          <td>${escapeAttr(b.promoterName || "—")}</td>
+          <td>${escapeAttr(adminDisplayTruncate(b.venueOrServiceName, 24))}</td>
+          <td>${b.maleGuests}</td>
+          <td>${b.femaleGuests}</td>
+          <td>${b.totalGuests}</td>
+          <td>${escapeAttr(`£${b.totalRevenue.toFixed(2)}`)}</td>
+          <td>${escapeAttr(`£${b.bonus.toFixed(2)}`)}${nearMiss ? ` <span class="pp-badge pp-badge--warning"><span class="pp-badge__dot"></span><span class="pp-badge__text">near miss</span></span>` : ""}</td>
+          <td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td>
+          <td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td>
+          <td>${renderStatusBadge(statusLabel)}</td>
+        </tr>`;
+      })
+      .join("");
+    const serviceRows = nativeFinancialBookings
+      .filter((b) => b.department === "transport" || b.department === "protection")
+      .slice(0, 30)
+      .map((b) => {
+        const statusLabel =
+          b.paymentStatus === "paid_final"
+            ? "Paid & Final"
+            : b.paymentStatus === "attended"
+              ? "Attended"
+              : "Expected";
+        return `<tr>
+          <td>${escapeAttr(b.bookingReference)}</td>
+          <td>${escapeAttr(b.bookingDate)}</td>
+          <td>${escapeAttr(b.department)}</td>
+          <td>${escapeAttr(adminDisplayTruncate(b.venueOrServiceName, 28))}</td>
+          <td>${escapeAttr(b.clientName || "—")}</td>
+          <td>${escapeAttr(`£${b.totalSpend.toFixed(2)}`)}</td>
+          <td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td>
+          <td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td>
+          <td>${renderStatusBadge(statusLabel)}</td>
+        </tr>`;
+      })
+      .join("");
+    const promoterLeaderboard = Object.values(
+      nativeFinancialBookings.reduce<Record<string, { name: string; profit: number; guests: number; bookings: number }>>(
+        (acc, row) => {
+          const key = row.promoterId || row.promoterName || "unassigned";
+          if (!acc[key]) {
+            acc[key] = { name: row.promoterName || "Unassigned", profit: 0, guests: 0, bookings: 0 };
+          }
+          acc[key].profit += row.realizedAgencyProfit;
+          acc[key].guests += row.totalGuests;
+          acc[key].bookings += 1;
+          return acc;
+        },
+        {},
+      ),
+    )
+      .sort((a, b) => b.profit - a.profit)
+      .slice(0, 10)
+      .map(
+        (r) =>
+          `<tr><td>${escapeAttr(r.name)}</td><td>${escapeAttr(`£${r.profit.toFixed(2)}`)}</td><td>${r.guests}</td><td>${r.bookings}</td><td>${r.bookings ? escapeAttr(`£${(r.profit / r.bookings).toFixed(2)}`) : "£0.00"}</td></tr>`,
+      )
+      .join("");
+    const activePortalView = new URLSearchParams(window.location.search).get("view") || "";
+    const financeScope =
+      activePortalView.startsWith("admin.financial_") ? activePortalView : "admin.financial_dashboard";
+    if (financeScope === "admin.financial_rules") {
+      const rulesRows =
+        nativeFinancialRules.length === 0
+          ? "<tr><td colspan='12' class='admin-note'>No financial rules yet.</td></tr>"
+          : nativeFinancialRules
+              .map(
+                (r) =>
+                  `<tr>
+                    <td>${escapeAttr(r.department)}</td>
+                    <td>${escapeAttr(r.clubSlug || "—")}</td>
+                    <td>${escapeAttr(r.venueOrServiceName)}</td>
+                    <td>${escapeAttr(r.logicType)}</td>
+                    <td>${escapeAttr(r.maleRate.toFixed(2))}</td>
+                    <td>${escapeAttr(r.femaleRate.toFixed(2))}</td>
+                    <td>${escapeAttr(`£${r.baseRate.toFixed(2)}`)}</td>
+                    <td>${escapeAttr(r.bonusType)}</td>
+                    <td>${r.bonusGoal}</td>
+                    <td>${escapeAttr(`£${r.bonusAmount.toFixed(2)}`)}</td>
+                    <td>${renderStatusBadge(r.isActive ? "active" : "inactive")}</td>
+                    <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-rule="${escapeAttr(r.id)}">Edit</button> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-delete-rule="${escapeAttr(r.id)}">Delete</button></td>
+                  </tr>`,
+              )
+              .join("");
+      return `
+        <div class="admin-form finx-card">
+          <h4 class="full">Financial Rules</h4>
+          <p class="admin-note full">Dedicated rules workspace. Create rules here and verify they persist immediately in the table.</p>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-rule-editor="open">Create new rule</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-refresh>Refresh period</button>
+          </div>
+          <div class="promoter-table-wrap full">
+            <table>
+              <thead><tr><th>Department</th><th>Club</th><th>Venue/Service</th><th>Logic</th><th>Male ratio</th><th>Female ratio</th><th>Base</th><th>Bonus</th><th>Goal</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>${rulesRows}</tbody>
+            </table>
+          </div>
+        </div>
+        ${
+          financialRuleEditorOpen
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial rule"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial rule</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save rule</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
+            : ""
+        }
+        ${
+          financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            : ""
+        }
+      `;
+    }
+    if (financeScope === "admin.financial_nightlife") {
+      const nightlifeFiltered = nativeFinancialBookings.filter((b) => {
+        if (b.department !== "nightlife") return false;
+        if (financialScopePaymentStatus && b.paymentStatus !== financialScopePaymentStatus) return false;
+        if (financialScopePromoterId && (b.promoterId || "") !== financialScopePromoterId) return false;
+        if (financialScopeSearch) {
+          const q = financialScopeSearch.toLowerCase();
+          const hay = `${b.bookingReference} ${b.venueOrServiceName} ${b.promoterName || ""}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+      const nightlifeRowsScoped = nightlifeFiltered
+        .slice(0, 50)
+        .map((b) => {
+          const statusLabel =
+            b.paymentStatus === "paid_final"
+              ? "Paid & Final"
+              : b.paymentStatus === "attended"
+                ? "Attended"
+                : "Expected";
+          const nearMiss = b.nearMissBonusGoal;
+          return `<tr>
+            <td>${escapeAttr(b.bookingReference)}</td>
+            <td>${escapeAttr(b.bookingDate)}</td>
+            <td>${escapeAttr(b.promoterName || "—")}</td>
+            <td>${escapeAttr(adminDisplayTruncate(b.venueOrServiceName, 24))}</td>
+            <td>${b.maleGuests}</td>
+            <td>${b.femaleGuests}</td>
+            <td>${b.totalGuests}</td>
+            <td>${escapeAttr(`£${b.totalRevenue.toFixed(2)}`)}</td>
+            <td>${escapeAttr(`£${b.bonus.toFixed(2)}`)}${nearMiss ? ` <span class="pp-badge pp-badge--warning"><span class="pp-badge__dot"></span><span class="pp-badge__text">near miss</span></span>` : ""}</td>
+            <td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td>
+            <td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td>
+            <td>${renderStatusBadge(statusLabel)}</td>
+            <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-booking="${escapeAttr(b.id)}">Edit</button> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-delete-booking="${escapeAttr(b.id)}">Delete</button></td>
+          </tr>`;
+        })
+        .join("");
+      const promoterScopeOptions = `<option value="">All promoters</option>${nativeFinancialPromoters
+        .map((p) => `<option value="${escapeAttr(p.id)}"${financialScopePromoterId === p.id ? " selected" : ""}>${escapeAttr(p.name)}</option>`)
+        .join("")}`;
+      return `
+        <div class="admin-form finx-card">
+          <h4 class="full">Nightlife Tracking</h4>
+          <p class="admin-note full">Nightlife-only financial bookings with guest and bonus visibility.</p>
+          <form id="financial-scope-form" class="full">
+            <div class="cc-field"><label>Status</label><select name="scopePaymentStatus"><option value=""${financialScopePaymentStatus === "" ? " selected" : ""}>All</option><option value="expected"${financialScopePaymentStatus === "expected" ? " selected" : ""}>Expected</option><option value="attended"${financialScopePaymentStatus === "attended" ? " selected" : ""}>Attended</option><option value="paid_final"${financialScopePaymentStatus === "paid_final" ? " selected" : ""}>Paid & Final</option></select></div>
+            <div class="cc-field"><label>Promoter</label><select name="scopePromoterId">${promoterScopeOptions}</select></div>
+            <div class="cc-field"><label>Search</label><input name="scopeSearch" value="${escapeAttr(financialScopeSearch)}" placeholder="ref / venue / promoter" /></div>
+            <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-fin-scope-apply>Apply filters</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-scope-reset>Reset</button></div>
+          </form>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-booking-editor="open">Create new booking</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-refresh>Refresh period</button>
+          </div>
+          <div class="promoter-table-wrap full">
+            <table>
+              <thead><tr><th>Ref</th><th>Date</th><th>Promoter</th><th>Venue</th><th>Male</th><th>Female</th><th>Guests</th><th>Revenue</th><th>Bonus</th><th>Projected</th><th>Realized</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>${nightlifeRowsScoped || "<tr><td colspan='13' class='admin-note'>No nightlife bookings in period.</td></tr>"}</tbody>
+            </table>
+          </div>
+        </div>
+        ${
+          financialBookingEditorOpen
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+            : ""
+        }
+        ${
+          financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            : ""
+        }
+      `;
+    }
+    if (financeScope === "admin.financial_transport" || financeScope === "admin.financial_protection") {
+      const dept = financeScope === "admin.financial_transport" ? "transport" : "protection";
+      const deptRows = nativeFinancialBookings
+        .filter((b) => {
+          if (b.department !== dept) return false;
+          if (financialScopePaymentStatus && b.paymentStatus !== financialScopePaymentStatus) return false;
+          if (financialScopeSearch) {
+            const q = financialScopeSearch.toLowerCase();
+            const hay = `${b.bookingReference} ${b.venueOrServiceName} ${b.clientName || ""}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        })
+        .slice(0, 40)
+        .map((b) => {
+          const statusLabel =
+            b.paymentStatus === "paid_final"
+              ? "Paid & Final"
+              : b.paymentStatus === "attended"
+                ? "Attended"
+                : "Expected";
+          return `<tr>
+            <td>${escapeAttr(b.bookingReference)}</td>
+            <td>${escapeAttr(b.bookingDate)}</td>
+            <td>${escapeAttr(adminDisplayTruncate(b.venueOrServiceName, 28))}</td>
+            <td>${escapeAttr(b.clientName || "—")}</td>
+            <td>${escapeAttr(`£${b.totalSpend.toFixed(2)}`)}</td>
+            <td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td>
+            <td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td>
+            <td>${renderStatusBadge(statusLabel)}</td>
+            <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-booking="${escapeAttr(b.id)}">Edit</button> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-delete-booking="${escapeAttr(b.id)}">Delete</button></td>
+          </tr>`;
+        })
+        .join("");
+      return `
+        <div class="admin-form finx-card">
+          <h4 class="full">${dept === "transport" ? "Transport" : "Protection"} Tracking</h4>
+          <p class="admin-note full">${dept === "transport" ? "Transport" : "Protection"}-only financial rows.</p>
+          <form id="financial-scope-form" class="full">
+            <div class="cc-field"><label>Status</label><select name="scopePaymentStatus"><option value=""${financialScopePaymentStatus === "" ? " selected" : ""}>All</option><option value="expected"${financialScopePaymentStatus === "expected" ? " selected" : ""}>Expected</option><option value="attended"${financialScopePaymentStatus === "attended" ? " selected" : ""}>Attended</option><option value="paid_final"${financialScopePaymentStatus === "paid_final" ? " selected" : ""}>Paid & Final</option></select></div>
+            <div class="cc-field"><label>Search</label><input name="scopeSearch" value="${escapeAttr(financialScopeSearch)}" placeholder="ref / service / client" /></div>
+            <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-fin-scope-apply>Apply filters</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-scope-reset>Reset</button></div>
+          </form>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-booking-editor="open">Create new booking</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-refresh>Refresh period</button>
+          </div>
+          <div class="promoter-table-wrap full">
+            <table>
+              <thead><tr><th>Ref</th><th>Date</th><th>Service</th><th>Client</th><th>Total spend</th><th>Projected</th><th>Realized</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>${deptRows || "<tr><td colspan='9' class='admin-note'>No rows in period.</td></tr>"}</tbody>
+            </table>
+          </div>
+        </div>
+        ${
+          financialBookingEditorOpen
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+            : ""
+        }
+        ${
+          financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            : ""
+        }
+      `;
+    }
+    if (financeScope === "admin.financial_promoters") {
+      const promoterLeaderboardScoped = Object.values(
+        nativeFinancialBookings.reduce<Record<string, { name: string; profit: number; guests: number; bookings: number }>>(
+          (acc, row) => {
+            if (financialScopeSearch) {
+              const q = financialScopeSearch.toLowerCase();
+              const name = String(row.promoterName || "").toLowerCase();
+              if (!name.includes(q)) return acc;
+            }
+            const key = row.promoterId || row.promoterName || "unassigned";
+            if (!acc[key]) {
+              acc[key] = { name: row.promoterName || "Unassigned", profit: 0, guests: 0, bookings: 0 };
+            }
+            acc[key].profit += row.realizedAgencyProfit;
+            acc[key].guests += row.totalGuests;
+            acc[key].bookings += 1;
+            return acc;
+          },
+          {},
+        ),
+      )
+        .sort((a, b) => b.profit - a.profit)
+        .slice(0, 20)
+        .map(
+          (r) =>
+            `<tr><td>${escapeAttr(r.name)}</td><td>${escapeAttr(`£${r.profit.toFixed(2)}`)}</td><td>${r.guests}</td><td>${r.bookings}</td><td>${r.bookings ? escapeAttr(`£${(r.profit / r.bookings).toFixed(2)}`) : "£0.00"}</td></tr>`,
+        )
+        .join("");
+      return `
+        <div class="admin-form finx-card">
+          <h4 class="full">Promoter Hub</h4>
+          <p class="admin-note full">Commission and performance leaderboard from paid-final realized agency profit.</p>
+          <form id="financial-scope-form" class="full">
+            <div class="cc-field"><label>Search promoter</label><input name="scopeSearch" value="${escapeAttr(financialScopeSearch)}" placeholder="promoter name" /></div>
+            <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-fin-scope-apply>Apply filters</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-scope-reset>Reset</button></div>
+          </form>
+          <div class="admin-actions full">
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-promoter-editor="open">Create new promoter</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-refresh>Refresh period</button>
+          </div>
+          <div class="promoter-table-wrap full">
+            <table>
+              <thead><tr><th>Promoter</th><th>Paid-final profit</th><th>Guests</th><th>Bookings</th><th>Avg profit/booking</th></tr></thead>
+              <tbody>${promoterLeaderboardScoped || "<tr><td colspan='5' class='admin-note'>No promoter data in period.</td></tr>"}</tbody>
+            </table>
+          </div>
+        </div>
+        ${
+          financialPromoterEditorOpen
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial promoter"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial promoter</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
+            : ""
+        }
+      `;
+    }
 
     return `
       <div class="admin-form">
@@ -1914,9 +2343,28 @@ export async function initAdminPortal(): Promise<void> {
             <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-entry="one_off">New one-off</button>
             <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-entry="recurring">New recurring</button>
             <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-payee>Manage payees</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-rule-editor="open">Create new rule</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-promoter-editor="open">Create new promoter</button>
+            <button type="button" class="cc-btn cc-btn--ghost" data-fin-open-booking-editor="open">Create new booking</button>
           </div>
         </form>
-        <p class="admin-note full"><strong>Income:</strong> ${escapeAttr(`£${financialSummary.income.toFixed(2)}`)} · <strong>Expense:</strong> ${escapeAttr(`£${financialSummary.expense.toFixed(2)}`)} · <strong>Net:</strong> ${escapeAttr(`£${financialSummary.net.toFixed(2)}`)} · <strong>Transactions:</strong> ${financialSummary.txCount}</p>
+        <p class="admin-note full">View inspired by modern finance dashboards: high-level KPI first, then action queues and detailed ledgers.</p>
+        <p class="admin-note full"><strong>Ledger period:</strong> Income ${escapeAttr(`£${financialSummary.income.toFixed(2)}`)} · Expense ${escapeAttr(`£${financialSummary.expense.toFixed(2)}`)} · Net ${escapeAttr(`£${financialSummary.net.toFixed(2)}`)} · ${financialSummary.txCount} transactions</p>
+        <div class="finx-kpi-grid full">
+          <article class="finx-kpi"><p class="finx-kpi__label">Realized agency profit</p><p class="finx-kpi__value">${escapeAttr(`£${nativeFinancialSnapshot.totalRealizedProfit.toFixed(2)}`)}</p></article>
+          <article class="finx-kpi"><p class="finx-kpi__label">Outstanding projected</p><p class="finx-kpi__value">${escapeAttr(`£${nativeFinancialSnapshot.outstandingProjectedProfit.toFixed(2)}`)}</p></article>
+          <article class="finx-kpi"><p class="finx-kpi__label">Nightlife guests</p><p class="finx-kpi__value">${nativeFinancialSnapshot.totalNightlifeGuests}</p></article>
+          <article class="finx-kpi"><p class="finx-kpi__label">Top promoter</p><p class="finx-kpi__value finx-kpi__value--sm">${escapeAttr(nativeFinancialSnapshot.topPromoterName || "—")}</p><p class="finx-kpi__hint">${escapeAttr(`£${nativeFinancialSnapshot.topPromoterRealizedProfit.toFixed(2)} paid-final`)}</p></article>
+        </div>
+        <div class="finx-subkpi full">
+          <span>Nightlife ${escapeAttr(`£${nativeFinancialSnapshot.nightlifeRealizedProfit.toFixed(2)}`)}</span>
+          <span>Transport ${escapeAttr(`£${nativeFinancialSnapshot.transportRealizedProfit.toFixed(2)}`)}</span>
+          <span>Protection ${escapeAttr(`£${nativeFinancialSnapshot.protectionRealizedProfit.toFixed(2)}`)}</span>
+          <span>Other ${escapeAttr(`£${nativeFinancialSnapshot.otherRealizedProfit.toFixed(2)}`)}</span>
+          <span>${nativeFinancialRules.filter((x) => x.isActive).length} active rules</span>
+          <span>${nativeFinancialPromoters.length} promoter profiles</span>
+          <span>${nativeFinancialBookings.length} financial bookings</span>
+        </div>
         <p class="admin-note full fin-legend">
           <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--income-paid">income paid</span></span>
           <span class="fin-legend__item"><span class="admin-jobs__cal-pill fin-chip fin-chip--income-pending">income pending</span></span>
@@ -1926,18 +2374,73 @@ export async function initAdminPortal(): Promise<void> {
         </p>
       </div>
       ${
-        financialViewMode === "calendar"
-          ? `<div class="admin-form fin-cal" style="margin-top:1rem"><div class="admin-jobs__cal-toolbar full"><h4 class="admin-jobs__cal-title">Calendar · ${escapeAttr(monthTitle)}</h4><div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-year">-1y</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-month">Prev</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="today">Today</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-month">Next</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-year">+1y</button></div></div><p class="admin-note full">Drag a transaction chip to a different day to reschedule.</p><div class="admin-jobs__cal-grid fin-cal-grid">${calendarHead}${calendarCells.join("")}</div></div>`
-          : `<div class="admin-form" style="margin-top:1rem"><h4 class="full">Ledger table</h4><div class="admin-actions full" style="margin-bottom:0.65rem"><label class="admin-note" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" id="fin-select-all-tx" /> Select all</label><select id="fin-bulk-status"><option value="pending"${financialBulkStatus === "pending" ? " selected" : ""}>pending</option><option value="paid"${financialBulkStatus === "paid" ? " selected" : ""}>paid</option><option value="cancelled"${financialBulkStatus === "cancelled" ? " selected" : ""}>cancelled</option><option value="failed"${financialBulkStatus === "failed" ? " selected" : ""}>failed</option></select><button type="button" class="cc-btn cc-btn--ghost" data-fin-bulk-apply>Apply status to selected</button></div><div class="promoter-table-wrap full"><table><thead><tr><th></th><th>Date</th><th>Category</th><th>Tag</th><th>Dir</th><th>Status</th><th>Amount</th><th>Payee</th><th>Source</th><th>Notes</th><th>Logged</th><th>Action</th></tr></thead><tbody>${txRows}</tbody></table></div></div>`
+        financialRuleEditorOpen
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial rule"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial rule</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save rule</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
+          : ""
       }
-      <div class="admin-form" style="margin-top:1rem">
+      ${
+        financialPromoterEditorOpen
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial promoter"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial promoter</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
+          : ""
+      }
+      ${
+        financialBookingEditorOpen
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+          : ""
+      }
+      ${
+        financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+          : ""
+      }
+      <div class="admin-form finx-card" style="margin-top:1rem">
+        <h4 class="full">Pending approvals</h4>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Type</th><th>Target</th><th>Club</th><th>Requested by</th><th>Requested</th><th>Payload preview</th><th>Status</th><th>Actions</th></tr></thead><tbody>${pendingApprovalRows}</tbody></table></div>
+      </div>
+      ${
+        financialViewMode === "calendar"
+          ? `<div class="admin-form fin-cal finx-card" style="margin-top:1rem"><div class="admin-jobs__cal-toolbar full"><h4 class="admin-jobs__cal-title">Calendar · ${escapeAttr(monthTitle)}</h4><div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-year">-1y</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="prev-month">Prev</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="today">Today</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-month">Next</button><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-cal-nav="next-year">+1y</button></div></div><p class="admin-note full">Drag a transaction chip to a different day to reschedule.</p><div class="admin-jobs__cal-grid fin-cal-grid">${calendarHead}${calendarCells.join("")}</div></div>`
+          : `<div class="admin-form finx-card" style="margin-top:1rem"><h4 class="full">Ledger table</h4><div class="admin-actions full" style="margin-bottom:0.65rem"><label class="admin-note" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" id="fin-select-all-tx" /> Select all</label><select id="fin-bulk-status"><option value="pending"${financialBulkStatus === "pending" ? " selected" : ""}>pending</option><option value="paid"${financialBulkStatus === "paid" ? " selected" : ""}>paid</option><option value="cancelled"${financialBulkStatus === "cancelled" ? " selected" : ""}>cancelled</option><option value="failed"${financialBulkStatus === "failed" ? " selected" : ""}>failed</option></select><button type="button" class="cc-btn cc-btn--ghost" data-fin-bulk-apply>Apply status to selected</button></div><div class="promoter-table-wrap full"><table><thead><tr><th></th><th>Date</th><th>Category</th><th>Tag</th><th>Dir</th><th>Status</th><th>Amount</th><th>Payee</th><th>Source</th><th>Notes</th><th>Logged</th><th>Action</th></tr></thead><tbody>${txRows}</tbody></table></div></div>`
+      }
+      <div class="admin-form finx-card" style="margin-top:1rem">
         <h4 class="full">Recurring templates</h4>
         <div class="admin-actions full" style="margin-bottom:0.75rem"><button type="button" class="cc-btn cc-btn--gold" data-fin-apply-recurring>Apply recurring through period end</button></div>
         <div class="promoter-table-wrap full"><table><thead><tr><th>Label</th><th>Category</th><th>Tag</th><th>Dir</th><th>Status</th><th>Amount</th><th>Recurrence</th><th>Next due</th><th>Payee</th><th>Active</th><th>Actions</th></tr></thead><tbody>${recurringRows}</tbody></table></div>
       </div>
-      <div class="admin-form" style="margin-top:1rem">
+      <div class="admin-form finx-card" style="margin-top:1rem">
         <h4 class="full">Payees</h4>
         <div class="promoter-table-wrap full"><table><thead><tr><th>Name</th><th>Default tag</th><th>Default currency</th><th>Active</th><th>Action</th></tr></thead><tbody>${payeeRows}</tbody></table></div>
+      </div>
+      <div class="admin-form finx-card" style="margin-top:1rem">
+        <h4 class="full">Bookings requiring action</h4>
+        <div class="promoter-table-wrap full">
+          <table>
+            <thead><tr><th>Ref</th><th>Date</th><th>Dept</th><th>Venue/Service</th><th>Status</th><th>Projected</th><th>Realized</th></tr></thead>
+            <tbody>${
+              nativeFinancialBookings
+                .filter((b) => b.paymentStatus !== "paid_final")
+                .slice(0, 12)
+                .map(
+                  (b) =>
+                    `<tr><td>${escapeAttr(b.bookingReference)}</td><td>${escapeAttr(b.bookingDate)}</td><td>${escapeAttr(b.department)}</td><td>${escapeAttr(adminDisplayTruncate(b.venueOrServiceName, 30))}</td><td>${renderStatusBadge(b.paymentStatus === "expected" ? "Expected" : "Attended")}</td><td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td><td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td></tr>`,
+                )
+                .join("") || "<tr><td colspan='7' class='admin-note'>No outstanding bookings in this period.</td></tr>"
+            }</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="admin-form finx-card" style="margin-top:1rem">
+        <h4 class="full">Nightlife financial tracking</h4>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Ref</th><th>Date</th><th>Promoter</th><th>Venue</th><th>Male</th><th>Female</th><th>Guests</th><th>Revenue</th><th>Bonus</th><th>Projected</th><th>Realized</th><th>Status</th></tr></thead><tbody>${nightlifeRows || "<tr><td colspan='12' class='admin-note'>No nightlife bookings in period.</td></tr>"}</tbody></table></div>
+      </div>
+      <div class="admin-form finx-card" style="margin-top:1rem">
+        <h4 class="full">Transport & Protection tracking</h4>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Ref</th><th>Date</th><th>Dept</th><th>Service</th><th>Client</th><th>Total spend</th><th>Projected</th><th>Realized</th><th>Status</th></tr></thead><tbody>${serviceRows || "<tr><td colspan='9' class='admin-note'>No transport/protection bookings in period.</td></tr>"}</tbody></table></div>
+      </div>
+      <div class="admin-form finx-card" style="margin-top:1rem">
+        <h4 class="full">Promoter & commission hub</h4>
+        <p class="admin-note full">Leaderboard ranked by paid-final realized profit in the selected date range.</p>
+        <div class="promoter-table-wrap full"><table><thead><tr><th>Promoter</th><th>Paid-final profit</th><th>Total guests</th><th>Bookings</th><th>Avg profit/booking</th></tr></thead><tbody>${promoterLeaderboard || "<tr><td colspan='5' class='admin-note'>No promoter financial activity in period.</td></tr>"}</tbody></table></div>
       </div>
       ${
         financialEntryOpen
@@ -1951,9 +2454,15 @@ export async function initAdminPortal(): Promise<void> {
               const editingMode = tx ? "one_off" : tpl ? "recurring" : financialEntryMode;
               const recurringEvery = tpl?.recurrenceEvery ?? 1;
               const recurringUnit = tpl?.recurrenceUnit ?? "monthly";
-              return `<div class="admin-form" style="margin-top:1rem">
-                <h4 class="full">${tx || tpl ? "Edit" : "Create"} ${editingMode === "one_off" ? "ledger entry" : "recurring template"}</h4>
-                <form id="financial-entry-form" class="full">
+              return `<div class="pp-modal-host finx-modal-host">
+                <div class="pp-modal__overlay">
+                  <div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Financial entry editor">
+                    <div class="pp-modal__header">
+                      <h4 class="pp-modal__title">${tx || tpl ? "Edit" : "Create"} ${editingMode === "one_off" ? "ledger entry" : "recurring template"}</h4>
+                      <button type="button" class="pp-modal__close" data-fin-close-entry aria-label="Close">×</button>
+                    </div>
+                    <div class="pp-modal__body">
+                <form id="financial-entry-form" class="admin-form">
                   <input type="hidden" name="entryType" value="${editingMode}" />
                   <input type="hidden" name="txId" value="${escapeAttr(tx?.id ?? "")}" />
                   <input type="hidden" name="templateId" value="${escapeAttr(tpl?.id ?? "")}" />
@@ -1971,6 +2480,9 @@ export async function initAdminPortal(): Promise<void> {
                   <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2">${escapeAttr(tx?.notes ?? tpl?.notes ?? "")}</textarea></div>
                   <div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">${tx || tpl ? "Save changes" : "Create"}</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-entry>Close</button></div>
                 </form>
+                    </div>
+                  </div>
+                </div>
               </div>`;
             })()
           : ""
@@ -2126,17 +2638,17 @@ export async function initAdminPortal(): Promise<void> {
               <div class="admin-account">
                 <button type="button" class="admin-account__btn" id="admin-account-btn" aria-haspopup="menu" aria-expanded="false">Account</button>
                 <div class="admin-account__menu" id="admin-account-menu" role="menu" hidden>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="admin_profile">Profile settings</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="promoters">Operations: promoter management</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clients">Operations: client management</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="jobs">Operations: job management</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="financials">Operations: financial management</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_accounts">Operations: club accounts</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_edits">Operations: club edit queue</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="job_disputes">Operations: job disputes</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clubs">Website editing: clubs</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="cars">Website editing: cars</button>
-                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="flyers">Website editing: flyers</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="admin_profile">Open Profile Settings</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="promoters">Open Promoters</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clients">Open Clients</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="jobs">Open Jobs</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="financials">Open Financials</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_accounts">Open Club Accounts</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="club_edits">Open Club Edit Queue</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="job_disputes">Open Job Disputes</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="clubs">Open Clubs</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="cars">Open Cars</button>
+                  <button type="button" class="admin-account__item" role="menuitem" data-admin-menu-view="flyers">Open Flyers</button>
                   <button type="button" class="admin-account__item admin-account__item--danger" role="menuitem" id="admin-account-signout">Sign out</button>
                 </div>
               </div>
@@ -2192,7 +2704,8 @@ export async function initAdminPortal(): Promise<void> {
                           ? `<button class="pp-btn pp-btn--primary" type="button" id="admin-add-client-top">Add new</button>`
                           : view === "jobs"
                             ? `<button class="pp-btn ${jobsCreateOpen ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" id="jobs-create-toggle">Add new</button>
-                               <button class="pp-btn ${jobsCalendarOpen ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" id="jobs-calendar-toggle">Calendar</button>`
+                               <button class="pp-btn ${jobsCalendarOpen ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" id="jobs-calendar-toggle">Calendar</button>
+                               <button class="pp-btn pp-btn--ghost" type="button" id="jobs-open-financial">Financial jobs</button>`
                           : ""
                     }
                     <button class="pp-btn ${listViewMode === "table" ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" data-admin-list-view="table">Table</button>
@@ -2442,9 +2955,9 @@ export async function initAdminPortal(): Promise<void> {
                   ? `
               <h4 class="full">Promoter interactions</h4>
               <div class="admin-actions full">
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="jobs">Open job manager</button>
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="financials">Open financial manager</button>
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="invoices">Open invoices</button>
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="jobs">Open Jobs</button>
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="financials">Open Financials</button>
+                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="invoices">Open Invoices</button>
               </div>
               <div class="full promoter-table-wrap">
                 <table>
@@ -2508,7 +3021,7 @@ export async function initAdminPortal(): Promise<void> {
                               .join("");
                             return `${
                               clubAccountsFormOpen
-                                ? `<div class="admin-form">
+                                ? `<div class="admin-form" id="club-accounts-form">
                               <h4 class="full">Invite-only club account generation</h4>
                               <div class="cc-field"><label>Club slug</label><select id="club-account-slug">${clubOptions}</select></div>
                               <div class="cc-field"><label>Email</label><input id="club-account-email" type="email" placeholder="club@domain.com" /></div>
@@ -2678,8 +3191,166 @@ export async function initAdminPortal(): Promise<void> {
     }
   }
 
+  function mountDashboardFormModal(
+    formId: string,
+    title: string,
+    onClose: () => void,
+  ): void {
+    const form = adminRoot.querySelector<HTMLElement>(`#${formId}`);
+    if (!form || form.closest(".pp-modal")) return;
+    const host = document.createElement("div");
+    host.className = "pp-modal-host finx-modal-host";
+    host.innerHTML = `<div class="pp-modal__overlay">
+      <div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+        <div class="pp-modal__header">
+          <h4 class="pp-modal__title">${escapeAttr(title)}</h4>
+          <button type="button" class="pp-modal__close" aria-label="Close">×</button>
+        </div>
+        <div class="pp-modal__body"></div>
+      </div>
+    </div>`;
+    const body = host.querySelector(".pp-modal__body") as HTMLElement | null;
+    body?.append(form);
+    host.querySelector(".pp-modal__close")?.addEventListener("click", onClose);
+    host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) onClose();
+    });
+    adminRoot.append(host);
+  }
+
   function bindDashboardEvents(): void {
     applyCollapsibleFormSections(adminRoot);
+    const editingRule = financialEditingRuleId
+      ? nativeFinancialRules.find((r) => r.id === financialEditingRuleId) ?? null
+      : null;
+    const ruleFormEl = adminRoot.querySelector("#financial-rule-form") as HTMLFormElement | null;
+    if (ruleFormEl) {
+      const departmentEl = ruleFormEl.elements.namedItem("department") as HTMLSelectElement | null;
+      const logicTypeEl = ruleFormEl.elements.namedItem("logicType") as HTMLSelectElement | null;
+      const maleField = ruleFormEl.elements.namedItem("maleRate") as HTMLInputElement | null;
+      const femaleField = ruleFormEl.elements.namedItem("femaleRate") as HTMLInputElement | null;
+      const maleLabel = maleField?.closest(".cc-field")?.querySelector("label");
+      const femaleLabel = femaleField?.closest(".cc-field")?.querySelector("label");
+      if (maleLabel) maleLabel.textContent = "Male ratio";
+      if (femaleLabel) femaleLabel.textContent = "Female ratio";
+      const syncNightlifeLogicLock = (): void => {
+        if (!departmentEl || !logicTypeEl) return;
+        const nightlife = departmentEl.value === "nightlife";
+        if (nightlife) {
+          logicTypeEl.value = "flat_fee";
+          logicTypeEl.setAttribute("disabled", "true");
+          logicTypeEl.title = "Nightlife is locked to base-rate-per-guest model.";
+        } else {
+          logicTypeEl.removeAttribute("disabled");
+          logicTypeEl.title = "";
+        }
+      };
+      syncNightlifeLogicLock();
+      if (departmentEl && !departmentEl.dataset.logicLockBound) {
+        departmentEl.dataset.logicLockBound = "1";
+        departmentEl.addEventListener("change", syncNightlifeLogicLock);
+      }
+    }
+    if (ruleFormEl && editingRule) {
+      const deptEl = ruleFormEl.elements.namedItem("department") as HTMLSelectElement | null;
+      if (deptEl) deptEl.value = editingRule.department;
+      (ruleFormEl.elements.namedItem("clubSlug") as HTMLSelectElement | null)!.value =
+        editingRule.clubSlug || "";
+      (ruleFormEl.elements.namedItem("venueOrServiceName") as HTMLInputElement | null)!.value =
+        editingRule.venueOrServiceName;
+      (ruleFormEl.elements.namedItem("logicType") as HTMLSelectElement | null)!.value = editingRule.logicType;
+      (ruleFormEl.elements.namedItem("maleRate") as HTMLInputElement | null)!.value = String(editingRule.maleRate);
+      (ruleFormEl.elements.namedItem("femaleRate") as HTMLInputElement | null)!.value = String(editingRule.femaleRate);
+      (ruleFormEl.elements.namedItem("baseRate") as HTMLInputElement | null)!.value = String(editingRule.baseRate);
+      (ruleFormEl.elements.namedItem("bonusType") as HTMLSelectElement | null)!.value = editingRule.bonusType;
+      (ruleFormEl.elements.namedItem("bonusGoal") as HTMLInputElement | null)!.value = String(editingRule.bonusGoal);
+      (ruleFormEl.elements.namedItem("bonusAmount") as HTMLInputElement | null)!.value = String(editingRule.bonusAmount);
+      (ruleFormEl.elements.namedItem("effectiveFrom") as HTMLInputElement | null)!.value =
+        editingRule.effectiveFrom.slice(0, 10);
+    }
+    const editingBooking = financialEditingBookingId
+      ? nativeFinancialBookings.find((b) => b.id === financialEditingBookingId) ?? null
+      : null;
+    const bookingFormEl = adminRoot.querySelector("#financial-booking-form") as HTMLFormElement | null;
+    if (bookingFormEl) {
+      const venueInput = bookingFormEl.elements.namedItem("venueOrServiceName") as HTMLInputElement | null;
+      if (venueInput) {
+        const listId = "fin-venue-service-options";
+        venueInput.setAttribute("list", listId);
+        if (!adminRoot.querySelector(`#${listId}`)) {
+          const dl = document.createElement("datalist");
+          dl.id = listId;
+          dl.innerHTML = Array.from(
+            new Set(nativeFinancialBookings.map((b) => b.venueOrServiceName).filter(Boolean)),
+          )
+            .map((x) => `<option value="${escapeAttr(x)}"></option>`)
+            .join("");
+          adminRoot.append(dl);
+        }
+      }
+    }
+    if (bookingFormEl && editingBooking) {
+      (bookingFormEl.elements.namedItem("department") as HTMLSelectElement | null)!.value =
+        editingBooking.department;
+      (bookingFormEl.elements.namedItem("clubSlug") as HTMLSelectElement | null)!.value =
+        editingBooking.clubSlug || "";
+      (bookingFormEl.elements.namedItem("bookingReference") as HTMLInputElement | null)!.value =
+        editingBooking.bookingReference;
+      (bookingFormEl.elements.namedItem("bookingDate") as HTMLInputElement | null)!.value =
+        editingBooking.bookingDate.slice(0, 10);
+      (bookingFormEl.elements.namedItem("promoterId") as HTMLSelectElement | null)!.value =
+        editingBooking.promoterId || "";
+      (bookingFormEl.elements.namedItem("ruleId") as HTMLSelectElement | null)!.value =
+        editingBooking.ruleId || "";
+      (bookingFormEl.elements.namedItem("venueOrServiceName") as HTMLInputElement | null)!.value =
+        editingBooking.venueOrServiceName;
+      (bookingFormEl.elements.namedItem("maleGuests") as HTMLInputElement | null)!.value =
+        String(editingBooking.maleGuests);
+      (bookingFormEl.elements.namedItem("femaleGuests") as HTMLInputElement | null)!.value =
+        String(editingBooking.femaleGuests);
+      (bookingFormEl.elements.namedItem("otherCosts") as HTMLInputElement | null)!.value =
+        String(editingBooking.otherCosts);
+      (bookingFormEl.elements.namedItem("totalSpend") as HTMLInputElement | null)!.value =
+        String(editingBooking.totalSpend);
+      (bookingFormEl.elements.namedItem("paymentStatus") as HTMLSelectElement | null)!.value =
+        editingBooking.paymentStatus;
+    }
+    if (view === "admin_profile" && adminProfileFormOpen) {
+      mountDashboardFormModal("admin-profile-form", "Admin profile", () => {
+        adminProfileFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "clubs" && clubFormOpen) {
+      mountDashboardFormModal("club-form", "Club editor", () => {
+        clubFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "cars" && carFormOpen) {
+      mountDashboardFormModal("car-form", "Car editor", () => {
+        carFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "flyers" && flyerFormOpen) {
+      mountDashboardFormModal("flyer-form", "Flyer editor", () => {
+        flyerFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "invoices" && invoiceFormOpen) {
+      mountDashboardFormModal("promoter-invoice-form", "Invoice actions", () => {
+        invoiceFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "club_accounts" && clubAccountsFormOpen) {
+      mountDashboardFormModal("club-accounts-form", "Club account tools", () => {
+        clubAccountsFormOpen = false;
+        renderDashboard();
+      });
+    }
     if (!guestlistQueueDelegationBound) {
       guestlistQueueDelegationBound = true;
       adminRoot.addEventListener("click", (ev) => {
@@ -2948,6 +3619,26 @@ export async function initAdminPortal(): Promise<void> {
           })();
           return;
         }
+        if (t.closest("[data-fin-scope-apply]")) {
+          const form = adminRoot.querySelector("#financial-scope-form") as HTMLFormElement | null;
+          if (form) {
+            const fd = new FormData(form);
+            const st = String(fd.get("scopePaymentStatus") || "").trim();
+            financialScopePaymentStatus =
+              st === "expected" || st === "attended" || st === "paid_final" ? st : "";
+            financialScopePromoterId = String(fd.get("scopePromoterId") || "").trim();
+            financialScopeSearch = String(fd.get("scopeSearch") || "").trim();
+          }
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-scope-reset]")) {
+          financialScopePaymentStatus = "";
+          financialScopePromoterId = "";
+          financialScopeSearch = "";
+          renderDashboard();
+          return;
+        }
         if (t.closest("[data-fin-export-csv]")) {
           const lines = [
             ["tx_date", "category", "direction", "amount", "currency", "source_type", "notes"].join(","),
@@ -3059,6 +3750,110 @@ export async function initAdminPortal(): Promise<void> {
           renderDashboard();
           return;
         }
+        const openRuleEditor = t.closest("[data-fin-open-rule-editor]") as HTMLButtonElement | null;
+        if (openRuleEditor) {
+          financialEditingRuleId = null;
+          financialRuleEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const openPromoterEditor = t.closest("[data-fin-open-promoter-editor]") as HTMLButtonElement | null;
+        if (openPromoterEditor) {
+          financialPromoterEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const openBookingEditor = t.closest("[data-fin-open-booking-editor]") as HTMLButtonElement | null;
+        if (openBookingEditor) {
+          financialEditingBookingId = null;
+          financialBookingEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const editRuleBtn = t.closest("[data-fin-edit-rule]") as HTMLButtonElement | null;
+        if (editRuleBtn) {
+          const id = editRuleBtn.dataset.finEditRule?.trim() || "";
+          if (!id) return;
+          financialEditingRuleId = id;
+          financialRuleEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const delRuleBtn = t.closest("[data-fin-delete-rule]") as HTMLButtonElement | null;
+        if (delRuleBtn) {
+          const id = delRuleBtn.dataset.finDeleteRule?.trim() || "";
+          if (!id) return;
+          financialDeleteConfirmOpen = true;
+          financialDeleteConfirmType = "rule";
+          financialDeleteConfirmId = id;
+          renderDashboard();
+          return;
+        }
+        const editBookingBtn = t.closest("[data-fin-edit-booking]") as HTMLButtonElement | null;
+        if (editBookingBtn) {
+          const id = editBookingBtn.dataset.finEditBooking?.trim() || "";
+          if (!id) return;
+          financialEditingBookingId = id;
+          financialBookingEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const delBookingBtn = t.closest("[data-fin-delete-booking]") as HTMLButtonElement | null;
+        if (delBookingBtn) {
+          const id = delBookingBtn.dataset.finDeleteBooking?.trim() || "";
+          if (!id) return;
+          financialDeleteConfirmOpen = true;
+          financialDeleteConfirmType = "booking";
+          financialDeleteConfirmId = id;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-delete-cancel]")) {
+          financialDeleteConfirmOpen = false;
+          financialDeleteConfirmType = null;
+          financialDeleteConfirmId = null;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-delete-confirm]")) {
+          if (!financialDeleteConfirmType || !financialDeleteConfirmId) return;
+          const id = financialDeleteConfirmId;
+          const type = financialDeleteConfirmType;
+          void (async () => {
+            const res =
+              type === "rule"
+                ? await archiveFinancialRule(supabase, id)
+                : await archiveFinancialBooking(supabase, id);
+            if (!res.ok) {
+              flash(res.message, "error");
+              return;
+            }
+            financialDeleteConfirmOpen = false;
+            financialDeleteConfirmType = null;
+            financialDeleteConfirmId = null;
+            await reloadFinancialReport();
+            flash(type === "rule" ? "Financial rule deleted." : "Financial job deleted.");
+            renderDashboard();
+          })();
+          return;
+        }
+        if (t.closest("[data-fin-close-rule-editor]")) {
+          financialRuleEditorOpen = false;
+          financialEditingRuleId = null;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-close-promoter-editor]")) {
+          financialPromoterEditorOpen = false;
+          renderDashboard();
+          return;
+        }
+        if (t.closest("[data-fin-close-booking-editor]")) {
+          financialBookingEditorOpen = false;
+          financialEditingBookingId = null;
+          renderDashboard();
+          return;
+        }
         const payeeEdit = t.closest("[data-fin-payee-edit]") as HTMLButtonElement | null;
         if (payeeEdit) {
           const pid = payeeEdit.dataset.finPayeeEdit?.trim() || "";
@@ -3137,6 +3932,27 @@ export async function initAdminPortal(): Promise<void> {
             flash("Template deleted.");
             renderDashboard();
           })();
+          return;
+        }
+        const approvalBtn = t.closest("[data-fin-approval]") as HTMLButtonElement | null;
+        if (approvalBtn) {
+          const requestId = approvalBtn.dataset.finApproval?.trim() || "";
+          if (!requestId) return;
+          const approve = approvalBtn.dataset.approve === "true";
+          void (async () => {
+            const res = await reviewFinancialConfigChangeRequest(supabase, {
+              requestId,
+              approve,
+              reviewNotes: approve ? "Approved in finance panel" : "Rejected in finance panel",
+            });
+            if (!res.ok) {
+              flash(res.message, "error");
+              return;
+            }
+            await reloadFinancialReport();
+            flash(approve ? "Change request approved." : "Change request rejected.");
+            renderDashboard();
+          })();
         }
       });
 
@@ -3156,6 +3972,34 @@ export async function initAdminPortal(): Promise<void> {
           const v = t.value.trim();
           financialBulkStatus =
             v === "pending" || v === "paid" || v === "cancelled" || v === "failed" ? v : "paid";
+          return;
+        }
+        if (t.closest("#financial-booking-form")) {
+          const form = t.closest("#financial-booking-form") as HTMLFormElement | null;
+          if (!form) return;
+          const fd = new FormData(form);
+          const ruleId = String(fd.get("ruleId") || "").trim();
+          const male = Number(fd.get("maleGuests") || 0) || 0;
+          const female = Number(fd.get("femaleGuests") || 0) || 0;
+          const costs = Number(fd.get("otherCosts") || 0) || 0;
+          const rule = nativeFinancialRules.find((r) => r.id === ruleId);
+          const previewEl = adminRoot.querySelector("#fin-booking-preview") as HTMLElement | null;
+          if (previewEl && rule) {
+            const totalRevenue = (male + female) * rule.baseRate;
+            const totalGuests = male + female;
+            const flatBonus =
+              rule.bonusType === "flat" && totalGuests >= rule.bonusGoal ? rule.bonusAmount : 0;
+            const stackBonus =
+              rule.bonusType === "stacking" && rule.bonusGoal > 0
+                ? rule.bonusAmount * Math.floor(female / rule.bonusGoal)
+                : 0;
+            const bonus = flatBonus > 0 ? flatBonus : stackBonus;
+            const projected = totalRevenue + bonus - costs;
+            previewEl.textContent = `Auto projected profit: £${projected.toFixed(2)} (revenue £${totalRevenue.toFixed(2)}, bonus £${bonus.toFixed(2)}, costs £${costs.toFixed(2)}).`;
+          } else if (previewEl) {
+            previewEl.textContent =
+              "Projected revenue auto-calculates from base rate per guest and selected rule.";
+          }
         }
       });
 
@@ -3333,6 +4177,135 @@ export async function initAdminPortal(): Promise<void> {
             financialEditingPayeeId = null;
             await reloadFinancialReport();
             flash(payeeId ? "Payee updated." : "Payee created.");
+            renderDashboard();
+          })();
+          return;
+        }
+        const ruleForm = target?.closest?.("#financial-rule-form");
+        if (ruleForm) {
+          ev.preventDefault();
+          const fd = new FormData(ruleForm as HTMLFormElement);
+          void (async () => {
+            const res = await upsertFinancialRule(supabase, {
+              id: financialEditingRuleId || undefined,
+              department: String(fd.get("department") || "other").trim() as
+                | "nightlife"
+                | "transport"
+                | "protection"
+                | "other",
+              clubSlug: String(fd.get("clubSlug") || "").trim() || null,
+              venueOrServiceName: String(fd.get("venueOrServiceName") || "").trim(),
+              logicType: String(fd.get("logicType") || "flat_fee").trim() as
+                | "headcount_pay"
+                | "commission_percent"
+                | "flat_fee",
+              maleRate: Number(fd.get("maleRate") || 0) || 0,
+              femaleRate: Number(fd.get("femaleRate") || 0) || 0,
+              baseRate: Number(fd.get("baseRate") || 0) || 0,
+              bonusType: String(fd.get("bonusType") || "none").trim() as
+                | "none"
+                | "flat"
+                | "stacking",
+              bonusGoal: Number(fd.get("bonusGoal") || 0) || 0,
+              bonusAmount: Number(fd.get("bonusAmount") || 0) || 0,
+              effectiveFrom: String(fd.get("effectiveFrom") || "").trim(),
+            });
+            if (!res.ok) {
+              flash(res.message, "error");
+              return;
+            }
+            financialRuleEditorOpen = false;
+            financialEditingRuleId = null;
+            await reloadFinancialReport();
+            flash("Financial rule saved.");
+            renderDashboard();
+          })();
+          return;
+        }
+        const promoterForm = target?.closest?.("#financial-promoter-form");
+        if (promoterForm) {
+          ev.preventDefault();
+          const fd = new FormData(promoterForm as HTMLFormElement);
+          void (async () => {
+            const res = await upsertFinancialPromoter(supabase, {
+              userId: String(fd.get("userId") || "").trim() || null,
+              name: String(fd.get("name") || "").trim(),
+              commissionPercentage: Number(fd.get("commissionPercentage") || 0) || 0,
+              contact: String(fd.get("contact") || "").trim(),
+              notes: String(fd.get("notes") || "").trim(),
+            });
+            if (!res.ok) {
+              flash(res.message, "error");
+              return;
+            }
+            financialPromoterEditorOpen = false;
+            await reloadFinancialReport();
+            flash("Financial promoter saved.");
+            renderDashboard();
+          })();
+          return;
+        }
+        const bookingForm = target?.closest?.("#financial-booking-form");
+        if (bookingForm) {
+          ev.preventDefault();
+          const fd = new FormData(bookingForm as HTMLFormElement);
+          const department = String(fd.get("department") || "nightlife").trim();
+          void (async () => {
+            const bookingReference = String(fd.get("bookingReference") || "").trim();
+            const bookingDate = String(fd.get("bookingDate") || "").trim();
+            const clubSlug = String(fd.get("clubSlug") || "").trim() || null;
+            const promoterId = String(fd.get("promoterId") || "").trim() || null;
+            const venueOrServiceName = String(fd.get("venueOrServiceName") || "").trim();
+            const paymentStatus = String(fd.get("paymentStatus") || "expected").trim() as
+              | "expected"
+              | "attended"
+              | "paid_final";
+            if (department === "nightlife") {
+              const ruleId = String(fd.get("ruleId") || "").trim();
+              const res = await upsertNightlifeFinancialBooking(supabase, {
+                id: financialEditingBookingId || undefined,
+                bookingReference,
+                bookingDate,
+                clubSlug,
+                promoterId,
+                clientId: null,
+                ruleId,
+                venueOrServiceName,
+                maleGuests: Number(fd.get("maleGuests") || 0) || 0,
+                femaleGuests: Number(fd.get("femaleGuests") || 0) || 0,
+                otherCosts: Number(fd.get("otherCosts") || 0) || 0,
+                paymentStatus,
+              });
+              if (!res.ok) {
+                flash(res.message, "error");
+                return;
+              }
+            } else {
+              const res = await upsertServiceFinancialBooking(supabase, {
+                id: financialEditingBookingId || undefined,
+                bookingReference,
+                bookingDate,
+                clubSlug,
+                department: (department === "transport" || department === "protection"
+                  ? department
+                  : "other") as "transport" | "protection" | "other",
+                promoterId,
+                clientId: null,
+                ruleId: String(fd.get("ruleId") || "").trim() || null,
+                venueOrServiceName,
+                totalSpend: Number(fd.get("totalSpend") || 0) || 0,
+                commissionPercentage: Number(fd.get("commissionPercentage") || 0) || 0,
+                paymentStatus,
+              });
+              if (!res.ok) {
+                flash(res.message, "error");
+                return;
+              }
+            }
+            financialBookingEditorOpen = false;
+            financialEditingBookingId = null;
+            await reloadFinancialReport();
+            flash("Financial booking saved.");
             renderDashboard();
           })();
         }
@@ -4315,6 +5288,14 @@ export async function initAdminPortal(): Promise<void> {
     });
     adminRoot.querySelector("#jobs-calendar-toggle")?.addEventListener("click", () => {
       jobsCalendarOpen = !jobsCalendarOpen;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#jobs-open-financial")?.addEventListener("click", () => {
+      const params = new URLSearchParams(window.location.search);
+      params.set("view", "admin.financial_nightlife");
+      const next = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.replaceState({}, "", next);
+      view = "financials";
       renderDashboard();
     });
 

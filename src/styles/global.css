@@ -467,7 +467,7 @@ p {
 
 .site-nav__menu {
   position: absolute;
-  top: calc(100% + 0.35rem);
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   min-width: 170px;
@@ -483,6 +483,15 @@ p {
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.12s ease;
+}
+
+.site-nav__menu::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
 }
 
 .site-nav__group:hover .site-nav__menu,

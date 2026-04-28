@@ -27,6 +27,7 @@ import {
   submitPromoterRevision,
   upsertPromoterNightAdjustment,
 } from "../admin/promoters";
+import { listFinancialBookings, listFinancialPromoters } from "../admin/financial-tracking";
 import { fetchClubs } from "../data/fetch-data";
 import {
   callPromoterInvoiceEdge,
@@ -38,6 +39,8 @@ import { mountDataTable } from "../portal/data-table";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
   Club,
+  FinancialBooking,
+  FinancialPromoterProfile,
   PromoterAvailabilitySlot,
   PromoterClubPreference,
   PromoterGuestlistEntry,
@@ -223,6 +226,8 @@ export async function initPromoterPortal(): Promise<void> {
   let adminMode = false;
   let adminPromoters: PromoterProfile[] = [];
   let adminSelectedPromoterId: string | null = null;
+  let financialPromoterProfile: FinancialPromoterProfile | null = null;
+  let financialBookings: FinancialBooking[] = [];
   const clubs = await fetchClubs().catch(() => [] as Club[]);
 
   function flash(msg: string, bad = false): void {
@@ -253,6 +258,8 @@ export async function initPromoterPortal(): Promise<void> {
       nightAdjustments = [];
       tableSales = [];
       invoices = [];
+      financialPromoterProfile = null;
+      financialBookings = [];
       return;
     }
     profile = nextProfile;
@@ -294,6 +301,21 @@ export async function initPromoterPortal(): Promise<void> {
       .map((job) => job.id);
     const gl = await loadPromoterGuestlistEntriesForJobs(supabase, assignedGlJobIds);
     guestlistEntries = gl.ok ? gl.rows : [];
+    const finPromRes = await listFinancialPromoters(supabase);
+    financialPromoterProfile = finPromRes.ok
+      ? finPromRes.data.find((row) => row.userId === profile?.userId) ?? null
+      : null;
+    if (financialPromoterProfile) {
+      const year = new Date().getFullYear();
+      const finBookingRes = await listFinancialBookings(supabase, {
+        from: `${year}-01-01`,
+        to: `${year}-12-31`,
+        promoterId: financialPromoterProfile.id,
+      });
+      financialBookings = finBookingRes.ok ? finBookingRes.data : [];
+    } else {
+      financialBookings = [];
+    }
   }
 
   function renderAuth(): void {
@@ -531,6 +553,9 @@ export async function initPromoterPortal(): Promise<void> {
         (acc, j) => acc + j.shiftFee + j.guestlistFee * j.guestsCount,
         0,
       );
+      const paidFinalProfit = financialBookings
+        .filter((booking) => booking.paymentStatus === "paid_final")
+        .reduce((sum, booking) => sum + booking.realizedAgencyProfit, 0);
       const upcoming = jobs.filter((j) => j.status === "assigned").length;
       const approvalBadge =
         profile.approvalStatus === "approved"
@@ -547,6 +572,8 @@ export async function initPromoterPortal(): Promise<void> {
             <article><p>Completed jobs</p><strong>${jobsDone.length}</strong></article>
             <article><p>Guestlist guests (completed)</p><strong>${totalGuests}</strong></article>
             <article><p>Earnings (tracked)</p><strong>${money(totalEarned)}</strong></article>
+            <article><p>Paid-final agency profit (YTD)</p><strong>${money(paidFinalProfit)}</strong></article>
+            <article><p>Commission (linked)</p><strong>${financialPromoterProfile ? `${financialPromoterProfile.commissionPercentage.toFixed(2)}%` : "—"}</strong></article>
           </div>
         </div>
         <div class="promoter-panel">
@@ -641,6 +668,11 @@ export async function initPromoterPortal(): Promise<void> {
             <div class="admin-actions full">
               <button class="cc-btn cc-btn--gold" id="p-save-profile" type="button">Submit for Approval</button>
             </div>
+            <h4 class="full">Financial Profile</h4>
+            <p class="promoter-main__subtitle full" style="margin-top:0">Commission is controlled by admin. Payout and tax fields above are editable here and used for invoice/payee linkage.</p>
+            <div class="cc-field"><label>Linked financial promoter</label><input readonly value="${esc(financialPromoterProfile?.name || "Not linked yet")}" /></div>
+            <div class="cc-field"><label>Commission percentage</label><input readonly value="${financialPromoterProfile ? esc(financialPromoterProfile.commissionPercentage.toFixed(2)) : "0.00"}" /></div>
+            <div class="cc-field"><label>Financial bookings (YTD)</label><input readonly value="${String(financialBookings.length)}" /></div>
           </section>
         </div>`;
     }
@@ -1123,13 +1155,13 @@ export async function initPromoterPortal(): Promise<void> {
             <div class="promoter-account">
               <button type="button" class="promoter-account__btn" id="promoter-account-btn" aria-haspopup="menu" aria-expanded="false">Account</button>
               <div class="promoter-account__menu" id="promoter-account-menu" role="menu" hidden>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="profile">Edit profile</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="preferences">Work preferences</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="jobs">Manage jobs</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="tables">Manage tables sold</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="clients">Manage clients</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="job_history">Jobs history</button>
-                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="table_history">Tables history</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="profile">Open Profile</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="preferences">Open Work Preferences</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="jobs">Open Jobs</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="tables">Open Tables Sold</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="clients">Open Clients</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="job_history">Open Jobs History</button>
+                <button type="button" role="menuitem" class="promoter-account__item" data-promoter-menu-view="table_history">Open Tables History</button>
                 <button type="button" role="menuitem" class="promoter-account__item promoter-account__item--danger" id="promoter-account-signout">Sign out</button>
               </div>
             </div>
@@ -1142,6 +1174,44 @@ export async function initPromoterPortal(): Promise<void> {
       </div>
     `;
     applyCollapsibleFormSections(root);
+    const mountPromoterFormModal = (
+      formSelector: string,
+      title: string,
+      onClose: () => void,
+    ): void => {
+      const form = root.querySelector(formSelector) as HTMLElement | null;
+      if (!form || form.closest(".pp-modal")) return;
+      const host = document.createElement("div");
+      host.className = "pp-modal-host finx-modal-host";
+      host.innerHTML = `<div class="pp-modal__overlay">
+        <div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+          <div class="pp-modal__header">
+            <h4 class="pp-modal__title">${esc(title)}</h4>
+            <button type="button" class="pp-modal__close" aria-label="Close">×</button>
+          </div>
+          <div class="pp-modal__body"></div>
+        </div>
+      </div>`;
+      (host.querySelector(".pp-modal__body") as HTMLElement | null)?.append(form);
+      host.querySelector(".pp-modal__close")?.addEventListener("click", onClose);
+      host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
+        if (ev.target === ev.currentTarget) onClose();
+      });
+      root.append(host);
+    };
+    if (promoterView === "clients" && promoterClientFormOpen) {
+      mountPromoterFormModal("#promoter-client-form", "Client details", () => {
+        promoterClientFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (promoterView === "clients" && promoterClientAttendanceFormOpen) {
+      mountPromoterFormModal("#promoter-client-attendance-form", "Client visit", () => {
+        promoterClientAttendanceFormOpen = false;
+        selectedClientAttendanceId = null;
+        renderDashboard();
+      });
+    }
 
     root.querySelectorAll(".promoter-view-tab").forEach((btn) => {
       btn.addEventListener("click", () => {

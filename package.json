@@ -10,6 +10,7 @@
     "build": "vite build && node scripts/write-ssr-asset-map.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:financial": "tsx --test src/lib/financial/calculations.test.ts",
     "smoke:routes": "node scripts/smoke-routes.mjs",
     "verify": "npm run lint && npm run typecheck && npm run build && npm run smoke:routes",
     "preview": "vite preview",
@@ -25,6 +26,7 @@
     "@vercel/node": "^3.2.29",
     "eslint": "^10.2.1",
     "supabase": "^2.92.1",
+    "tsx": "^4.21.0",
     "typescript": "~5.6.3",
     "vite": "^8.0.3"
   },

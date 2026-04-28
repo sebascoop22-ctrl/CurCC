@@ -525,18 +525,43 @@ body,
 }
 
 .pp-sidebar__group-label {
-  margin: 0.55rem 0.55rem 0.3rem;
+  margin: 0.55rem 0.25rem 0.3rem;
+  padding: 0.2rem 0.3rem;
+  border: 0;
+  background: transparent;
+  width: calc(100% - 0.2rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  color: var(--portal-muted);
+}
+
+.pp-sidebar__group-label-text {
   font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  color: var(--portal-muted);
   font-weight: 600;
+}
+
+.pp-sidebar__group-caret {
+  font-size: 0.82rem;
+  line-height: 1;
+  color: var(--portal-muted);
+}
+
+.pp-sidebar__group-label:hover .pp-sidebar__group-caret {
+  color: var(--portal-text-strong);
 }
 
 .pp-sidebar__items {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+
+.pp-sidebar__items.is-collapsed {
+  display: none;
 }
 
 .pp-sidebar__item {
@@ -807,7 +832,23 @@ body,
 .pp-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-auto-rows: 1fr;
   gap: 0.85rem;
+  align-items: stretch;
+}
+
+.pp-kpi-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  width: 100%;
+  min-height: 0;
 }
 
 .pp-kpi {
@@ -820,6 +861,8 @@ body,
   gap: 0.3rem;
   position: relative;
   overflow: hidden;
+  min-height: 142px;
+  width: 100%;
 }
 
 .pp-kpi--accent {
@@ -848,6 +891,11 @@ body,
   letter-spacing: 0.14em;
   color: var(--portal-muted);
   font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.2em;
 }
 
 .pp-kpi__icon {
@@ -876,6 +924,11 @@ body,
   margin: 0;
   font-size: 0.78rem;
   color: var(--portal-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.55em;
 }
 
 .pp-kpi__delta {
@@ -1959,6 +2012,100 @@ body,
 .pp-shell__content > #legacy-mount .admin-list-badge--rejected {
   background: var(--portal-status-danger-bg) !important;
   color: var(--portal-status-danger-fg) !important;
+}
+
+/* Financial workspace refresh */
+.pp-shell__content > #legacy-mount .finx-card {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--portal-surface) 92%, var(--portal-accent-soft) 8%), var(--portal-surface)) !important;
+  border: 1px solid var(--portal-border-strong) !important;
+  border-radius: var(--portal-radius) !important;
+  padding: 1rem !important;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.7rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi {
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-radius-sm);
+  background: var(--portal-surface-2);
+  padding: 0.75rem 0.8rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi__label {
+  margin: 0;
+  color: var(--portal-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi__value {
+  margin: 0.35rem 0 0;
+  color: var(--portal-text-strong);
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1.05;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi__value--sm {
+  font-size: 1rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-kpi__hint {
+  margin: 0.25rem 0 0;
+  color: var(--portal-muted);
+  font-size: 0.76rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-subkpi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-subkpi > span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--portal-border);
+  border-radius: 999px;
+  background: var(--portal-surface-2);
+  color: var(--portal-muted);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.pp-shell__content > #legacy-mount .fin-cal-grid .admin-jobs__cal-hd {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pp-shell__content > #legacy-mount .fin-cal-grid {
+  gap: 0.3rem;
+}
+
+.pp-shell__content > #legacy-mount .fin-cal-grid .admin-jobs__cal-cell {
+  min-height: 5.4rem;
+}
+
+.pp-shell__content > #legacy-mount .finx-modal-host {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+}
+
+.pp-shell__content > #legacy-mount .finx-modal {
+  width: min(920px, calc(100vw - 2rem));
+  max-height: min(92vh, 920px);
+}
+
+.pp-shell__content > #legacy-mount .finx-modal .admin-form {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.75rem 0.85rem;
 }
 
 /* =========================================================================

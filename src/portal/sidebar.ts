@@ -29,12 +29,28 @@ export function mountSidebar(
 
   let activeId = options.activeItemId;
   let cfg = options.config;
+  let openGroups = new Set<string>(cfg.groups.map((g) => g.id));
+
+  function ensureOpenGroups(): void {
+    const validIds = new Set(cfg.groups.map((g) => g.id));
+    openGroups = new Set(Array.from(openGroups).filter((id) => validIds.has(id)));
+    if (!openGroups.size) {
+      cfg.groups.forEach((g) => openGroups.add(g.id));
+    }
+    const activeGroup = cfg.groups.find((g) => g.items.some((item) => item.id === activeId));
+    if (activeGroup) openGroups.add(activeGroup.id);
+  }
 
   function navHtml(): string {
+    ensureOpenGroups();
     return cfg.groups
       .map((group) => {
+        const isOpen = openGroups.has(group.id);
         const groupLabel = group.label
-          ? `<p class="pp-sidebar__group-label">${escHtml(group.label)}</p>`
+          ? `<button type="button" class="pp-sidebar__group-label" data-pp-group-toggle="${escAttr(group.id)}" aria-expanded="${isOpen ? "true" : "false"}">
+              <span class="pp-sidebar__group-label-text">${escHtml(group.label)}</span>
+              <span class="pp-sidebar__group-caret" aria-hidden="true">${isOpen ? "▾" : "▸"}</span>
+            </button>`
           : "";
         const items = group.items
           .map((item) => {
@@ -47,7 +63,7 @@ export function mountSidebar(
             </button>`;
           })
           .join("");
-        return `<div class="pp-sidebar__group">${groupLabel}<div class="pp-sidebar__items">${items}</div></div>`;
+        return `<div class="pp-sidebar__group${isOpen ? " is-open" : ""}" data-pp-group="${escAttr(group.id)}">${groupLabel}<div class="pp-sidebar__items${isOpen ? "" : " is-collapsed"}">${items}</div></div>`;
       })
       .join("");
   }
@@ -77,6 +93,15 @@ export function mountSidebar(
         options.onSelect(id);
       });
     });
+    root.querySelectorAll<HTMLButtonElement>("[data-pp-group-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const groupId = btn.dataset.ppGroupToggle;
+        if (!groupId) return;
+        if (openGroups.has(groupId)) openGroups.delete(groupId);
+        else openGroups.add(groupId);
+        render();
+      });
+    });
     if (options.onSignOut) {
       root.querySelector("[data-pp-signout]")?.addEventListener("click", () => {
         options.onSignOut?.();
@@ -94,6 +119,7 @@ export function mountSidebar(
     setConfig(nextConfig: PortalNavConfig, nextActive: string): void {
       cfg = nextConfig;
       activeId = nextActive;
+       ensureOpenGroups();
       render();
     },
     destroy(): void {

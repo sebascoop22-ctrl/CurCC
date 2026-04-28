@@ -35,17 +35,26 @@ async function adminOverview(supabase: SupabaseClient): Promise<OverviewSection>
     supabase.from("job_disputes").select("id", { count: "exact", head: true }).in("status", ["open", "under_review"]),
     supabase.from("club_edit_revisions").select("id", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("promoter_signup_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.rpc("get_financial_dashboard_snapshot", {
+      p_from: `${new Date().getFullYear()}-01-01`,
+      p_to: `${new Date().getFullYear()}-12-31`,
+    }),
+    supabase
+      .from("financial_bookings")
+      .select("id", { count: "exact", head: true })
+      .in("payment_status", ["expected", "attended"])
+      .eq("is_archived", false),
   ]);
 
-  const [
-    enquiries,
-    guestlist,
-    nightShifts,
-    tables,
-    disputes,
-    clubEdits,
-    promoterReqs,
-  ] = counts.map((r) => r.count ?? 0);
+  const enquiries = counts[0].count ?? 0;
+  const guestlist = counts[1].count ?? 0;
+  const nightShifts = counts[2].count ?? 0;
+  const tables = counts[3].count ?? 0;
+  const disputes = counts[4].count ?? 0;
+  const clubEdits = counts[5].count ?? 0;
+  const promoterReqs = counts[6].count ?? 0;
+  const snapshot = ((counts[7] as { data?: Array<Record<string, unknown>> }).data ?? [])[0] ?? {};
+  const financialPending = counts[8].count ?? 0;
 
   const kpis: OverviewKpi[] = [
     {
@@ -101,6 +110,22 @@ async function adminOverview(supabase: SupabaseClient): Promise<OverviewSection>
       icon: "✎",
       hint: "Pending club/flyer/media edits to moderate.",
       navItemId: "admin.club_edits",
+    },
+    {
+      label: "Realized profit (YTD)",
+      value: `£${Number(snapshot.total_realized_profit ?? 0).toFixed(2)}`,
+      icon: "£",
+      hint: "Native financial booking realized agency profit.",
+      navItemId: "admin.financial_dashboard",
+      emphasis: "accent",
+    },
+    {
+      label: "Finance action queue",
+      value: financialPending,
+      icon: "◫",
+      hint: "Bookings not yet marked Paid & Final.",
+      navItemId: "admin.financial_nightlife",
+      emphasis: financialPending > 0 ? "warning" : "default",
     },
   ];
 
@@ -368,7 +393,7 @@ export async function renderPortalOverview(opts: RenderOverviewOptions): Promise
         .map((k) => {
           const card = renderKpiCard(k);
           if (k.navItemId) {
-            return `<button type="button" class="pp-kpi-link" data-pp-nav-id="${k.navItemId}" style="all:unset; cursor:pointer; display:block">${card}</button>`;
+            return `<button type="button" class="pp-kpi-link" data-pp-nav-id="${k.navItemId}">${card}</button>`;
           }
           return card;
         })

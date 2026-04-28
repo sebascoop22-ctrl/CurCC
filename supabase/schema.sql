@@ -2639,6 +2639,388 @@ with check (
   )
 );
 
+-- Native financial tracking domain (rules, promoters, bookings, aggregates).
+create table if not exists public.financial_rules (
+  id uuid primary key default gen_random_uuid(),
+  department text not null check (department in ('nightlife', 'transport', 'protection', 'other')),
+  club_slug text references public.clubs(slug) on delete set null,
+  venue_or_service_name text not null default '',
+  male_rate numeric(12,2) not null default 0,
+  female_rate numeric(12,2) not null default 0,
+  base_rate numeric(12,2) not null default 0,
+  logic_type text not null check (logic_type in ('headcount_pay', 'commission_percent', 'flat_fee')),
+  bonus_type text not null default 'none' check (bonus_type in ('flat', 'stacking', 'none')),
+  bonus_goal integer not null default 0 check (bonus_goal >= 0),
+  bonus_amount numeric(12,2) not null default 0,
+  is_active boolean not null default true,
+  effective_from date not null default current_date,
+  effective_to date,
+  archived_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.financial_promoters (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  name text not null default '',
+  commission_percentage numeric(6,2) not null default 0 check (commission_percentage >= 0 and commission_percentage <= 100),
+  is_active boolean not null default true,
+  contact text not null default '',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists financial_promoters_user_id_uidx
+on public.financial_promoters(user_id)
+where user_id is not null;
+
+create table if not exists public.financial_config_change_requests (
+  id uuid primary key default gen_random_uuid(),
+  target_type text not null check (target_type in ('financial_rule', 'financial_promoter')),
+  target_id uuid not null,
+  payload jsonb not null default '{}'::jsonb,
+  requested_by uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reviewed_by uuid references auth.users(id) on delete set null,
+  review_notes text not null default '',
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+
+create table if not exists public.financial_bookings (
+  id uuid primary key default gen_random_uuid(),
+  booking_reference text not null default '',
+  booking_date date not null,
+  department text not null check (department in ('nightlife', 'transport', 'protection', 'other')),
+  club_slug text references public.clubs(slug) on delete set null,
+  promoter_id uuid references public.financial_promoters(id) on delete set null,
+  client_id uuid references public.clients(id) on delete set null,
+  rule_id uuid references public.financial_rules(id) on delete set null,
+  rule_snapshot_json jsonb not null default '{}'::jsonb,
+  venue_or_service_name text not null default '',
+  payment_status text not null default 'expected' check (payment_status in ('expected', 'attended', 'paid_final')),
+  is_archived boolean not null default false,
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists financial_bookings_reference_idx
+on public.financial_bookings (booking_reference);
+
+alter table public.financial_rules add column if not exists club_slug text references public.clubs(slug) on delete set null;
+alter table public.financial_bookings add column if not exists club_slug text references public.clubs(slug) on delete set null;
+
+create table if not exists public.financial_booking_nightlife (
+  financial_booking_id uuid primary key references public.financial_bookings(id) on delete cascade,
+  male_guests integer not null default 0 check (male_guests >= 0),
+  female_guests integer not null default 0 check (female_guests >= 0),
+  other_costs numeric(12,2) not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.financial_booking_service (
+  financial_booking_id uuid primary key references public.financial_bookings(id) on delete cascade,
+  total_spend numeric(12,2) not null default 0,
+  commission_percentage_override numeric(6,2) check (commission_percentage_override >= 0 and commission_percentage_override <= 100),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.financial_rules enable row level security;
+alter table public.financial_promoters enable row level security;
+alter table public.financial_config_change_requests enable row level security;
+alter table public.financial_bookings enable row level security;
+alter table public.financial_booking_nightlife enable row level security;
+alter table public.financial_booking_service enable row level security;
+
+create or replace function public.is_financial_reader()
+returns boolean
+language sql
+stable
+as $$
+  select
+    exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'admin'
+    )
+    or exists (
+      select 1
+      from public.club_accounts ca
+      where ca.user_id = auth.uid()
+        and ca.status = 'active'
+        and ca.role in ('owner', 'manager')
+    )
+    or exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role in ('host', 'promoter')
+    );
+$$;
+
+create or replace function public.is_financial_editor()
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  );
+$$;
+
+create or replace function public.is_financial_club_owner()
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.status = 'active'
+      and ca.role in ('owner', 'manager')
+  );
+$$;
+
+create or replace function public.can_request_financial_rule_change(p_target_id uuid)
+returns boolean
+language sql
+stable
+as $$
+  select
+    public.is_financial_editor()
+    or exists (
+      select 1
+      from public.financial_rules fr
+      join public.club_accounts ca on ca.club_slug = fr.club_slug
+      where fr.id = p_target_id
+        and ca.user_id = auth.uid()
+        and ca.status = 'active'
+        and ca.role in ('owner', 'manager')
+    );
+$$;
+
+drop policy if exists financial_rules_read on public.financial_rules;
+create policy financial_rules_read
+on public.financial_rules
+for select
+to authenticated
+using (public.is_financial_reader());
+
+drop policy if exists financial_rules_write on public.financial_rules;
+create policy financial_rules_write
+on public.financial_rules
+for all
+to authenticated
+using (public.is_financial_editor())
+with check (public.is_financial_editor());
+
+drop policy if exists financial_promoters_read on public.financial_promoters;
+create policy financial_promoters_read
+on public.financial_promoters
+for select
+to authenticated
+using (public.is_financial_reader());
+
+drop policy if exists financial_promoters_write on public.financial_promoters;
+create policy financial_promoters_write
+on public.financial_promoters
+for all
+to authenticated
+using (public.is_financial_editor())
+with check (public.is_financial_editor());
+
+drop policy if exists financial_cfg_requests_read on public.financial_config_change_requests;
+create policy financial_cfg_requests_read
+on public.financial_config_change_requests
+for select
+to authenticated
+using (public.is_financial_reader());
+
+drop policy if exists financial_cfg_requests_insert on public.financial_config_change_requests;
+create policy financial_cfg_requests_insert
+on public.financial_config_change_requests
+for insert
+to authenticated
+with check (
+  (
+    target_type = 'financial_rule'
+    and public.can_request_financial_rule_change(target_id)
+  )
+  or (
+    target_type = 'financial_promoter'
+    and public.is_financial_editor()
+  )
+);
+
+drop policy if exists financial_cfg_requests_update on public.financial_config_change_requests;
+create policy financial_cfg_requests_update
+on public.financial_config_change_requests
+for update
+to authenticated
+using (public.is_financial_editor())
+with check (public.is_financial_editor());
+
+drop policy if exists financial_bookings_read on public.financial_bookings;
+create policy financial_bookings_read
+on public.financial_bookings
+for select
+to authenticated
+using (public.is_financial_reader());
+
+drop policy if exists financial_bookings_write on public.financial_bookings;
+create policy financial_bookings_write
+on public.financial_bookings
+for all
+to authenticated
+using (public.is_financial_reader())
+with check (public.is_financial_reader());
+
+drop policy if exists financial_booking_nightlife_read on public.financial_booking_nightlife;
+create policy financial_booking_nightlife_read
+on public.financial_booking_nightlife
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_nightlife.financial_booking_id
+      and public.is_financial_reader()
+  )
+);
+
+drop policy if exists financial_booking_nightlife_write on public.financial_booking_nightlife;
+create policy financial_booking_nightlife_write
+on public.financial_booking_nightlife
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_nightlife.financial_booking_id
+      and public.is_financial_reader()
+  )
+)
+with check (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_nightlife.financial_booking_id
+      and public.is_financial_reader()
+  )
+);
+
+drop policy if exists financial_booking_service_read on public.financial_booking_service;
+create policy financial_booking_service_read
+on public.financial_booking_service
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_service.financial_booking_id
+      and public.is_financial_reader()
+  )
+);
+
+drop policy if exists financial_booking_service_write on public.financial_booking_service;
+create policy financial_booking_service_write
+on public.financial_booking_service
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_service.financial_booking_id
+      and public.is_financial_reader()
+  )
+)
+with check (
+  exists (
+    select 1 from public.financial_bookings fb
+    where fb.id = financial_booking_service.financial_booking_id
+      and public.is_financial_reader()
+  )
+);
+
+create or replace function public.get_financial_dashboard_snapshot(
+  p_from date,
+  p_to date
+)
+returns table (
+  total_realized_profit numeric,
+  nightlife_realized_profit numeric,
+  transport_realized_profit numeric,
+  protection_realized_profit numeric,
+  other_realized_profit numeric,
+  total_nightlife_guests integer,
+  avg_nightlife_profit_per_guest numeric,
+  outstanding_projected_profit numeric,
+  realized_projected_profit numeric,
+  top_promoter_name text,
+  top_promoter_realized_profit numeric
+)
+language sql
+stable
+as $$
+  with base as (
+    select
+      fb.id,
+      fb.department,
+      fb.payment_status,
+      fb.booking_date,
+      coalesce(fp.name, '') as promoter_name,
+      coalesce(n.male_guests, 0) + coalesce(n.female_guests, 0) as total_guests,
+      coalesce((fb.rule_snapshot_json->>'projectedAgencyProfit')::numeric, 0) as projected_profit,
+      case
+        when fb.payment_status = 'paid_final' then coalesce((fb.rule_snapshot_json->>'projectedAgencyProfit')::numeric, 0)
+        else 0
+      end as realized_profit
+    from public.financial_bookings fb
+    left join public.financial_booking_nightlife n on n.financial_booking_id = fb.id
+    left join public.financial_promoters fp on fp.id = fb.promoter_id
+    where fb.booking_date >= p_from
+      and fb.booking_date <= p_to
+      and fb.is_archived = false
+  ),
+  top_promoter as (
+    select promoter_name, sum(realized_profit) as realized_sum
+    from base
+    group by promoter_name
+    order by realized_sum desc nulls last
+    limit 1
+  )
+  select
+    coalesce(sum(base.realized_profit), 0) as total_realized_profit,
+    coalesce(sum(case when base.department = 'nightlife' then base.realized_profit else 0 end), 0) as nightlife_realized_profit,
+    coalesce(sum(case when base.department = 'transport' then base.realized_profit else 0 end), 0) as transport_realized_profit,
+    coalesce(sum(case when base.department = 'protection' then base.realized_profit else 0 end), 0) as protection_realized_profit,
+    coalesce(sum(case when base.department = 'other' then base.realized_profit else 0 end), 0) as other_realized_profit,
+    coalesce(sum(case when base.department = 'nightlife' then base.total_guests else 0 end), 0)::integer as total_nightlife_guests,
+    case
+      when coalesce(sum(case when base.department = 'nightlife' then base.total_guests else 0 end), 0) = 0
+        then 0
+      else
+        coalesce(sum(case when base.department = 'nightlife' then base.realized_profit else 0 end), 0)
+        / nullif(sum(case when base.department = 'nightlife' then base.total_guests else 0 end), 0)
+    end as avg_nightlife_profit_per_guest,
+    coalesce(sum(case when base.payment_status <> 'paid_final' then base.projected_profit else 0 end), 0) as outstanding_projected_profit,
+    coalesce(sum(case when base.payment_status = 'paid_final' then base.projected_profit else 0 end), 0) as realized_projected_profit,
+    (select promoter_name from top_promoter) as top_promoter_name,
+    coalesce((select realized_sum from top_promoter), 0) as top_promoter_realized_profit
+  from base;
+$$;
+
+grant execute on function public.get_financial_dashboard_snapshot(date, date) to authenticated;
+
 -- Admin: delete a promoter job and completion side-effects in one transaction.
 drop function if exists public.delete_promoter_job_safe(uuid);
 create or replace function public.delete_promoter_job_safe(p_job_id uuid)
