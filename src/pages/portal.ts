@@ -1,147 +1,293 @@
 import { getSupabaseClient } from "../lib/supabase";
 import { resolveSignedInRole, type AppRole } from "../lib/session-role";
+import {
+  PORTAL_OVERVIEW_VIEW,
+  allowedModesForRole,
+  defaultModeForRole,
+  findNavItem,
+  getNavConfigForMode,
+} from "../portal/nav-config";
+import { mountPortalShell, type PortalShellHandle } from "../portal/shell";
+import type { PortalMode } from "../portal/types";
+import { renderPortalOverview } from "./portal-overview";
 import { initAdminPortal } from "./admin";
 import { initClubPortal } from "./club";
 import { initPromoterPortal } from "./promoter";
-import "../styles/pages/portal.css";
+import "../styles/pages/portal-shell.css";
 
-type PortalMode = "admin" | "promoter" | "club";
+interface ModuleState {
+  initialized: boolean;
+  /** Resolves once the module's first render is in the DOM. */
+  ready: Promise<void> | null;
+}
 
 export async function initPortalPage(): Promise<void> {
-  const rootEl = document.getElementById("portal-root");
-  if (!rootEl) return;
+  const rootElMaybe = document.getElementById("portal-root");
+  if (!rootElMaybe) return;
+  const rootEl: HTMLElement = rootElMaybe;
   const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
     rootEl.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Supabase is not configured.</p></div>`;
     return;
   }
-  const root = rootEl;
   const supabase = supabaseClient;
 
-  let currentMode: PortalMode = "promoter";
-  let adminInitialized = false;
-  let promoterInitialized = false;
-  let clubInitialized = false;
+  let shell: PortalShellHandle | null = null;
   let mountedRole: AppRole = null;
+  const moduleState: Record<PortalMode, ModuleState> = {
+    admin: { initialized: false, ready: null },
+    promoter: { initialized: false, ready: null },
+    club: { initialized: false, ready: null },
+  };
+  let currentMode: PortalMode = "admin";
+  let activeItemId: string | null = null;
 
-  function shellHtml(role: AppRole): string {
-    const adminAllowed = role === "admin";
-    const promoterAllowed = role === "admin" || role === "promoter";
-    const clubAllowed = role === "admin" || role === "club";
-    return `
-      <div class="portal-shell">
-        <div class="portal-switcher" id="portal-switcher">
-          <button type="button" class="cc-btn cc-btn--ghost" data-portal-mode="admin">Admin workspace</button>
-          <button type="button" class="cc-btn cc-btn--ghost" data-portal-mode="promoter">Promoter workspace</button>
-          <button type="button" class="cc-btn cc-btn--ghost" data-portal-mode="club">Club workspace</button>
-        </div>
-        <div id="portal-admin-wrap"${adminAllowed && currentMode === "admin" ? "" : " hidden"}>
-          <div id="admin-root"></div>
-        </div>
-        <div id="portal-promoter-wrap"${promoterAllowed && currentMode === "promoter" ? "" : " hidden"}>
-          <div id="promoter-root"></div>
-        </div>
-        <div id="portal-club-wrap"${clubAllowed && currentMode === "club" ? "" : " hidden"}>
-          <div id="club-root"></div>
-        </div>
+  function readUrlState(): { mode: PortalMode | null; itemId: string | null } {
+    const params = new URLSearchParams(window.location.search);
+    const rawView = params.get("view");
+    if (!rawView) return { mode: null, itemId: null };
+    const dot = rawView.indexOf(".");
+    if (dot < 0) return { mode: null, itemId: null };
+    const modeRaw = rawView.slice(0, dot);
+    if (modeRaw !== "admin" && modeRaw !== "promoter" && modeRaw !== "club") {
+      return { mode: null, itemId: null };
+    }
+    return { mode: modeRaw, itemId: rawView };
+  }
+
+  function writeUrlState(itemId: string | null): void {
+    const params = new URLSearchParams(window.location.search);
+    if (itemId) params.set("view", itemId);
+    else params.delete("view");
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }
+
+  function buildLegacyHosts(host: HTMLElement): {
+    overviewHost: HTMLElement;
+    legacyMount: HTMLElement;
+    adminMount: HTMLElement;
+    promoterMount: HTMLElement;
+    clubMount: HTMLElement;
+  } {
+    host.innerHTML = `
+      <div id="portal-overview-root"></div>
+      <div id="legacy-mount" hidden>
+        <div id="admin-root" hidden></div>
+        <div id="promoter-root" hidden></div>
+        <div id="club-root" hidden></div>
       </div>
     `;
+    return {
+      overviewHost: host.querySelector("#portal-overview-root") as HTMLElement,
+      legacyMount: host.querySelector("#legacy-mount") as HTMLElement,
+      adminMount: host.querySelector("#admin-root") as HTMLElement,
+      promoterMount: host.querySelector("#promoter-root") as HTMLElement,
+      clubMount: host.querySelector("#club-root") as HTMLElement,
+    };
   }
 
-  function applyMode(role: AppRole): void {
-    const adminWrap = root.querySelector("#portal-admin-wrap") as HTMLElement | null;
-    const promoterWrap = root.querySelector("#portal-promoter-wrap") as HTMLElement | null;
-    const clubWrap = root.querySelector("#portal-club-wrap") as HTMLElement | null;
-    const switcher = root.querySelector("#portal-switcher") as HTMLElement | null;
-    const adminAllowed = role === "admin";
-    const promoterAllowed = role === "admin" || role === "promoter";
-    const clubAllowed = role === "admin" || role === "club";
-    if (switcher) {
-      switcher.hidden = !adminAllowed;
-      const adminBtn = switcher.querySelector(
-        '[data-portal-mode="admin"]',
-      ) as HTMLButtonElement | null;
-      const promoterBtn = switcher.querySelector(
-        '[data-portal-mode="promoter"]',
-      ) as HTMLButtonElement | null;
-      const clubBtn = switcher.querySelector(
-        '[data-portal-mode="club"]',
-      ) as HTMLButtonElement | null;
-      if (adminBtn) {
-        adminBtn.className = `cc-btn ${currentMode === "admin" ? "cc-btn--gold" : "cc-btn--ghost"}`;
-        adminBtn.hidden = !adminAllowed;
-      }
-      if (promoterBtn) {
-        promoterBtn.className = `cc-btn ${currentMode === "promoter" ? "cc-btn--gold" : "cc-btn--ghost"}`;
-        promoterBtn.hidden = !promoterAllowed;
-      }
-      if (clubBtn) {
-        clubBtn.className = `cc-btn ${currentMode === "club" ? "cc-btn--gold" : "cc-btn--ghost"}`;
-        clubBtn.hidden = !clubAllowed;
-      }
+  async function ensureModuleMounted(mode: PortalMode): Promise<void> {
+    const state = moduleState[mode];
+    if (state.initialized) return state.ready ?? Promise.resolve();
+    state.initialized = true;
+    state.ready = (async () => {
+      if (mode === "admin") await initAdminPortal();
+      else if (mode === "promoter") await initPromoterPortal();
+      else if (mode === "club") await initClubPortal();
+    })();
+    await state.ready;
+  }
+
+  function showMount(mode: PortalMode | null, hosts: {
+    overviewHost: HTMLElement;
+    legacyMount: HTMLElement;
+    adminMount: HTMLElement;
+    promoterMount: HTMLElement;
+    clubMount: HTMLElement;
+  }, isOverview: boolean): void {
+    hosts.overviewHost.hidden = !isOverview;
+    if (isOverview) {
+      hosts.legacyMount.hidden = true;
+      hosts.adminMount.hidden = true;
+      hosts.promoterMount.hidden = true;
+      hosts.clubMount.hidden = true;
+      return;
     }
-    if (adminWrap) adminWrap.hidden = !(adminAllowed && currentMode === "admin");
-    if (promoterWrap) promoterWrap.hidden = !(promoterAllowed && currentMode === "promoter");
-    if (clubWrap) clubWrap.hidden = !(clubAllowed && currentMode === "club");
+    hosts.legacyMount.hidden = false;
+    hosts.adminMount.hidden = mode !== "admin";
+    hosts.promoterMount.hidden = mode !== "promoter";
+    hosts.clubMount.hidden = mode !== "club";
   }
 
-  function bindModeSwitch(role: AppRole): void {
-    if (role !== "admin") return;
-    root.querySelectorAll("[data-portal-mode]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const next = (btn as HTMLElement).getAttribute("data-portal-mode");
-        if (next !== "admin" && next !== "promoter" && next !== "club") return;
+  /**
+   * Drive the legacy module's internal view-state by clicking the matching
+   * `[data-view]` button (which is rendered into the hidden legacy sidebar).
+   * The click fires the existing handler so all module business logic works.
+   */
+  function dispatchLegacyView(mode: PortalMode, legacyView: string): void {
+    if (legacyView === PORTAL_OVERVIEW_VIEW) return;
+    const root =
+      mode === "admin"
+        ? document.getElementById("admin-root")
+        : mode === "promoter"
+          ? document.getElementById("promoter-root")
+          : document.getElementById("club-root");
+    if (!root) return;
+    const selector =
+      mode === "admin"
+        ? `[data-view="${legacyView}"]`
+        : mode === "promoter"
+          ? `[data-promoter-view="${legacyView}"]`
+          : `[data-club-view="${legacyView}"]`;
+    const btn = root.querySelector(selector) as HTMLElement | null;
+    if (btn) btn.click();
+  }
+
+  async function renderShellOnce(role: AppRole, email: string | null): Promise<void> {
+    if (!role) return;
+    if (mountedRole === role && shell) return;
+
+    if (shell) shell.destroy();
+    moduleState.admin = { initialized: false, ready: null };
+    moduleState.promoter = { initialized: false, ready: null };
+    moduleState.club = { initialized: false, ready: null };
+
+    const allowedModes = allowedModesForRole(role);
+    const urlState = readUrlState();
+    const initialMode: PortalMode =
+      urlState.mode && allowedModes.includes(urlState.mode)
+        ? urlState.mode
+        : (defaultModeForRole(role) ?? "promoter");
+    currentMode = initialMode;
+    const initialItemId =
+      urlState.itemId &&
+      findNavItem(getNavConfigForMode(initialMode), urlState.itemId)
+        ? urlState.itemId
+        : null;
+
+    shell = mountPortalShell({
+      rootEl,
+      role: role as Exclude<AppRole, null>,
+      email,
+      initialMode,
+      initialItemId,
+      onSignOut: () => {
+        void supabase.auth.signOut().then(() => {
+          window.location.href = "/account";
+        });
+      },
+      onModeChange: async (next) => {
+        if (!allowedModes.includes(next)) return;
         currentMode = next;
-        applyMode(role);
-        void ensureMounted(role);
-      });
+      },
+      onNavigate: async ({ mode, item, isOverview }) => {
+        currentMode = mode;
+        activeItemId = item.id;
+        writeUrlState(item.id);
+        const hosts = collectHosts();
+        if (isOverview) {
+          showMount(mode, hosts, true);
+          await renderPortalOverview({
+            host: hosts.overviewHost,
+            supabase,
+            mode,
+            email,
+            shell: shell!,
+          });
+          return;
+        }
+        await ensureModuleMounted(mode);
+        showMount(mode, hosts, false);
+        dispatchLegacyView(mode, item.legacyView);
+      },
     });
+
+    const hosts = buildLegacyHosts(shell.contentHost);
+
+    mountedRole = role;
+    activeItemId = initialItemId;
+
+    if (initialItemId) {
+      const navItem = findNavItem(
+        getNavConfigForMode(initialMode),
+        initialItemId,
+      );
+      const isOverview = navItem?.legacyView === PORTAL_OVERVIEW_VIEW;
+      if (isOverview) {
+        showMount(initialMode, hosts, true);
+        await renderPortalOverview({
+          host: hosts.overviewHost,
+          supabase,
+          mode: initialMode,
+          email,
+          shell,
+        });
+      } else if (navItem) {
+        await ensureModuleMounted(initialMode);
+        showMount(initialMode, hosts, false);
+        dispatchLegacyView(initialMode, navItem.legacyView);
+      }
+    } else {
+      showMount(initialMode, hosts, true);
+      await renderPortalOverview({
+        host: hosts.overviewHost,
+        supabase,
+        mode: initialMode,
+        email,
+        shell,
+      });
+    }
   }
 
-  async function ensureMounted(role: AppRole): Promise<void> {
-    if (role === "admin" && currentMode === "admin" && !adminInitialized) {
-      adminInitialized = true;
-      await initAdminPortal();
-      return;
-    }
-    if ((role === "admin" || role === "promoter") && currentMode === "promoter" && !promoterInitialized) {
-      promoterInitialized = true;
-      await initPromoterPortal();
-      return;
-    }
-    if ((role === "admin" || role === "club") && currentMode === "club" && !clubInitialized) {
-      clubInitialized = true;
-      await initClubPortal();
-    }
+  function collectHosts(): {
+    overviewHost: HTMLElement;
+    legacyMount: HTMLElement;
+    adminMount: HTMLElement;
+    promoterMount: HTMLElement;
+    clubMount: HTMLElement;
+  } {
+    return {
+      overviewHost: document.getElementById("portal-overview-root") as HTMLElement,
+      legacyMount: document.getElementById("legacy-mount") as HTMLElement,
+      adminMount: document.getElementById("admin-root") as HTMLElement,
+      promoterMount: document.getElementById("promoter-root") as HTMLElement,
+      clubMount: document.getElementById("club-root") as HTMLElement,
+    };
   }
 
   async function render(): Promise<void> {
     const auth = await resolveSignedInRole(supabase);
     if (!auth.signedIn) {
-      root.innerHTML = `<div class="admin-card"><p class="admin-note">Please sign in to continue.</p><a class="cc-btn cc-btn--gold" href="/account">Sign in</a></div>`;
+      if (shell) {
+        shell.destroy();
+        shell = null;
+        mountedRole = null;
+      }
+      rootEl.innerHTML = `<div class="admin-card"><p class="admin-note">Please sign in to continue.</p><a class="cc-btn cc-btn--gold" href="/account">Sign in</a></div>`;
       return;
     }
     if (!auth.role) {
-      root.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Your account has no assigned portal role.</p></div>`;
+      if (shell) {
+        shell.destroy();
+        shell = null;
+        mountedRole = null;
+      }
+      rootEl.innerHTML = `<div class="admin-card"><p class="admin-flash admin-flash--error">Your account has no assigned portal role.</p></div>`;
       return;
     }
-    if (auth.role !== "admin" && currentMode === "admin") {
-      currentMode = auth.role === "club" ? "club" : "promoter";
+    let email: string | null = null;
+    try {
+      const { data } = await supabase.auth.getSession();
+      email = data.session?.user?.email ?? null;
+    } catch {
+      email = null;
     }
-    if (auth.role === "club" && currentMode !== "club") {
-      currentMode = "club";
-    }
-    if (mountedRole !== auth.role || !root.querySelector("#admin-root") || !root.querySelector("#promoter-root") || !root.querySelector("#club-root")) {
-      root.innerHTML = shellHtml(auth.role);
-      bindModeSwitch(auth.role);
-      adminInitialized = false;
-      promoterInitialized = false;
-      clubInitialized = false;
-      mountedRole = auth.role;
-    }
-    applyMode(auth.role);
-    await ensureMounted(auth.role);
-    applyMode(auth.role);
+
+    void activeItemId;
+    void currentMode;
+
+    await renderShellOnce(auth.role, email);
   }
 
   supabase.auth.onAuthStateChange(() => {

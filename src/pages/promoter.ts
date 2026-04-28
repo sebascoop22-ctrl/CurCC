@@ -33,6 +33,8 @@ import {
   downloadPdfFromBase64,
 } from "../lib/promoter-invoice-edge";
 import { notifyPromoterRequestSubmitted } from "../lib/promoter-request-edge";
+import { renderStatusBadge } from "../portal/badge";
+import { mountDataTable } from "../portal/data-table";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
   Club,
@@ -182,6 +184,8 @@ export async function initPromoterPortal(): Promise<void> {
   }> = [];
   let selectedClientId: string | null = null;
   let selectedClientAttendanceId: string | null = null;
+  let promoterClientFormOpen = false;
+  let promoterClientAttendanceFormOpen = false;
   let promoterClientAttendances: Array<{
     id: string;
     clientId: string;
@@ -314,6 +318,115 @@ export async function initPromoterPortal(): Promise<void> {
         <div class="admin-flash" id="promoter-flash"></div>
       </div>
     `;
+
+    const clientsTableHost = root.querySelector("#promoter-clients-table") as HTMLElement | null;
+    if (clientsTableHost) {
+      mountDataTable(clientsTableHost, {
+        id: "promoter-clients",
+        rows: promoterClients,
+        rowId: (c) => c.id,
+        activeRowId: selectedClientId,
+        columns: [
+          { key: "name", label: "Name", sortable: true, accessor: (c) => c.name },
+          { key: "email", label: "Email", sortable: true, accessor: (c) => c.email || "—" },
+          { key: "phone", label: "Phone", accessor: (c) => c.phone || "—" },
+          { key: "instagram", label: "Instagram", accessor: (c) => c.instagram || "—" },
+          { key: "added", label: "Added", sortable: true, accessor: (c) => c.createdAt.slice(0, 10) || "—" },
+          {
+            key: "actions",
+            label: "Actions",
+            render: (c) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-client-id="${esc(c.id)}">Edit</button>`,
+          },
+        ],
+        onRowClick: (row) => {
+          selectedClientId = row.id;
+          selectedClientAttendanceId = null;
+          renderDashboard();
+        },
+      });
+    }
+
+    const attendanceTableHost = root.querySelector("#promoter-attendance-table") as HTMLElement | null;
+    if (attendanceTableHost) {
+      mountDataTable(attendanceTableHost, {
+        id: "promoter-attendance",
+        rows: promoterClientAttendances,
+        rowId: (a) => a.id,
+        activeRowId: selectedClientAttendanceId,
+        columns: [
+          { key: "date", label: "Date", sortable: true, accessor: (a) => a.eventDate },
+          { key: "club", label: "Club", accessor: (a) => a.clubSlug },
+          {
+            key: "spend",
+            label: "Spend",
+            sortable: true,
+            accessor: (a) => Number(a.spendGbp || 0),
+            render: (a) => `£${Number(a.spendGbp || 0).toFixed(2)}`,
+            align: "right",
+          },
+          { key: "source", label: "Source", accessor: (a) => a.source || "manual" },
+          { key: "details", label: "Details", accessor: (a) => a.notes || "—", render: (a) => esc(a.notes || "—") },
+          {
+            key: "actions",
+            label: "Actions",
+            render: (a) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-client-attendance-id="${esc(a.id)}">Edit</button>
+               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-attendance-delete="${esc(a.id)}">Delete</button>`,
+          },
+        ],
+        onRowClick: (row) => {
+          selectedClientAttendanceId = row.id;
+          renderDashboard();
+        },
+      });
+    }
+
+    const invoicesTableHost = root.querySelector("#promoter-invoices-table") as HTMLElement | null;
+    if (invoicesTableHost) {
+      mountDataTable(invoicesTableHost, {
+        id: "promoter-invoices",
+        rows: invoices,
+        rowId: (i) => i.id,
+        columns: [
+          {
+            key: "period",
+            label: "Period",
+            sortable: true,
+            accessor: (i) => `${i.periodStart} to ${i.periodEnd}`,
+            render: (i) => `${esc(i.periodStart)} to ${esc(i.periodEnd)}`,
+          },
+          {
+            key: "status",
+            label: "Status",
+            sortable: true,
+            accessor: (i) => i.status,
+            render: (i) => renderStatusBadge(i.status),
+          },
+          {
+            key: "total",
+            label: "Total",
+            sortable: true,
+            accessor: (i) => i.total,
+            render: (i) => money(i.total),
+            align: "right",
+          },
+          {
+            key: "emailed",
+            label: "Emailed",
+            accessor: (i) => (i.sentAt && i.sentToEmail ? `${i.sentAt.slice(0, 10)} · ${i.sentToEmail}` : "—"),
+          },
+          {
+            key: "actions",
+            label: "Actions",
+            render: (i) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-invoice-pdf data-invoice-id="${esc(i.id)}">PDF</button>`,
+          },
+        ],
+        empty: { title: "No invoices generated yet." },
+        paginated: false,
+      });
+    }
     root.querySelector("#promoter-login-form")?.addEventListener("submit", (e) => {
       e.preventDefault();
       const fd = new FormData(e.target as HTMLFormElement);
@@ -696,37 +809,6 @@ export async function initPromoterPortal(): Promise<void> {
         (selectedClientAttendanceId &&
           promoterClientAttendances.find((a) => a.id === selectedClientAttendanceId)) ||
         null;
-      const rows =
-        promoterClients.length === 0
-          ? "<tr><td colspan='5'>No clients yet.</td></tr>"
-          : promoterClients
-              .map((c) => {
-                const active = c.id === selectedClientId ? " is-active" : "";
-                return `<tr class="promoter-client-row${active}" data-client-id="${esc(c.id)}">
-                  <td>${esc(c.name)}</td>
-                  <td>${esc(c.email || "—")}</td>
-                  <td>${esc(c.phone || "—")}</td>
-                  <td>${esc(c.instagram || "—")}</td>
-                  <td>${esc(c.createdAt.slice(0, 10) || "—")}</td>
-                </tr>`;
-              })
-              .join("");
-      const attendanceRows =
-        promoterClientAttendances.length === 0
-          ? "<tr><td colspan='6'>No attendance history yet.</td></tr>"
-          : promoterClientAttendances
-              .map((a) => {
-                const active = a.id === selectedClientAttendanceId ? " is-active" : "";
-                return `<tr class="promoter-client-row${active}" data-client-attendance-id="${esc(a.id)}">
-                  <td>${esc(a.eventDate)}</td>
-                  <td>${esc(a.clubSlug)}</td>
-                  <td>£${Number(a.spendGbp || 0).toFixed(2)}</td>
-                  <td>${esc(a.source || "manual")}</td>
-                  <td>${esc(a.notes || "—")}</td>
-                  <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-attendance-delete="${esc(a.id)}">Delete</button></td>
-                </tr>`;
-              })
-              .join("");
       const clubSelect = clubs
         .map(
           (club) =>
@@ -737,42 +819,41 @@ export async function initPromoterPortal(): Promise<void> {
         <div class="promoter-panel">
           <h4>Client directory</h4>
           <p class="promoter-main__subtitle" style="margin-top:0">Create or update clients; duplicates are merged by email, phone, or Instagram for your account.</p>
-          <div class="promoter-table-wrap">
-            <table>
-              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Instagram</th><th>Added</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
+          <div id="promoter-clients-table"></div>
         </div>
         <div class="promoter-panel">
           <h4>${selected ? "Edit client" : "Create client"}</h4>
-          <form class="admin-form" id="promoter-client-form">
+          ${
+            promoterClientFormOpen || selected
+              ? `<form class="admin-form" id="promoter-client-form" data-collapsible="true">
             <input type="hidden" name="id" value="${esc(selected?.id || "")}" />
-            <div class="cc-field"><label>Name</label><input name="name" required value="${esc(selected?.name || "")}" /></div>
-            <div class="cc-field"><label>Email</label><input name="email" type="email" value="${esc(selected?.email || "")}" /></div>
-            <div class="cc-field"><label>Phone</label><input name="phone" value="${esc(selected?.phone || "")}" /></div>
-            <div class="cc-field"><label>Instagram</label><input name="instagram" value="${esc(selected?.instagram || "")}" placeholder="@handle" /></div>
+            <h4 class="full">Client details</h4>
+            <div class="cc-field pp-col-6"><label>Name</label><input name="name" required value="${esc(selected?.name || "")}" /></div>
+            <div class="cc-field pp-col-6"><label>Email</label><input name="email" type="email" value="${esc(selected?.email || "")}" /></div>
+            <div class="cc-field pp-col-6"><label>Phone</label><input name="phone" value="${esc(selected?.phone || "")}" /></div>
+            <div class="cc-field pp-col-6"><label>Instagram</label><input name="instagram" value="${esc(selected?.instagram || "")}" placeholder="@handle" /></div>
+            <h4 class="full">Notes</h4>
             <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="3">${esc(selected?.notes || "")}</textarea></div>
             <div class="admin-actions full">
               <button class="cc-btn cc-btn--gold" type="submit">${selected ? "Save client" : "Create client"}</button>
               <button class="cc-btn cc-btn--ghost" type="button" id="promoter-client-new">New client</button>
             </div>
-          </form>
+          </form>`
+              : `<p class="admin-note">Client form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-client-form">Add new client</button>`
+          }
           ${
             selected
               ? `<h4 style="margin-top:1rem">Past visits</h4>
-          <div class="promoter-table-wrap">
-            <table>
-              <thead><tr><th>Date</th><th>Club</th><th>Spend</th><th>Source</th><th>Details</th><th>Action</th></tr></thead>
-              <tbody>${attendanceRows}</tbody>
-            </table>
-          </div>
-          <form class="admin-form" id="promoter-client-attendance-form" style="margin-top:0.8rem">
+          <div id="promoter-attendance-table"></div>
+          ${
+            promoterClientAttendanceFormOpen || selectedAttendance
+              ? `<form class="admin-form" id="promoter-client-attendance-form" data-collapsible="true" style="margin-top:0.8rem">
             <input type="hidden" name="attendanceId" value="${esc(selectedAttendance?.id || "")}" />
-            <div class="cc-field"><label>Date</label><input type="date" name="eventDate" required value="${esc(selectedAttendance?.eventDate || new Date().toISOString().slice(0, 10))}" /></div>
-            <div class="cc-field"><label>Club</label><select name="clubSlug">${clubSelect}</select></div>
-            <div class="cc-field"><label>Spend (£)</label><input type="number" name="spendGbp" min="0" step="0.01" value="${esc(String(selectedAttendance?.spendGbp ?? 0))}" /></div>
-            <div class="cc-field"><label>Source</label><input name="source" value="${esc(selectedAttendance?.source || "manual")}" /></div>
+            <h4 class="full">Visit details</h4>
+            <div class="cc-field pp-col-3"><label>Date</label><input type="date" name="eventDate" required value="${esc(selectedAttendance?.eventDate || new Date().toISOString().slice(0, 10))}" /></div>
+            <div class="cc-field pp-col-5"><label>Club</label><select name="clubSlug">${clubSelect}</select></div>
+            <div class="cc-field pp-col-2"><label>Spend (£)</label><input type="number" name="spendGbp" min="0" step="0.01" value="${esc(String(selectedAttendance?.spendGbp ?? 0))}" /></div>
+            <div class="cc-field pp-col-2"><label>Source</label><input name="source" value="${esc(selectedAttendance?.source || "manual")}" /></div>
             <div class="cc-field full"><label>Details</label><textarea name="notes" rows="2">${esc(selectedAttendance?.notes || "")}</textarea></div>
             <div class="admin-actions full">
               <button class="cc-btn cc-btn--gold" type="submit">${selectedAttendance ? "Save visit" : "Add visit"}</button>
@@ -783,6 +864,8 @@ export async function initPromoterPortal(): Promise<void> {
               }
             </div>
           </form>`
+              : `<p class="admin-note">Visit form hidden until Add new/Edit is clicked.</p><button type="button" class="pp-btn pp-btn--primary" id="promoter-open-attendance-form">Add visit</button>`
+          }`
               : ""
           }
         </div>`;
@@ -804,10 +887,11 @@ export async function initPromoterPortal(): Promise<void> {
       return `
         <div class="promoter-panel">
           <p class="promoter-panel__title">Create new job or guestlist</p>
-          <form class="admin-form" id="promoter-create-job-form">
-            <div class="cc-field"><label>Date</label><input type="date" name="jobDate" required value="${esc(new Date().toISOString().slice(0, 10))}" /></div>
-            <div class="cc-field"><label>Club</label><select name="clubSlug" required>${clubs.map((c) => `<option value="${esc(c.slug)}">${esc(c.name)}</option>`).join("")}</select></div>
-            <div class="cc-field"><label>Service</label>
+          <form class="admin-form" id="promoter-create-job-form" data-collapsible="true">
+            <h4 class="full">Job details</h4>
+            <div class="cc-field pp-col-3"><label>Date</label><input type="date" name="jobDate" required value="${esc(new Date().toISOString().slice(0, 10))}" /></div>
+            <div class="cc-field pp-col-5"><label>Club</label><select name="clubSlug" required>${clubs.map((c) => `<option value="${esc(c.slug)}">${esc(c.name)}</option>`).join("")}</select></div>
+            <div class="cc-field pp-col-2"><label>Service</label>
               <select name="service">
                 <option value="guestlist">guestlist</option>
                 <option value="table_sale">table_sale</option>
@@ -815,19 +899,20 @@ export async function initPromoterPortal(): Promise<void> {
                 <option value="other">other</option>
               </select>
             </div>
-            <div class="cc-field"><label>Status</label>
+            <div class="cc-field pp-col-2"><label>Status</label>
               <select name="status">
                 <option value="assigned">assigned (upcoming)</option>
                 <option value="completed">completed (already happened)</option>
               </select>
             </div>
-            <div class="cc-field"><label>Client mode</label>
+            <div class="cc-field pp-col-4"><label>Client mode</label>
               <select name="clientMode">
                 <option value="existing">Find client</option>
                 <option value="blank">Create blank client</option>
                 <option value="new">Create new client profile</option>
               </select>
             </div>
+            <h4 class="full">Client assignment</h4>
             <div class="cc-field full" id="promoter-job-find-client-block"><label>Find client</label>
               <input name="clientSearch" type="text" placeholder="Type client name/email/phone" />
               <select name="existingClientId" style="margin-top:0.4rem">
@@ -835,9 +920,9 @@ export async function initPromoterPortal(): Promise<void> {
                 ${promoterClients.map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`).join("")}
               </select>
             </div>
-            <div class="cc-field" id="promoter-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
-            <div class="cc-field" id="promoter-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
-            <div class="cc-field" id="promoter-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
+            <div class="cc-field pp-col-4" id="promoter-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
             <div class="admin-actions full">
               <button type="button" class="cc-btn cc-btn--ghost" id="promoter-job-add-client">+ Add client</button>
             </div>
@@ -856,9 +941,10 @@ export async function initPromoterPortal(): Promise<void> {
                 }</tbody>
               </table>
             </div>
-            <div class="cc-field"><label>Guests count</label><input type="number" name="guestsCount" min="0" step="1" value="0" /></div>
-            <div class="cc-field"><label>Shift fee (£)</label><input type="number" name="shiftFee" min="0" step="0.01" value="0" /></div>
-            <div class="cc-field"><label>Guestlist fee (£/guest)</label><input type="number" name="guestlistFee" min="0" step="0.01" value="0" /></div>
+            <h4 class="full">Compensation & notes</h4>
+            <div class="cc-field pp-col-4"><label>Guests count</label><input type="number" name="guestsCount" min="0" step="1" value="0" /></div>
+            <div class="cc-field pp-col-4"><label>Shift fee (£)</label><input type="number" name="shiftFee" min="0" step="0.01" value="0" /></div>
+            <div class="cc-field pp-col-4"><label>Guestlist fee (£/guest)</label><input type="number" name="guestlistFee" min="0" step="0.01" value="0" /></div>
             <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2" placeholder="Client/brief details"></textarea></div>
             <div class="admin-actions full">
               <button type="submit" class="cc-btn cc-btn--gold">Create job</button>
@@ -920,35 +1006,53 @@ export async function initPromoterPortal(): Promise<void> {
     }
 
     /* invoices */
-    const invBody =
-      invoices.length === 0
-        ? "<tr><td colspan='5'>No invoices generated yet.</td></tr>"
-        : invoices
-            .map((i) => {
-              const sent =
-                i.sentAt && i.sentToEmail
-                  ? `${esc(i.sentAt.slice(0, 10))} · ${esc(i.sentToEmail)}`
-                  : "—";
-              return `<tr>
-              <td>${esc(i.periodStart)} to ${esc(i.periodEnd)}</td>
-              <td>${esc(i.status)}</td>
-              <td>${money(i.total)}</td>
-              <td>${sent}</td>
-              <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-invoice-pdf data-invoice-id="${esc(i.id)}">PDF</button></td>
-            </tr>`;
-            })
-            .join("");
     return `
       <div class="promoter-panel">
         <p class="promoter-panel__title">Statements</p>
         <p class="promoter-main__subtitle" style="margin-top:0">PDF uses the same Cooper invoice function as admin (deploy the <code>promoter-invoice</code> Edge Function).</p>
-        <div class="promoter-table-wrap">
-          <table>
-            <thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Emailed</th><th>PDF</th></tr></thead>
-            <tbody>${invBody}</tbody>
-          </table>
-        </div>
+        <div id="promoter-invoices-table"></div>
       </div>`;
+  }
+
+  function applyCollapsibleFormSections(scope: ParentNode): void {
+    const blocks = Array.from(
+      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true']"),
+    );
+    for (const block of blocks) {
+      if (block.dataset.collapsibleReady === "1") continue;
+      const headings = Array.from(
+        block.querySelectorAll<HTMLElement>(":scope > h4.full"),
+      );
+      if (!headings.length) {
+        block.dataset.collapsibleReady = "1";
+        continue;
+      }
+      for (let i = 0; i < headings.length; i += 1) {
+        const heading = headings[i];
+        const nextHeading = headings[i + 1] ?? null;
+        const details = document.createElement("details");
+        details.className = "pp-form-section full";
+        details.open = i === 0;
+
+        const summary = document.createElement("summary");
+        summary.className = "pp-form-section__summary";
+        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
+        details.append(summary);
+
+        const body = document.createElement("div");
+        body.className = "pp-form-section__body";
+        details.append(body);
+
+        let node = heading.nextElementSibling as HTMLElement | null;
+        while (node && node !== nextHeading) {
+          const nextNode = node.nextElementSibling as HTMLElement | null;
+          body.append(node);
+          node = nextNode;
+        }
+        heading.replaceWith(details);
+      }
+      block.dataset.collapsibleReady = "1";
+    }
   }
 
   function renderDashboard(): void {
@@ -1037,6 +1141,7 @@ export async function initPromoterPortal(): Promise<void> {
         </div>
       </div>
     `;
+    applyCollapsibleFormSections(root);
 
     root.querySelectorAll(".promoter-view-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1525,16 +1630,29 @@ export async function initPromoterPortal(): Promise<void> {
       })();
     });
     root.querySelector("#promoter-client-new")?.addEventListener("click", () => {
+      promoterClientFormOpen = true;
       selectedClientId = null;
       selectedClientAttendanceId = null;
       void loadAndRender();
     });
-    root.querySelectorAll(".promoter-client-row").forEach((row) => {
+    root.querySelector("#promoter-open-client-form")?.addEventListener("click", () => {
+      promoterClientFormOpen = true;
+      selectedClientId = null;
+      selectedClientAttendanceId = null;
+      renderDashboard();
+    });
+    root.querySelector("#promoter-open-attendance-form")?.addEventListener("click", () => {
+      promoterClientAttendanceFormOpen = true;
+      selectedClientAttendanceId = null;
+      renderDashboard();
+    });
+    root.querySelectorAll("[data-client-id]").forEach((row) => {
       row.addEventListener("click", () => {
+        promoterClientFormOpen = true;
         selectedClientId =
           (row as HTMLElement).dataset.clientId?.trim() || null;
         selectedClientAttendanceId = null;
-        void loadAndRender();
+        renderDashboard();
       });
     });
     root.querySelector("#promoter-client-form")?.addEventListener("submit", (ev) => {
@@ -1568,6 +1686,7 @@ export async function initPromoterPortal(): Promise<void> {
     });
     root.querySelectorAll("[data-client-attendance-id]").forEach((row) => {
       row.addEventListener("click", () => {
+        promoterClientAttendanceFormOpen = true;
         selectedClientAttendanceId =
           (row as HTMLElement).dataset.clientAttendanceId?.trim() || null;
         renderDashboard();
@@ -1591,6 +1710,7 @@ export async function initPromoterPortal(): Promise<void> {
       });
     });
     root.querySelector("#promoter-client-attendance-new")?.addEventListener("click", () => {
+      promoterClientAttendanceFormOpen = true;
       selectedClientAttendanceId = null;
       renderDashboard();
     });

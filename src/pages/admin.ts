@@ -88,6 +88,8 @@ import {
 } from "../lib/promoter-invoice-edge";
 import { adminPromoterRequestDecision } from "../lib/promoter-request-edge";
 import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
+import { mountDataTable } from "../portal/data-table";
+import { renderStatusBadge } from "../portal/badge";
 import { getSupabaseClient } from "../lib/supabase";
 import type {
   FinancialDirection,
@@ -716,8 +718,9 @@ function renderClientDetail(
   return `
       <div class="admin-client-detail">
         <h4 class="admin-subhead" style="margin-top: 0">Client record</h4>
-        <form class="admin-form" id="admin-client-form">
+        <form class="admin-form" id="admin-client-form" data-collapsible="true">
           <input type="hidden" name="client_id" value="${escapeAttr(c.id)}" />
+          <h4 class="full">Contact details</h4>
           <div class="cc-field"><label for="client-name">Name</label>
             <input id="client-name" name="name" value="${escapeAttr(c.name ?? "")}" /></div>
           <div class="cc-field"><label for="client-email">Email</label>
@@ -726,6 +729,7 @@ function renderClientDetail(
             <input id="client-phone" name="phone" value="${escapeAttr(c.phone ?? "")}" /></div>
           <div class="cc-field"><label for="client-ig">Instagram</label>
             <input id="client-ig" name="instagram" value="${escapeAttr(c.instagram ?? "")}" placeholder="@handle" /></div>
+          <h4 class="full">Preferences</h4>
           <div class="cc-field"><label for="client-spend">Typical spend (GBP / night)</label>
             <input id="client-spend" name="typical_spend_gbp" type="number" min="0" step="0.01" placeholder="e.g. 500" value="${escapeAttr(spendVal)}" /></div>
           <div class="cc-field full"><label for="client-nights">Preferred nights</label>
@@ -736,6 +740,7 @@ function renderClientDetail(
             <select id="client-club" name="preferred_club_slug"><option value="">— None —</option>${clubOpts}</select></div>
           <div class="cc-field full"><label for="client-notes">Internal notes</label>
             <textarea id="client-notes" name="notes" rows="4" placeholder="VIP preferences, relationships, spend patterns…">${escapeHtmlText(c.notes ?? "")}</textarea></div>
+          <h4 class="full">System details</h4>
           <div class="cc-field full"><label>Guest profile id</label>
             <input value="${escapeAttr(c.guest_profile_id ?? "—")}" readonly /></div>
           <div class="cc-field full"><label>Added</label>
@@ -760,8 +765,9 @@ function renderClientDetail(
             <tbody>${attendanceRows}</tbody>
           </table>
         </div>
-        <form class="admin-form" id="admin-client-attendance-form">
+        <form class="admin-form" id="admin-client-attendance-form" data-collapsible="true">
           <input type="hidden" name="attendance_id" value="${escapeAttr(selectedAttendance?.id || "")}" />
+          <h4 class="full">Visit details</h4>
           <div class="cc-field"><label>Date</label><input name="event_date" type="date" required value="${escapeAttr(selectedAttendance?.event_date || new Date().toISOString().slice(0, 10))}" /></div>
           <div class="cc-field"><label>Club</label><select name="club_slug" required>${attendanceClubOpts}</select></div>
           <div class="cc-field"><label>Promoter</label><select name="promoter_id">${attendancePromoOpts}</select></div>
@@ -841,6 +847,14 @@ export async function initAdminPortal(): Promise<void> {
   let jobsFilterPromoterId = "";
   let jobsFilterClubSlug = "";
   let editingJobId: string | null = null;
+  let jobsCreateOpen = false;
+  let jobsCalendarOpen = false;
+  let adminProfileFormOpen = false;
+  let clubFormOpen = false;
+  let carFormOpen = false;
+  let flyerFormOpen = false;
+  let invoiceFormOpen = false;
+  let clubAccountsFormOpen = false;
   let promoterInvoices: PromoterInvoice[] = [];
   let _financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
   let financialPeriodFrom = "";
@@ -875,6 +889,8 @@ export async function initAdminPortal(): Promise<void> {
   let tableSalesQueueRows: PromoterTableSaleQueueRow[] = [];
   let tableSalesReportRows: PromoterTableSaleReportRow[] = [];
   let tableSalesReportFrom = "";
+  let listSearch = "";
+  let listViewMode: "table" | "grid" | "calendar" = "table";
   let tableSalesReportTo = "";
   let tableSalesReportClub = "";
   let clubAccounts: ClubAccountRow[] = [];
@@ -1635,7 +1651,9 @@ export async function initAdminPortal(): Promise<void> {
     return `
             <div class="admin-jobs">
               <div class="admin-jobs__top">
-                <section class="admin-jobs__calendar" aria-label="Job calendar">
+                ${
+                  jobsCalendarOpen
+                    ? `<section class="admin-jobs__calendar" aria-label="Job calendar">
                   <div class="admin-jobs__cal-toolbar">
                     <button type="button" class="cc-btn cc-btn--ghost" id="jobs-cal-prev" aria-label="Previous month">←</button>
                     <h4 class="admin-jobs__cal-title">${escapeAttr(monthLabel)}</h4>
@@ -1660,8 +1678,12 @@ export async function initAdminPortal(): Promise<void> {
                       <button type="button" class="cc-btn cc-btn--ghost" id="jobs-filter-reset">Reset</button>
                     </div>
                   </form>
-                </section>
-                <section class="admin-jobs__create" aria-label="Create job">
+                </section>`
+                    : ""
+                }
+                ${
+                  jobsCreateOpen
+                    ? `<section class="admin-jobs__create" aria-label="Create job">
                   <h4 class="admin-jobs__create-title">Create job</h4>
                   <form class="admin-form admin-jobs__create-form" id="promoter-job-form">
                     <div class="cc-field"><label>Promoter</label>
@@ -1729,7 +1751,9 @@ export async function initAdminPortal(): Promise<void> {
                       <button class="cc-btn cc-btn--gold" type="button" id="promoter-job-create">Create job</button>
                     </div>
                   </form>
-                </section>
+                </section>`
+                    : ""
+                }
               </div>
               <section class="admin-jobs__table-block" aria-label="Jobs this month">
                 <h4 class="admin-jobs__table-title">Jobs this month</h4>
@@ -1989,7 +2013,34 @@ export async function initAdminPortal(): Promise<void> {
       <datalist id="financial-category-presets">${presetOpts}</datalist>`;
   }
 
+  function listSupportsCalendar(v: AdminView): boolean {
+    return (
+      v === "enquiries" ||
+      v === "promoter_requests" ||
+      v === "club_edits" ||
+      v === "job_disputes" ||
+      v === "flyers"
+    );
+  }
+
+  function listSupportsGrid(v: AdminView): boolean {
+    return (
+      v === "enquiries" ||
+      v === "clients" ||
+      v === "promoter_requests" ||
+      v === "promoters" ||
+      v === "club_accounts" ||
+      v === "club_edits" ||
+      v === "job_disputes" ||
+      v === "flyers" ||
+      v === "clubs" ||
+      v === "cars"
+    );
+  }
+
   function renderDashboard(): void {
+    if (listViewMode === "calendar" && !listSupportsCalendar(view)) listViewMode = "table";
+    if (listViewMode === "grid" && !listSupportsGrid(view)) listViewMode = "table";
     const club = clubEntries[selectedClub]?.club ?? cloneClub();
     const car = carEntries[selectedCar]?.car ?? cloneCar();
     const flyer = flyers[selectedFlyer] ?? cloneFlyer();
@@ -2126,6 +2177,37 @@ export async function initAdminPortal(): Promise<void> {
                                             ? "Open and resolved disputes raised by club accounts."
                                       : "Choose an item to edit in the panel."
                 }</p>
+                <div class="pp-filterbar" id="admin-list-toolbar">
+                  <div class="pp-filterbar__left">
+                    <div class="pp-filterbar__search">
+                      <span class="pp-filterbar__search-icon" aria-hidden="true">⌕</span>
+                      <input type="search" class="pp-input pp-filterbar__search-input" id="admin-list-search" placeholder="Search rows..." value="${escapeAttr(listSearch)}" />
+                    </div>
+                  </div>
+                  <div class="pp-filterbar__right">
+                    ${
+                      view === "clubs" || view === "cars" || view === "flyers"
+                        ? `<button class="pp-btn pp-btn--primary" type="button" id="admin-add-top">Add new</button>`
+                        : view === "clients"
+                          ? `<button class="pp-btn pp-btn--primary" type="button" id="admin-add-client-top">Add new</button>`
+                          : view === "jobs"
+                            ? `<button class="pp-btn ${jobsCreateOpen ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" id="jobs-create-toggle">Add new</button>
+                               <button class="pp-btn ${jobsCalendarOpen ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" id="jobs-calendar-toggle">Calendar</button>`
+                          : ""
+                    }
+                    <button class="pp-btn ${listViewMode === "table" ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" data-admin-list-view="table">Table</button>
+                    ${
+                      listSupportsGrid(view)
+                        ? `<button class="pp-btn ${listViewMode === "grid" ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" data-admin-list-view="grid">Grid</button>`
+                        : ""
+                    }
+                    ${
+                      listSupportsCalendar(view)
+                        ? `<button class="pp-btn ${listViewMode === "calendar" ? "pp-btn--primary" : "pp-btn--ghost"}" type="button" data-admin-list-view="calendar">Calendar</button>`
+                        : ""
+                    }
+                  </div>
+                </div>
                 <div class="admin-list" id="admin-list"></div>
                 <div class="admin-actions">
                   ${
@@ -2143,7 +2225,10 @@ export async function initAdminPortal(): Promise<void> {
             ${
               view === "admin_profile"
                 ? `
-            <form class="admin-form" id="admin-profile-form">
+            ${
+              adminProfileFormOpen
+                ? `<form class="admin-form" id="admin-profile-form" data-collapsible="true">
+              <h4 class="full">Account & security</h4>
               <div class="cc-field"><label>Email</label><input name="email" type="email" autocomplete="email" value="${escapeAttr(adminProfile.email)}" placeholder="admin@cooperconcierge.co.uk" /></div>
               <div class="cc-field"><label>Username</label><input name="username" value="${escapeAttr(adminProfile.username)}" placeholder="Admin username" /></div>
               <div class="cc-field"><label>New password</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="••••••••" /></div>
@@ -2151,52 +2236,61 @@ export async function initAdminPortal(): Promise<void> {
               <div class="admin-actions full">
                 <button class="cc-btn cc-btn--gold" type="submit" id="admin-save-profile-settings">Save profile settings</button>
               </div>
-            </form>
+            </form>`
+                : `<p class="admin-note">Profile form hidden. Click to open.</p><button class="pp-btn pp-btn--primary" type="button" id="open-admin-profile-form">Edit profile</button>`
+            }
             `
                 : view === "clubs"
                 ? `
-            <form class="admin-form" id="club-form">
-              <div class="cc-field"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
-              <div class="cc-field"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
+            ${
+              clubFormOpen
+                ? `<form class="admin-form" id="club-form" data-collapsible="true">
+              <h4 class="full">Core details</h4>
+              <div class="cc-field pp-col-4"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
+              <div class="cc-field pp-col-8"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
               <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${escapeAttr(club.shortDescription)}</textarea></div>
               <p class="admin-maps-hint" style="margin:0 0 0.75rem">Nightlife discovery cards (carousel + all venues): optional overrides. Leave blank to use name, short description, and the first image URL in the list below.</p>
-              <div class="cc-field"><label>Card title override</label><input name="discoveryCardTitle" value="${escapeAttr(club.discoveryCardTitle ?? "")}" placeholder="Defaults to name" /></div>
+              <h4 class="full">Discovery card</h4>
+              <div class="cc-field pp-col-4"><label>Card title override</label><input name="discoveryCardTitle" value="${escapeAttr(club.discoveryCardTitle ?? "")}" placeholder="Defaults to name" /></div>
               <div class="cc-field full"><label>Card blurb override</label><textarea name="discoveryCardBlurb" placeholder="Defaults to short description">${escapeAttr(club.discoveryCardBlurb ?? "")}</textarea></div>
               <div class="cc-field full"><label>Card image URL override</label><input name="discoveryCardImage" value="${escapeAttr(club.discoveryCardImage ?? "")}" placeholder="/clubs/… or https://…" /></div>
               <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${escapeAttr(club.longDescription)}</textarea></div>
-              <div class="cc-field"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
+              <h4 class="full">Location & schedule</h4>
+              <div class="cc-field pp-col-4"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
               <div class="cc-field full">
                 <label for="club-address-input">Address</label>
                 <input id="club-address-input" name="address" autocomplete="off" value="${escapeAttr(club.address)}" />
                 <p class="admin-maps-hint" id="club-address-maps-hint"></p>
               </div>
-              <div class="cc-field"><label>Days open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
-              <div class="cc-field"><label>Best visit days (pipe)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
-              <div class="cc-field"><label>Featured day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
-              <div class="cc-field"><label>Venue type</label>
+              <div class="cc-field pp-col-4"><label>Days open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
+              <div class="cc-field pp-col-4"><label>Best visit days (pipe)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
+              <div class="cc-field pp-col-4"><label>Featured day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
+              <div class="cc-field pp-col-3"><label>Venue type</label>
                 <select name="venueType">
                   <option value="lounge" ${vt === "lounge" ? "selected" : ""}>Lounge</option>
                   <option value="club" ${vt === "club" ? "selected" : ""}>Club</option>
                   <option value="dining" ${vt === "dining" ? "selected" : ""}>Dining</option>
                 </select>
               </div>
-              <div class="cc-field"><label>Lat</label><input name="lat" type="number" step="any" value="${club.lat}" /></div>
-              <div class="cc-field"><label>Lng</label><input name="lng" type="number" step="any" value="${club.lng}" /></div>
-              <div class="cc-field"><label>Min spend</label><input name="minSpend" value="${escapeAttr(club.minSpend)}" /></div>
-              <div class="cc-field"><label>Website</label><input name="website" placeholder="https://…" value="${escapeAttr(club.website)}" /></div>
-              <div class="cc-field"><label>Entry (women)</label><input name="entryPricingWomen" value="${escapeAttr(club.entryPricingWomen)}" /></div>
-              <div class="cc-field"><label>Entry (men)</label><input name="entryPricingMen" value="${escapeAttr(club.entryPricingMen)}" /></div>
-              <div class="cc-field"><label>Tables standard</label><input name="tablesStandard" value="${escapeAttr(club.tablesStandard)}" /></div>
-              <div class="cc-field"><label>Tables luxury</label><input name="tablesLuxury" value="${escapeAttr(club.tablesLuxury)}" /></div>
-              <div class="cc-field"><label>Tables VIP</label><input name="tablesVip" value="${escapeAttr(club.tablesVip)}" /></div>
-              <div class="cc-field"><label>Featured on site</label>
+              <div class="cc-field pp-col-3"><label>Lat</label><input name="lat" type="number" step="any" value="${club.lat}" /></div>
+              <div class="cc-field pp-col-3"><label>Lng</label><input name="lng" type="number" step="any" value="${club.lng}" /></div>
+              <div class="cc-field pp-col-6"><label>Website</label><input name="website" placeholder="https://…" value="${escapeAttr(club.website)}" /></div>
+              <h4 class="full">Pricing & positioning</h4>
+              <div class="cc-field pp-col-3"><label>Min spend</label><input name="minSpend" value="${escapeAttr(club.minSpend)}" /></div>
+              <div class="cc-field pp-col-3"><label>Entry (women)</label><input name="entryPricingWomen" value="${escapeAttr(club.entryPricingWomen)}" /></div>
+              <div class="cc-field pp-col-3"><label>Entry (men)</label><input name="entryPricingMen" value="${escapeAttr(club.entryPricingMen)}" /></div>
+              <div class="cc-field pp-col-3"><label>Featured on site</label>
                 <select name="featured">
                   <option value="true" ${club.featured ? "selected" : ""}>Yes</option>
                   <option value="false" ${!club.featured ? "selected" : ""}>No</option>
                 </select>
               </div>
+              <div class="cc-field pp-col-4"><label>Tables standard</label><input name="tablesStandard" value="${escapeAttr(club.tablesStandard)}" /></div>
+              <div class="cc-field pp-col-4"><label>Tables luxury</label><input name="tablesLuxury" value="${escapeAttr(club.tablesLuxury)}" /></div>
+              <div class="cc-field pp-col-4"><label>Tables VIP</label><input name="tablesVip" value="${escapeAttr(club.tablesVip)}" /></div>
               <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${escapeAttr(club.knownFor.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Amenities (one per line)</label><textarea name="amenities">${escapeAttr(club.amenities.join("\n"))}</textarea></div>
+              <h4 class="full">Media</h4>
               <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="club-images-text">${escapeAttr(club.images.join("\n"))}</textarea></div>
               <div class="cc-field full admin-upload-row">
                 <label for="club-image-file">Upload image</label>
@@ -2204,37 +2298,44 @@ export async function initAdminPortal(): Promise<void> {
                 <button type="button" class="cc-btn cc-btn--ghost" id="club-image-upload">Upload to storage &amp; append URL</button>
               </div>
               <h4 class="full">Payment details</h4>
-              <div class="cc-field"><label>Method</label><input name="paymentMethod" value="${escapeAttr(club.paymentDetails?.method ?? "")}" /></div>
-              <div class="cc-field"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(club.paymentDetails?.beneficiaryName ?? "")}" /></div>
-              <div class="cc-field"><label>Account no</label><input name="accountNumber" value="${escapeAttr(club.paymentDetails?.accountNumber ?? "")}" /></div>
-              <div class="cc-field"><label>Sort code</label><input name="sortCode" value="${escapeAttr(club.paymentDetails?.sortCode ?? "")}" /></div>
-              <div class="cc-field"><label>IBAN</label><input name="iban" value="${escapeAttr(club.paymentDetails?.iban ?? "")}" /></div>
-              <div class="cc-field"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(club.paymentDetails?.swiftBic ?? "")}" /></div>
-              <div class="cc-field"><label>Reference</label><input name="paymentReference" value="${escapeAttr(club.paymentDetails?.reference ?? "")}" /></div>
-              <div class="cc-field"><label>Payout email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Method</label><input name="paymentMethod" value="${escapeAttr(club.paymentDetails?.method ?? "")}" /></div>
+              <div class="cc-field pp-col-8"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(club.paymentDetails?.beneficiaryName ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Account no</label><input name="accountNumber" value="${escapeAttr(club.paymentDetails?.accountNumber ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Sort code</label><input name="sortCode" value="${escapeAttr(club.paymentDetails?.sortCode ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Payout email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
+              <div class="cc-field pp-col-6"><label>IBAN</label><input name="iban" value="${escapeAttr(club.paymentDetails?.iban ?? "")}" /></div>
+              <div class="cc-field pp-col-6"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(club.paymentDetails?.swiftBic ?? "")}" /></div>
+              <div class="cc-field full"><label>Reference</label><input name="paymentReference" value="${escapeAttr(club.paymentDetails?.reference ?? "")}" /></div>
               <h4 class="full">Tax details</h4>
-              <div class="cc-field"><label>Registered name</label><input name="taxRegisteredName" value="${escapeAttr(club.taxDetails?.registeredName ?? "")}" /></div>
-              <div class="cc-field"><label>Tax ID</label><input name="taxId" value="${escapeAttr(club.taxDetails?.taxId ?? "")}" /></div>
-              <div class="cc-field"><label>VAT number</label><input name="vatNumber" value="${escapeAttr(club.taxDetails?.vatNumber ?? "")}" /></div>
-              <div class="cc-field"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
-              <div class="cc-field"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
+              <div class="cc-field pp-col-6"><label>Registered name</label><input name="taxRegisteredName" value="${escapeAttr(club.taxDetails?.registeredName ?? "")}" /></div>
+              <div class="cc-field pp-col-3"><label>Tax ID</label><input name="taxId" value="${escapeAttr(club.taxDetails?.taxId ?? "")}" /></div>
+              <div class="cc-field pp-col-3"><label>VAT number</label><input name="vatNumber" value="${escapeAttr(club.taxDetails?.vatNumber ?? "")}" /></div>
+              <div class="cc-field pp-col-4"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
+              <div class="cc-field pp-col-4"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
               <div class="cc-field full"><label>Tax notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
               <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
             </form>`
+                : `<p class="admin-note">Club form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-form">Open form</button>`
+            }
+            `
                 : view === "cars"
                   ? `
-            <form class="admin-form" id="car-form">
-              <div class="cc-field"><label for="car-slug">Slug</label><input id="car-slug" name="slug" required value="${escapeAttr(car.slug)}" /></div>
-              <div class="cc-field"><label for="car-name">Name</label><input id="car-name" name="name" required value="${escapeAttr(car.name)}" /></div>
-              <div class="cc-field"><label>Role label</label><input name="roleLabel" value="${escapeAttr(car.roleLabel)}" /></div>
-              <div class="cc-field"><label>Grid size</label>
+            ${
+              carFormOpen
+                ? `<form class="admin-form" id="car-form" data-collapsible="true">
+              <h4 class="full">Core details</h4>
+              <div class="cc-field pp-col-4"><label for="car-slug">Slug</label><input id="car-slug" name="slug" required value="${escapeAttr(car.slug)}" /></div>
+              <div class="cc-field pp-col-8"><label for="car-name">Name</label><input id="car-name" name="name" required value="${escapeAttr(car.name)}" /></div>
+              <div class="cc-field pp-col-6"><label>Role label</label><input name="roleLabel" value="${escapeAttr(car.roleLabel)}" /></div>
+              <div class="cc-field pp-col-3"><label>Grid size</label>
                 <select name="gridSize">
                   <option value="large" ${gs === "large" ? "selected" : ""}>Large</option>
                   <option value="medium" ${gs === "medium" ? "selected" : ""}>Medium</option>
                   <option value="feature" ${gs === "feature" ? "selected" : ""}>Feature</option>
                 </select>
               </div>
-              <div class="cc-field"><label>Order</label><input name="order" type="number" step="1" value="${car.order}" /></div>
+              <div class="cc-field pp-col-3"><label>Order</label><input name="order" type="number" step="1" value="${car.order}" /></div>
+              <h4 class="full">Media</h4>
               <div class="cc-field full"><label>Specs (one per line)</label><textarea name="specsHover">${escapeAttr(car.specsHover.join("\n"))}</textarea></div>
               <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="car-images-text">${escapeAttr(car.images.join("\n"))}</textarea></div>
               <div class="cc-field full admin-upload-row">
@@ -2243,22 +2344,29 @@ export async function initAdminPortal(): Promise<void> {
                 <button type="button" class="cc-btn cc-btn--ghost" id="car-image-upload">Upload to storage &amp; append URL</button>
               </div>
             </form>`
+                : `<p class="admin-note">Car form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-car-form">Open form</button>`
+            }
+            `
                   : view === "flyers"
                     ? `
-            <form class="admin-form" id="flyer-form">
+            ${
+              flyerFormOpen
+                ? `<form class="admin-form" id="flyer-form" data-collapsible="true">
+              <h4 class="full">Event details</h4>
               <div class="cc-field full"><label for="flyer-club-select">Club</label>
                 <select id="flyer-club-select" name="clubSlug" required>${flyerClubSelectOptions(clubEntries, flyer.clubSlug)}</select>
               </div>
-              <div class="cc-field"><label for="flyer-event-date">Event date</label><input id="flyer-event-date" name="eventDate" type="date" required value="${escapeAttr(flyer.eventDate)}" /></div>
-              <div class="cc-field full"><label>Title</label><input name="title" required value="${escapeAttr(flyer.title)}" /></div>
+              <div class="cc-field pp-col-4"><label for="flyer-event-date">Event date</label><input id="flyer-event-date" name="eventDate" type="date" required value="${escapeAttr(flyer.eventDate)}" /></div>
+              <div class="cc-field pp-col-8"><label>Title</label><input name="title" required value="${escapeAttr(flyer.title)}" /></div>
               <div class="cc-field full"><label>Description</label><textarea name="description">${escapeAttr(flyer.description)}</textarea></div>
-              <div class="cc-field"><label>Sort order</label><input name="sortOrder" type="number" step="1" value="${flyer.sortOrder}" /></div>
-              <div class="cc-field"><label>Active</label>
+              <div class="cc-field pp-col-4"><label>Sort order</label><input name="sortOrder" type="number" step="1" value="${flyer.sortOrder}" /></div>
+              <div class="cc-field pp-col-4"><label>Active</label>
                 <select name="isActive">
                   <option value="true" ${flyer.isActive ? "selected" : ""}>Yes</option>
                   <option value="false" ${!flyer.isActive ? "selected" : ""}>No</option>
                 </select>
               </div>
+              <h4 class="full">Media</h4>
               <div class="cc-field full"><label>Image URL</label><input name="imageUrl" placeholder="Filled automatically after upload" value="${escapeAttr(flyer.imageUrl)}" /></div>
               <div class="cc-field full"><label>Image path (storage)</label><input name="imagePath" value="${escapeAttr(flyer.imagePath)}" readonly /></div>
               <div class="cc-field full">
@@ -2270,6 +2378,9 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="flyer-save-db">${flyer.id ? "Update flyer" : "Create flyer"}</button>
               </div>
             </form>`
+                : `<p class="admin-note">Flyer form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-flyer-form">Open form</button>`
+            }
+            `
                     : view === "promoter_requests"
                       ? (() => {
                           const req = promoterSignupRequests.find(
@@ -2395,7 +2506,9 @@ export async function initAdminPortal(): Promise<void> {
                             const clubOptions = clubEntries
                               .map((c) => `<option value="${escapeAttr(c.club.slug)}"${acct?.club_slug === c.club.slug ? " selected" : ""}>${escapeAttr(c.club.slug)}</option>`)
                               .join("");
-                            return `<div class="admin-form">
+                            return `${
+                              clubAccountsFormOpen
+                                ? `<div class="admin-form">
                               <h4 class="full">Invite-only club account generation</h4>
                               <div class="cc-field"><label>Club slug</label><select id="club-account-slug">${clubOptions}</select></div>
                               <div class="cc-field"><label>Email</label><input id="club-account-email" type="email" placeholder="club@domain.com" /></div>
@@ -2408,7 +2521,9 @@ export async function initAdminPortal(): Promise<void> {
                               <div class="cc-field"><label>Status</label><input readonly value="${escapeAttr(acct.status)}" /></div>
                               <div class="cc-field"><label>Role</label><input readonly value="${escapeAttr(acct.role)}" /></div>
                               <div class="cc-field full"><label>Invite code</label><input readonly value="${escapeAttr(acct.invite_code || "—")}" /></div>` : `<p class="admin-note full">No club accounts yet.</p>`}
-                            </div>`;
+                            </div>`
+                                : `<p class="admin-note">Club accounts form hidden until Add/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-accounts-form">Open form</button>`
+                            }`;
                           })()
                         : view === "club_edits"
                           ? (() => {
@@ -2447,7 +2562,10 @@ export async function initAdminPortal(): Promise<void> {
                               ? renderTableSalesViewHtml()
                               : view === "invoices"
                                 ? `
-            <form class="admin-form" id="promoter-invoice-form">
+            ${
+              invoiceFormOpen
+                ? `<form class="admin-form" id="promoter-invoice-form" data-collapsible="true">
+              <h4 class="full">Generate invoice</h4>
               <div class="cc-field"><label>Promoter</label>
                 <select name="promoterId">${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}</select>
               </div>
@@ -2457,6 +2575,7 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--gold" type="button" id="promoter-invoice-generate">Generate invoice</button>
               </div>
               <p class="admin-note full">PDF and email use the <code>promoter-invoice</code> Edge Function (deploy + set <code>RESEND_API_KEY</code>, <code>RESEND_FROM</code>, <code>INVOICE_EMAIL_PROVIDER</code>).</p>
+              <h4 class="full">Previous invoices</h4>
               <div class="full promoter-table-wrap">
                 <table>
                   <thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Sent</th><th>PDF</th><th>Email</th></tr></thead>
@@ -2485,6 +2604,9 @@ export async function initAdminPortal(): Promise<void> {
                 </table>
               </div>
             </form>`
+                : `<p class="admin-note">Invoice actions hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-invoice-form">Open invoice tools</button>`
+            }
+            `
                           : view === "financials"
                             ? renderFinancialsViewHtml()
                     : view === "enquiries"
@@ -2514,7 +2636,50 @@ export async function initAdminPortal(): Promise<void> {
     bindDashboardEvents();
   }
 
+  function applyCollapsibleFormSections(scope: ParentNode): void {
+    const blocks = Array.from(
+      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true'], .club-form-grid[data-collapsible='true']"),
+    );
+    for (const block of blocks) {
+      if (block.dataset.collapsibleReady === "1") continue;
+      const headings = Array.from(block.querySelectorAll<HTMLElement>(":scope > h4.full"));
+      if (!headings.length) {
+        block.dataset.collapsibleReady = "1";
+        continue;
+      }
+
+      for (let i = 0; i < headings.length; i += 1) {
+        const heading = headings[i];
+        const nextHeading = headings[i + 1] ?? null;
+        const details = document.createElement("details");
+        details.className = "pp-form-section full";
+        details.open = i === 0;
+
+        const summary = document.createElement("summary");
+        summary.className = "pp-form-section__summary";
+        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
+        details.append(summary);
+
+        const body = document.createElement("div");
+        body.className = "pp-form-section__body";
+        details.append(body);
+
+        let node = heading.nextElementSibling as HTMLElement | null;
+        while (node && node !== nextHeading) {
+          const nextNode = node.nextElementSibling as HTMLElement | null;
+          body.append(node);
+          node = nextNode;
+        }
+
+        heading.replaceWith(details);
+      }
+
+      block.dataset.collapsibleReady = "1";
+    }
+  }
+
   function bindDashboardEvents(): void {
+    applyCollapsibleFormSections(adminRoot);
     if (!guestlistQueueDelegationBound) {
       guestlistQueueDelegationBound = true;
       adminRoot.addEventListener("click", (ev) => {
@@ -3511,39 +3676,131 @@ export async function initAdminPortal(): Promise<void> {
 
     const listEl = adminRoot.querySelector("#admin-list");
     if (listEl) {
+      const listHost = listEl as HTMLElement;
       if (view === "enquiries") {
-        listEl.className = "admin-list admin-list--table";
-        if (!enquiries.length) {
+        listEl.className = "admin-list";
+        const q = listSearch.trim().toLowerCase();
+        const filteredRows = enquiries.filter((e) => {
+          if (!q) return true;
+          const hay = [
+            e.name,
+            e.email,
+            e.phone,
+            e.form_label,
+            e.status,
+            e.created_at,
+            e.submitted_at,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
+        if (!filteredRows.length) {
           listEl.innerHTML = `<p class="admin-note">No enquiries yet.</p>`;
         } else {
-          const rows = enquiries
-            .map((e) => {
-              const date =
-                e.submitted_at?.slice(0, 10) ||
-                e.created_at?.slice(0, 10) ||
-                "—";
-              const contact = [e.name, e.email, e.phone]
-                .filter(Boolean)
-                .join(" · ") || "—";
-              const active = e.id === selectedEnquiry ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-enquiry-id="${escapeAttr(e.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(date)}</td>
-                <td>${escapeAttr(adminDisplayTruncate(e.form_label, 36))}</td>
-                <td><span class="admin-list-badge">${escapeAttr(e.status)}</span></td>
-                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(contact, 42))}</td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Date</th>
-              <th scope="col">Form</th>
-              <th scope="col">Status</th>
-              <th scope="col">Contact</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-enquiry-id]", (row) => {
-            const id = row.dataset.enquiryId ?? null;
+          if (listViewMode === "grid") {
+            listEl.innerHTML = `<div class="pp-kpi-grid">${filteredRows
+              .map((e) => {
+                const date = e.submitted_at?.slice(0, 10) || e.created_at?.slice(0, 10) || "—";
+                const active = e.id === selectedEnquiry ? " is-active" : "";
+                return `<button type="button" class="pp-card${active}" data-enquiry-id="${escapeAttr(e.id)}" style="text-align:left;cursor:pointer">
+                  <p class="pp-kpi__label">${escapeAttr(e.form_label)}</p>
+                  <h4 class="pp-card__title">${escapeAttr(adminDisplayTruncate(e.name || e.email || "Enquiry", 28))}</h4>
+                  <p class="admin-note">${escapeAttr(date)} · ${escapeAttr(e.status)}</p>
+                </button>`;
+              })
+              .join("")}</div>`;
+            listEl.querySelectorAll<HTMLElement>("[data-enquiry-id]").forEach((row) => {
+              row.addEventListener("click", () => {
+                const id = row.dataset.enquiryId ?? null;
+                selectedEnquiry = id;
+                void (async () => {
+                  if (id) {
+                    const g = await loadEnquiryGuests(supabase, id);
+                    enquiryGuests = g.ok ? g.rows : [];
+                  } else enquiryGuests = [];
+                  renderDashboard();
+                })();
+              });
+            });
+          } else if (listViewMode === "calendar") {
+            const byDate = new Map<string, number>();
+            for (const e of filteredRows) {
+              const date = e.submitted_at?.slice(0, 10) || e.created_at?.slice(0, 10) || "";
+              if (!date) continue;
+              byDate.set(date, (byDate.get(date) ?? 0) + 1);
+            }
+            const days = Array.from(byDate.entries())
+              .sort(([a], [b]) => (a < b ? 1 : -1))
+              .map(
+                ([date, count]) =>
+                  `<button type="button" class="pp-card" data-enquiry-day="${escapeAttr(date)}" style="text-align:left;cursor:pointer"><p class="pp-kpi__label">${escapeAttr(date)}</p><h4 class="pp-card__title">${count} enquiry${count === 1 ? "" : "ies"}</h4></button>`,
+              )
+              .join("");
+            listEl.innerHTML = `<div class="pp-kpi-grid">${days || `<p class="admin-note">No dated enquiries in current filter.</p>`}</div>`;
+            listEl.querySelectorAll<HTMLElement>("[data-enquiry-day]").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const date = btn.dataset.enquiryDay ?? "";
+                const first = filteredRows.find(
+                  (e) =>
+                    (e.submitted_at?.slice(0, 10) || e.created_at?.slice(0, 10) || "") === date,
+                );
+                if (!first) return;
+                selectedEnquiry = first.id;
+                void (async () => {
+                  const g = await loadEnquiryGuests(supabase, first.id);
+                  enquiryGuests = g.ok ? g.rows : [];
+                  renderDashboard();
+                })();
+              });
+            });
+          } else {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-enquiries",
+            rows: filteredRows,
+            rowId: (e) => e.id,
+            activeRowId: selectedEnquiry,
+            columns: [
+              {
+                key: "date",
+                label: "Date",
+                sortable: true,
+                accessor: (e) => e.submitted_at?.slice(0, 10) || e.created_at?.slice(0, 10) || "—",
+              },
+              {
+                key: "form",
+                label: "Form",
+                sortable: true,
+                accessor: (e) => e.form_label,
+                render: (e) => escapeAttr(adminDisplayTruncate(e.form_label, 36)),
+              },
+              {
+                key: "status",
+                label: "Status",
+                sortable: true,
+                accessor: (e) => e.status,
+                render: (e) => renderStatusBadge(e.status),
+              },
+              {
+                key: "contact",
+                label: "Contact",
+                accessor: (e) => [e.name, e.email, e.phone].filter(Boolean).join(" · ") || "—",
+                render: (e) => {
+                  const contact = [e.name, e.email, e.phone].filter(Boolean).join(" · ") || "—";
+                  return escapeAttr(adminDisplayTruncate(contact, 42));
+                },
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (e) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(e.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(e.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              const id = row.id ?? null;
             selectedEnquiry = id;
             void (async () => {
               if (id) {
@@ -3552,158 +3809,268 @@ export async function initAdminPortal(): Promise<void> {
               } else enquiryGuests = [];
               renderDashboard();
             })();
+            },
           });
+          }
         }
       } else if (view === "clients") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!clients.length) {
           listEl.innerHTML = `<p class="admin-note">No clients yet.</p>`;
         } else {
-          const rows = clients
-            .map((c) => {
-              const label =
-                c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8);
-              const active = c.id === selectedClientId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-client-id="${escapeAttr(c.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(adminDisplayTruncate(label, 40))}</td>
-                <td>${escapeAttr(adminDisplayTruncate(c.email || "—", 36))}</td>
-                <td>${escapeAttr(c.created_at?.slice(0, 10) || "—")}</td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Name / handle</th>
-              <th scope="col">Email</th>
-              <th scope="col">Added</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-client-id]", (row) => {
-            selectedClientId = row.dataset.clientId ?? null;
-            void reloadClients().then(() => renderDashboard());
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-clients",
+            rows: clients,
+            rowId: (c) => c.id,
+            activeRowId: selectedClientId,
+            columns: [
+              {
+                key: "name",
+                label: "Name / handle",
+                sortable: true,
+                accessor: (c) => c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8),
+                render: (c) => {
+                  const label = c.name || c.email || c.phone || c.instagram || c.id.slice(0, 8);
+                  return escapeAttr(adminDisplayTruncate(label, 40));
+                },
+              },
+              {
+                key: "email",
+                label: "Email",
+                sortable: true,
+                accessor: (c) => c.email || "—",
+                render: (c) => escapeAttr(adminDisplayTruncate(c.email || "—", 36)),
+              },
+              {
+                key: "created",
+                label: "Added",
+                sortable: true,
+                accessor: (c) => c.created_at?.slice(0, 10) || "—",
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (c) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(c.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(c.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedClientId = row.id ?? null;
+              void reloadClients().then(() => renderDashboard());
+            },
           });
         }
       } else if (view === "promoter_requests") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!promoterSignupRequests.length) {
           listEl.innerHTML = `<p class="admin-note">No requests.</p>`;
         } else {
-          const rows = promoterSignupRequests
-            .map((q) => {
-              const active =
-                q.id === selectedPromoterRequestId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-promoter-request-id="${escapeAttr(q.id)}" tabindex="0" role="button">
-                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(q.status)}">${escapeAttr(q.status)}</span></td>
-                <td>${escapeAttr(adminDisplayTruncate(q.fullName, 28))}</td>
-                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(q.email, 40))}</td>
-                <td>${escapeAttr(q.createdAt.slice(0, 10))}</td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Status</th>
-              <th scope="col">Name</th>
-              <th scope="col">Email</th>
-              <th scope="col">Requested</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-promoter-request-id]", (row) => {
-            selectedPromoterRequestId =
-              row.dataset.promoterRequestId ?? null;
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-promoter-requests",
+            rows: promoterSignupRequests,
+            rowId: (q) => q.id,
+            activeRowId: selectedPromoterRequestId,
+            columns: [
+              {
+                key: "status",
+                label: "Status",
+                sortable: true,
+                accessor: (q) => q.status,
+                render: (q) => renderStatusBadge(q.status),
+              },
+              {
+                key: "name",
+                label: "Name",
+                sortable: true,
+                accessor: (q) => q.fullName,
+                render: (q) => escapeAttr(adminDisplayTruncate(q.fullName, 28)),
+              },
+              {
+                key: "email",
+                label: "Email",
+                sortable: true,
+                accessor: (q) => q.email,
+                render: (q) => escapeAttr(adminDisplayTruncate(q.email, 40)),
+              },
+              {
+                key: "requested",
+                label: "Requested",
+                sortable: true,
+                accessor: (q) => q.createdAt.slice(0, 10),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (q) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(q.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(q.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedPromoterRequestId = row.id ?? null;
+              renderDashboard();
+            },
           });
         }
       } else if (view === "promoters" || view === "jobs" || view === "invoices") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!promoters.length) {
           listEl.innerHTML = `<p class="admin-note">No promoters loaded.</p>`;
         } else {
-          const rows = promoters
-            .map((p) => {
-              const active = p.id === selectedPromoterId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-promoter-id="${escapeAttr(p.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(adminDisplayTruncate(p.displayName || p.userId, 32))}</td>
-                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(p.approvalStatus)}">${escapeAttr(p.approvalStatus)}</span></td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Promoter</th>
-              <th scope="col">Approval</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-promoter-id]", (row) => {
-            selectedPromoterId = row.dataset.promoterId ?? null;
-            void (async () => {
-              await reloadPromoters();
-              if (view === "jobs") await reloadJobsCalendar();
-              renderDashboard();
-            })();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-promoters",
+            rows: promoters,
+            rowId: (p) => p.id,
+            activeRowId: selectedPromoterId,
+            columns: [
+              {
+                key: "photo",
+                label: "",
+                width: "56px",
+                render: (p) =>
+                  p.profileImageUrl
+                    ? `<img src="${escapeAttr(p.profileImageUrl)}" alt="" style="width:34px;height:34px;border-radius:999px;object-fit:cover;border:1px solid var(--portal-border)" />`
+                    : `<span class="pp-avatar pp-avatar--sm">${escapeAttr((p.displayName || p.userId || "?").charAt(0).toUpperCase())}</span>`,
+              },
+              {
+                key: "promoter",
+                label: "Promoter",
+                sortable: true,
+                accessor: (p) => p.displayName || p.userId,
+                render: (p) => escapeAttr(adminDisplayTruncate(p.displayName || p.userId, 32)),
+              },
+              {
+                key: "approval",
+                label: "Approval",
+                sortable: true,
+                accessor: (p) => p.approvalStatus,
+                render: (p) => renderStatusBadge(p.approvalStatus),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (p) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(p.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(p.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedPromoterId = row.id ?? null;
+              void (async () => {
+                await reloadPromoters();
+                if (view === "jobs") await reloadJobsCalendar();
+                renderDashboard();
+              })();
+            },
           });
         }
       } else if (view === "club_accounts") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!clubAccounts.length) {
           listEl.innerHTML = `<p class="admin-note">No club accounts yet.</p>`;
         } else {
-          const rows = clubAccounts
-            .map((a) => {
-              const active = a.id === selectedClubAccountId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-club-account-id="${escapeAttr(a.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(a.club_slug)}</td>
-                <td>${escapeAttr(a.role)}</td>
-                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(a.status)}">${escapeAttr(a.status)}</span></td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Role</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
-          bindAdminListRows(listEl, "tr[data-club-account-id]", (row) => {
-            selectedClubAccountId = row.dataset.clubAccountId ?? null;
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-club-accounts",
+            rows: clubAccounts,
+            rowId: (a) => a.id,
+            activeRowId: selectedClubAccountId,
+            columns: [
+              { key: "club", label: "Club", sortable: true, accessor: (a) => a.club_slug },
+              { key: "role", label: "Role", sortable: true, accessor: (a) => a.role },
+              {
+                key: "status",
+                label: "Status",
+                sortable: true,
+                accessor: (a) => a.status,
+                render: (a) => renderStatusBadge(a.status),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (a) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(a.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(a.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedClubAccountId = row.id ?? null;
+              renderDashboard();
+            },
           });
         }
       } else if (view === "club_edits") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!clubEditRevisions.length) {
           listEl.innerHTML = `<p class="admin-note">No club edit revisions yet.</p>`;
         } else {
-          const rows = clubEditRevisions
-            .map((r) => {
-              const active = r.id === selectedClubRevisionId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-club-revision-id="${escapeAttr(r.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(r.club_slug)}</td>
-                <td>${escapeAttr(r.target_type)}</td>
-                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(r.status)}">${escapeAttr(r.status)}</span></td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Target</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
-          bindAdminListRows(listEl, "tr[data-club-revision-id]", (row) => {
-            selectedClubRevisionId = row.dataset.clubRevisionId ?? null;
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-club-edits",
+            rows: clubEditRevisions,
+            rowId: (r) => r.id,
+            activeRowId: selectedClubRevisionId,
+            columns: [
+              { key: "club", label: "Club", sortable: true, accessor: (r) => r.club_slug },
+              { key: "target", label: "Target", sortable: true, accessor: (r) => r.target_type },
+              {
+                key: "status",
+                label: "Status",
+                sortable: true,
+                accessor: (r) => r.status,
+                render: (r) => renderStatusBadge(r.status),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (r) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(r.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(r.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedClubRevisionId = row.id ?? null;
+              renderDashboard();
+            },
           });
         }
       } else if (view === "job_disputes") {
-        listEl.className = "admin-list admin-list--table";
+        listEl.className = "admin-list";
         if (!clubJobDisputes.length) {
           listEl.innerHTML = `<p class="admin-note">No disputes found.</p>`;
         } else {
-          const rows = clubJobDisputes
-            .map((d) => {
-              const active = d.id === selectedClubDisputeId ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-club-dispute-id="${escapeAttr(d.id)}" tabindex="0" role="button">
-                <td>${escapeAttr(d.club_slug)}</td>
-                <td>${escapeAttr(d.reason_code)}</td>
-                <td><span class="admin-list-badge admin-list-badge--${escapeAttr(d.status)}">${escapeAttr(d.status)}</span></td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(`<thead><tr><th scope="col">Club</th><th scope="col">Reason</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody>`);
-          bindAdminListRows(listEl, "tr[data-club-dispute-id]", (row) => {
-            selectedClubDisputeId = row.dataset.clubDisputeId ?? null;
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-job-disputes",
+            rows: clubJobDisputes,
+            rowId: (d) => d.id,
+            activeRowId: selectedClubDisputeId,
+            columns: [
+              { key: "club", label: "Club", sortable: true, accessor: (d) => d.club_slug },
+              { key: "reason", label: "Reason", sortable: true, accessor: (d) => d.reason_code },
+              {
+                key: "status",
+                label: "Status",
+                sortable: true,
+                accessor: (d) => d.status,
+                render: (d) => renderStatusBadge(d.status),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (d) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(d.id)}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(d.id)}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedClubDisputeId = row.id ?? null;
+              renderDashboard();
+            },
           });
         }
       } else if (view === "guestlist_queue") {
@@ -3753,55 +4120,221 @@ export async function initAdminPortal(): Promise<void> {
         const isClubs = view === "clubs";
         const items = isClubs ? clubEntries : carEntries;
         const activeIndex = isClubs ? selectedClub : selectedCar;
-        listEl.className = "admin-list admin-list--table";
-        if (!items.length) {
+        listEl.className = "admin-list";
+        const q = listSearch.trim().toLowerCase();
+        const filtered = items
+          .map((entry, idx) => ({ entry, idx }))
+          .filter(({ entry }) => {
+            if (!q) return true;
+            const slug = isClubs
+              ? (entry as ClubEntry).club.slug
+              : (entry as CarEntry).car.slug;
+            const name = isClubs
+              ? (entry as ClubEntry).club.name
+              : (entry as CarEntry).car.name;
+            return `${slug} ${name}`.toLowerCase().includes(q);
+          });
+        if (!filtered.length) {
           listEl.innerHTML = `<p class="admin-note">No items yet.</p>`;
         } else {
-          const rows = items
-            .map((entry, i) => {
-              const slug = isClubs
-                ? (entry as ClubEntry).club.slug
-                : (entry as CarEntry).car.slug;
-              const name = isClubs
-                ? (entry as ClubEntry).club.name
-                : (entry as CarEntry).car.name;
-              const active = i === activeIndex ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-i="${i}" tabindex="0" role="button">
-                <td><code class="admin-list-code">${escapeAttr(slug)}</code></td>
-                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(name, 40))}</td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Slug</th>
-              <th scope="col">Name</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-i]", (row) => {
-            const i = Number(row.dataset.i ?? "0");
-            if (isClubs) selectedClub = i;
-            else selectedCar = i;
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: isClubs ? "admin-clubs-list" : "admin-cars-list",
+            rows: filtered,
+            rowId: (r) => String(r.idx),
+            activeRowId: String(activeIndex),
+            columns: [
+              {
+                key: "image",
+                label: "",
+                width: "64px",
+                render: ({ entry }) => {
+                  const image = isClubs
+                    ? (entry as ClubEntry).club.images?.[0]
+                    : (entry as CarEntry).car.images?.[0];
+                  if (image) {
+                    return `<img src="${escapeAttr(image)}" alt="" style="width:44px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--portal-border)" />`;
+                  }
+                  return `<span class="pp-avatar pp-avatar--sm">•</span>`;
+                },
+              },
+              {
+                key: "slug",
+                label: "Slug",
+                sortable: true,
+                accessor: ({ entry }) =>
+                  isClubs
+                    ? (entry as ClubEntry).club.slug
+                    : (entry as CarEntry).car.slug,
+                render: ({ entry }) => {
+                  const slug = isClubs
+                    ? (entry as ClubEntry).club.slug
+                    : (entry as CarEntry).car.slug;
+                  return `<code class="admin-list-code">${escapeAttr(slug)}</code>`;
+                },
+              },
+              {
+                key: "name",
+                label: "Name",
+                sortable: true,
+                accessor: ({ entry }) =>
+                  isClubs
+                    ? (entry as ClubEntry).club.name
+                    : (entry as CarEntry).car.name,
+                render: ({ entry }) => {
+                  const name = isClubs
+                    ? (entry as ClubEntry).club.name
+                    : (entry as CarEntry).car.name;
+                  return escapeAttr(adminDisplayTruncate(name, 40));
+                },
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                render: ({ idx }) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-edit="${idx}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-delete="${idx}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              if (isClubs) selectedClub = row.idx;
+              else selectedCar = row.idx;
+              renderDashboard();
+            },
+          });
+          listEl.querySelectorAll<HTMLElement>("[data-item-edit]").forEach((btn) => {
+            btn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const i = Number((btn as HTMLElement).getAttribute("data-item-edit") || "0");
+              if (isClubs) selectedClub = i;
+              else selectedCar = i;
+              if (isClubs) clubFormOpen = true;
+              else carFormOpen = true;
+              renderDashboard();
+            });
+          });
+          listEl.querySelectorAll<HTMLElement>("[data-item-delete]").forEach((btn) => {
+            btn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const i = Number((btn as HTMLElement).getAttribute("data-item-delete") || "0");
+              if (isClubs) {
+                selectedClub = i;
+                (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
+              } else {
+                selectedCar = i;
+                (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
+              }
+            });
           });
         }
       }
     }
 
+    adminRoot.querySelectorAll<HTMLElement>("[data-admin-row-edit]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = String(btn.getAttribute("data-admin-row-edit") || "").trim();
+        if (!id) return;
+        if (view === "enquiries") selectedEnquiry = id;
+        else if (view === "clients") selectedClientId = id;
+        else if (view === "promoter_requests") selectedPromoterRequestId = id;
+        else if (view === "promoters" || view === "jobs" || view === "invoices")
+          selectedPromoterId = id;
+        else if (view === "club_accounts") selectedClubAccountId = id;
+        else if (view === "club_edits") selectedClubRevisionId = id;
+        else if (view === "job_disputes") selectedClubDisputeId = id;
+        if (view === "clubs") clubFormOpen = true;
+        if (view === "cars") carFormOpen = true;
+        if (view === "flyers") flyerFormOpen = true;
+        if (view === "admin_profile") adminProfileFormOpen = true;
+        if (view === "invoices") invoiceFormOpen = true;
+        if (view === "club_accounts") clubAccountsFormOpen = true;
+        renderDashboard();
+      });
+    });
+    adminRoot.querySelectorAll<HTMLElement>("[data-admin-row-delete]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = String(btn.getAttribute("data-admin-row-delete") || "").trim();
+        if (!id) return;
+        if (view === "clients") {
+          selectedClientId = id;
+          (adminRoot.querySelector("#admin-delete-client") as HTMLButtonElement | null)?.click();
+          return;
+        }
+        if (view === "jobs" || view === "promoters" || view === "invoices") {
+          selectedPromoterId = id;
+          flash("Delete for this row type is not enabled in this phase.", "error");
+          return;
+        }
+        if (view === "club_accounts") {
+          selectedClubAccountId = id;
+          flash("Delete for club accounts is not enabled in this phase.", "error");
+          return;
+        }
+        if (view === "club_edits") {
+          selectedClubRevisionId = id;
+          flash("Delete for club revisions is not enabled in this phase.", "error");
+          return;
+        }
+        if (view === "job_disputes") {
+          selectedClubDisputeId = id;
+          flash("Delete for disputes is not enabled in this phase.", "error");
+          return;
+        }
+        if (view === "enquiries" || view === "promoter_requests") {
+          flash("Delete for this row type is not enabled in this phase.", "error");
+        }
+      });
+    });
+
+    adminRoot.querySelector("#admin-list-search")?.addEventListener("input", (ev) => {
+      listSearch = String((ev.target as HTMLInputElement).value || "");
+      renderDashboard();
+    });
+    adminRoot.querySelectorAll("[data-admin-list-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = String((btn as HTMLElement).getAttribute("data-admin-list-view") || "");
+        if (next !== "table" && next !== "grid" && next !== "calendar") return;
+        listViewMode = next;
+        renderDashboard();
+      });
+    });
+    adminRoot.querySelector("#admin-add-top")?.addEventListener("click", () => {
+      if (view === "clubs") clubFormOpen = true;
+      if (view === "cars") carFormOpen = true;
+      if (view === "flyers") flyerFormOpen = true;
+      (adminRoot.querySelector("#admin-add") as HTMLButtonElement | null)?.click();
+    });
+    adminRoot.querySelector("#admin-add-client-top")?.addEventListener("click", () => {
+      (adminRoot.querySelector("#admin-add-client") as HTMLButtonElement | null)?.click();
+    });
+    adminRoot.querySelector("#jobs-create-toggle")?.addEventListener("click", () => {
+      jobsCreateOpen = !jobsCreateOpen;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#jobs-calendar-toggle")?.addEventListener("click", () => {
+      jobsCalendarOpen = !jobsCalendarOpen;
+      renderDashboard();
+    });
+
     adminRoot.querySelector("#admin-add")?.addEventListener("click", () => {
       if (view === "clubs") {
+        clubFormOpen = true;
         clubEntries.push({
           dbId: null,
           club: cloneClub({ slug: "new-club", name: "New Club" }),
         });
         selectedClub = clubEntries.length - 1;
       } else if (view === "cars") {
+        carFormOpen = true;
         carEntries.push({
           dbId: null,
           car: cloneCar({ slug: "new-car", name: "New Car" }),
         });
         selectedCar = carEntries.length - 1;
       } else {
+        flyerFormOpen = true;
         flyers.push(
           cloneFlyer({
             clubSlug: clubEntries[0]?.club.slug ?? "",
@@ -3812,6 +4345,30 @@ export async function initAdminPortal(): Promise<void> {
         );
         selectedFlyer = flyers.length - 1;
       }
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-admin-profile-form")?.addEventListener("click", () => {
+      adminProfileFormOpen = true;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-club-form")?.addEventListener("click", () => {
+      clubFormOpen = true;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-car-form")?.addEventListener("click", () => {
+      carFormOpen = true;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-flyer-form")?.addEventListener("click", () => {
+      flyerFormOpen = true;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-invoice-form")?.addEventListener("click", () => {
+      invoiceFormOpen = true;
+      renderDashboard();
+    });
+    adminRoot.querySelector("#open-club-accounts-form")?.addEventListener("click", () => {
+      clubAccountsFormOpen = true;
       renderDashboard();
     });
 

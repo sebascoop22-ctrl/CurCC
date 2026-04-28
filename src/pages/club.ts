@@ -11,6 +11,8 @@ import {
   submitClubEditRevision,
   submitJobDispute,
 } from "../admin/clubs";
+import { renderStatusBadge } from "../portal/badge";
+import { mountDataTable } from "../portal/data-table";
 import { getSupabaseClient } from "../lib/supabase";
 import type { Club } from "../types";
 import "../styles/pages/club.css";
@@ -49,6 +51,8 @@ export async function initClubPortal(): Promise<void> {
   let flashText = "";
   let flashBad = false;
   let sidebarCollapsed = false;
+  let clubProfileFormOpen = false;
+  let clubFlyerFormOpen = false;
   let clubView: "overview" | "profile" | "flyers" | "promoters" | "jobs" | "admin_tools" =
     "overview";
 
@@ -120,6 +124,47 @@ export async function initClubPortal(): Promise<void> {
     return blocks;
   };
 
+  const applyCollapsibleFormSections = (scope: ParentNode): void => {
+    const blocks = Array.from(
+      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true'], .club-form-grid[data-collapsible='true']"),
+    );
+    for (const block of blocks) {
+      if (block.dataset.collapsibleReady === "1") continue;
+      const headings = Array.from(block.querySelectorAll<HTMLElement>(":scope > h4.full"));
+      if (!headings.length) {
+        block.dataset.collapsibleReady = "1";
+        continue;
+      }
+
+      for (let i = 0; i < headings.length; i += 1) {
+        const heading = headings[i];
+        const nextHeading = headings[i + 1] ?? null;
+        const details = document.createElement("details");
+        details.className = "pp-form-section full";
+        details.open = i === 0;
+
+        const summary = document.createElement("summary");
+        summary.className = "pp-form-section__summary";
+        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
+        details.append(summary);
+
+        const body = document.createElement("div");
+        body.className = "pp-form-section__body";
+        details.append(body);
+
+        let node = heading.nextElementSibling as HTMLElement | null;
+        while (node && node !== nextHeading) {
+          const nextNode = node.nextElementSibling as HTMLElement | null;
+          body.append(node);
+          node = nextNode;
+        }
+
+        heading.replaceWith(details);
+      }
+      block.dataset.collapsibleReady = "1";
+    }
+  };
+
   const render = async (): Promise<void> => {
     const pickerOptions = actingAsAdmin
       ? (accountRows.length
@@ -186,56 +231,6 @@ export async function initClubPortal(): Promise<void> {
     const jobRows = jobsRes.ok ? jobsRes.rows : [];
     const pendingDisputes = disputeRes.count ?? 0;
 
-    const promoterTableRows = promoterRows.length
-      ? promoterRows
-          .map(
-            (p) => `<tr>
-          <td>${esc(p.displayName)}</td>
-          <td>${esc(p.weekdays.join("|") || "—")}</td>
-          <td>${esc(p.status)}</td>
-          <td>${esc(p.notes || "—")}</td>
-          <td>
-            <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-access="${esc(p.preferenceId)}" data-allow="false">Remove</button>
-            <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-access="${esc(p.preferenceId)}" data-allow="true">Restore</button>
-          </td>
-        </tr>`,
-          )
-          .join("")
-      : `<tr><td colspan="5">No promoter preference records for this club yet.</td></tr>`;
-
-    const jobRowsHtml = jobRows.length
-      ? jobRows
-          .map(
-            (j) => `<tr>
-          <td>${esc(j.jobDate)}</td>
-          <td>${esc(j.service)}</td>
-          <td>${esc(j.status)}</td>
-          <td>${j.guestsCount}</td>
-          <td>${esc(j.clientName || "—")}</td>
-          <td>
-            <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="approve">Approve</button>
-            <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="deny">Deny</button>
-            <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-dispute="${esc(j.id)}">Dispute</button>
-          </td>
-        </tr>`,
-          )
-          .join("")
-      : `<tr><td colspan="6">No jobs mapped to this club.</td></tr>`;
-
-    const flyerRows = flyers.length
-      ? flyers
-          .map(
-            (f) => `<tr>
-          <td>${esc(f.eventDate)}</td>
-          <td>${esc(f.title || "Untitled")}</td>
-          <td>${f.sortOrder}</td>
-          <td>${f.isActive ? "active" : "inactive"}</td>
-          <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-flyer-edit="${esc(f.id)}">Load</button></td>
-        </tr>`,
-          )
-          .join("")
-      : `<tr><td colspan="5">No flyers yet.</td></tr>`;
-
     const sidebarHtml = navBlocks(actingAsAdmin)
       .map(
         (b) => `<div class="club-nav-group">
@@ -262,45 +257,56 @@ export async function initClubPortal(): Promise<void> {
       <p class="admin-note">Use the sidebar to jump between profile, flyers, promoters, and jobs/disputes management.</p>
     `;
     const profileSection = `
-      <form class="admin-form club-form-grid" id="club-profile-form">
+      ${
+        clubProfileFormOpen
+          ? `<form class="admin-form club-form-grid" id="club-profile-form" data-collapsible="true">
         <p class="admin-note full">Basic marketing/display fields auto-publish. Tax/payment fields are submitted for admin review.</p>
-        <div class="cc-field"><label>Name</label><input name="name" value="${esc(club.name || "")}" /></div>
-        <div class="cc-field"><label>Location tag</label><input name="locationTag" value="${esc(club.locationTag || "")}" /></div>
+        <h4 class="full">Display details</h4>
+        <div class="cc-field pp-col-8"><label>Name</label><input name="name" value="${esc(club.name || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Location tag</label><input name="locationTag" value="${esc(club.locationTag || "")}" /></div>
         <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${esc(club.shortDescription || "")}</textarea></div>
         <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${esc(club.longDescription || "")}</textarea></div>
-        <div class="cc-field"><label>Website</label><input name="website" value="${esc(club.website || "")}" /></div>
-        <div class="cc-field"><label>Min spend</label><input name="minSpend" value="${esc(club.minSpend || "")}" /></div>
+        <div class="cc-field pp-col-8"><label>Website</label><input name="website" value="${esc(club.website || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Min spend</label><input name="minSpend" value="${esc(club.minSpend || "")}" /></div>
         <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${esc((club.knownFor || []).join("\n"))}</textarea></div>
         <h4 class="full">Sensitive (admin review required)</h4>
-        <div class="cc-field"><label>Payment method</label><input name="paymentMethod" value="${esc(club.paymentDetails?.method || "")}" /></div>
-        <div class="cc-field"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Payment method</label><input name="paymentMethod" value="${esc(club.paymentDetails?.method || "")}" /></div>
+        <div class="cc-field pp-col-8"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
         <div class="admin-actions full">
           <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save display fields</button>
           <button type="button" class="cc-btn cc-btn--ghost" data-club-save="review">Submit sensitive edits for review</button>
         </div>
-      </form>
+      </form>`
+          : `<p class="admin-note">Profile form hidden until you click edit/new.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-profile-form">Edit profile</button>`
+      }
     `;
     const flyersSection = `
-      <div class="club-table-wrap"><table class="admin-list-table"><thead><tr><th>Date</th><th>Title</th><th>Order</th><th>Status</th><th></th></tr></thead><tbody>${flyerRows}</tbody></table></div>
+      <div id="club-flyers-table"></div>
       <hr />
-      <form class="admin-form club-form-grid" id="club-flyer-form">
+      ${
+        clubFlyerFormOpen
+          ? `<form class="admin-form club-form-grid" id="club-flyer-form" data-collapsible="true">
         <input type="hidden" name="id" value="" />
-        <div class="cc-field"><label>Date</label><input type="date" name="eventDate" required /></div>
-        <div class="cc-field"><label>Title</label><input name="title" /></div>
+        <h4 class="full">Flyer details</h4>
+        <div class="cc-field pp-col-4"><label>Date</label><input type="date" name="eventDate" required /></div>
+        <div class="cc-field pp-col-8"><label>Title</label><input name="title" /></div>
         <div class="cc-field full"><label>Description</label><textarea name="description"></textarea></div>
-        <div class="cc-field"><label>Image URL</label><input name="imageUrl" /></div>
-        <div class="cc-field"><label>Image path</label><input name="imagePath" /></div>
-        <div class="cc-field"><label>Sort order</label><input type="number" name="sortOrder" value="0" /></div>
-        <div class="cc-field"><label>Status</label><select name="isActive"><option value="true">active</option><option value="false">inactive</option></select></div>
+        <h4 class="full">Media & publishing</h4>
+        <div class="cc-field pp-col-6"><label>Image URL</label><input name="imageUrl" /></div>
+        <div class="cc-field pp-col-6"><label>Image path</label><input name="imagePath" /></div>
+        <div class="cc-field pp-col-4"><label>Sort order</label><input type="number" name="sortOrder" value="0" /></div>
+        <div class="cc-field pp-col-4"><label>Status</label><select name="isActive"><option value="true">active</option><option value="false">inactive</option></select></div>
         <div class="admin-actions full"><button type="button" class="cc-btn cc-btn--gold" data-save-flyer>Save flyer</button></div>
-      </form>
+      </form>`
+          : `<p class="admin-note">Flyer form hidden until you click Add new or Edit.</p><button type="button" class="pp-btn pp-btn--primary" id="club-open-flyer-form">Add new flyer</button>`
+      }
     `;
     const promotersSection = `
-      <div class="club-table-wrap"><table class="admin-list-table"><thead><tr><th>Promoter</th><th>Days</th><th>Status</th><th>Notes</th><th>Access</th></tr></thead><tbody>${promoterTableRows}</tbody></table></div>
+      <div id="club-promoters-table"></div>
       <div class="cc-field" style="margin-top:0.8rem"><label>Access note</label><textarea id="club-promoter-note" rows="3" placeholder="Optional note when removing/restoring access"></textarea></div>
     `;
     const jobsSection = `
-      <div class="club-table-wrap"><table class="admin-list-table"><thead><tr><th>Date</th><th>Service</th><th>Status</th><th>Guests</th><th>Client</th><th>Decision</th></tr></thead><tbody>${jobRowsHtml}</tbody></table></div>
+      <div id="club-jobs-table"></div>
       <div class="cc-field" style="margin-top:0.8rem"><label>Decision/dispute note</label><textarea id="club-job-note" rows="3" placeholder="Optional note for approve/deny/dispute"></textarea></div>
     `;
     const adminToolsSection = actingAsAdmin
@@ -365,12 +371,122 @@ export async function initClubPortal(): Promise<void> {
         </div>
       </section>
     `;
+    applyCollapsibleFormSections(root);
 
     if (actingAsAdmin) {
       root.querySelector("#club-admin-picker")?.addEventListener("change", (e) => {
         clubSlug = String((e.target as HTMLSelectElement).value || "").trim() || null;
         flashText = "";
         void render();
+      });
+    }
+
+    const flyersTableHost = root.querySelector("#club-flyers-table") as HTMLElement | null;
+    if (flyersTableHost) {
+      mountDataTable(flyersTableHost, {
+        id: "club-flyers",
+        rows: flyers,
+        columns: [
+          { key: "date", label: "Date", sortable: true, accessor: (f) => f.eventDate },
+          {
+            key: "title",
+            label: "Title",
+            sortable: true,
+            accessor: (f) => f.title || "Untitled",
+            render: (f) => esc(f.title || "Untitled"),
+          },
+          { key: "order", label: "Order", sortable: true, accessor: (f) => f.sortOrder },
+          {
+            key: "status",
+            label: "Status",
+            sortable: true,
+            accessor: (f) => (f.isActive ? "active" : "inactive"),
+            render: (f) => renderStatusBadge(f.isActive ? "active" : "inactive"),
+          },
+          {
+            key: "action",
+            label: "Action",
+            render: (f) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-flyer-edit="${esc(f.id)}">Load</button>`,
+          },
+        ],
+        empty: { title: "No flyers yet." },
+        paginated: false,
+      });
+    }
+
+    const promotersTableHost = root.querySelector("#club-promoters-table") as HTMLElement | null;
+    if (promotersTableHost) {
+      mountDataTable(promotersTableHost, {
+        id: "club-promoters",
+        rows: promoterRows,
+        columns: [
+          {
+            key: "name",
+            label: "Promoter",
+            sortable: true,
+            accessor: (p) => p.displayName,
+          },
+          {
+            key: "days",
+            label: "Days",
+            accessor: (p) => p.weekdays.join("|") || "—",
+            render: (p) => esc(p.weekdays.join("|") || "—"),
+          },
+          {
+            key: "status",
+            label: "Status",
+            sortable: true,
+            accessor: (p) => p.status,
+            render: (p) => renderStatusBadge(p.status),
+          },
+          {
+            key: "notes",
+            label: "Notes",
+            accessor: (p) => p.notes || "—",
+            render: (p) => esc(p.notes || "—"),
+          },
+          {
+            key: "access",
+            label: "Access",
+            render: (p) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-access="${esc(p.preferenceId)}" data-allow="false">Remove</button>
+               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-promoter-access="${esc(p.preferenceId)}" data-allow="true">Restore</button>`,
+          },
+        ],
+        empty: { title: "No promoter preference records for this club yet." },
+        paginated: false,
+      });
+    }
+
+    const jobsTableHost = root.querySelector("#club-jobs-table") as HTMLElement | null;
+    if (jobsTableHost) {
+      mountDataTable(jobsTableHost, {
+        id: "club-jobs",
+        rows: jobRows,
+        columns: [
+          { key: "date", label: "Date", sortable: true, accessor: (j) => j.jobDate },
+          { key: "service", label: "Service", sortable: true, accessor: (j) => j.service },
+          {
+            key: "status",
+            label: "Status",
+            sortable: true,
+            accessor: (j) => j.status,
+            render: (j) => renderStatusBadge(j.status),
+          },
+          { key: "guests", label: "Guests", sortable: true, accessor: (j) => j.guestsCount },
+          { key: "client", label: "Client", accessor: (j) => j.clientName || "—", render: (j) => esc(j.clientName || "—") },
+          {
+            key: "decision",
+            label: "Decision",
+            render: (j) =>
+              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="approve">Approve</button>
+               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="deny">Deny</button>
+               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-dispute="${esc(j.id)}">Dispute</button>`,
+          },
+        ],
+        empty: { title: "No jobs mapped to this club." },
+        paginated: false,
       });
     }
 
@@ -390,6 +506,14 @@ export async function initClubPortal(): Promise<void> {
         clubView = next;
         void render();
       });
+    });
+    root.querySelector("#club-open-profile-form")?.addEventListener("click", () => {
+      clubProfileFormOpen = true;
+      void render();
+    });
+    root.querySelector("#club-open-flyer-form")?.addEventListener("click", () => {
+      clubFlyerFormOpen = true;
+      void render();
     });
     root.querySelector("#club-sidebar-toggle")?.addEventListener("click", () => {
       sidebarCollapsed = !sidebarCollapsed;
@@ -519,6 +643,7 @@ export async function initClubPortal(): Promise<void> {
 
     root.querySelectorAll("[data-flyer-edit]").forEach((btn) => {
       btn.addEventListener("click", () => {
+        clubFlyerFormOpen = true;
         const id = String((btn as HTMLElement).getAttribute("data-flyer-edit") || "").trim();
         if (!id) return;
         const row = flyers.find((f) => f.id === id);

@@ -97,12 +97,31 @@ export function initChrome(active: ActivePage): void {
   const drawer = document.getElementById("cc-drawer");
   if (!header || !footer || !modalRoot) return;
 
+  const nightlifeActive = active === "nightlife" || active === "nightlife-map" || active === "club";
+  const travelActive = active === "chauffeuring";
+  const operationsActive = active === "security";
   const desktopNav = () => `<nav class="site-nav" aria-label="Primary">
-    <a href="${servicesHref}" class="${active === "home" ? "is-active" : ""}">Services</a>
-    <a href="/nightlife" class="${active === "nightlife" || active === "nightlife-map" || active === "club" ? "is-active" : ""}">Nightlife</a>
-    <a href="/chauffeuring" class="${active === "chauffeuring" ? "is-active" : ""}">Chauffeur</a>
-    <a href="/security" class="${active === "security" ? "is-active" : ""}">Security</a>
-    <a href="/enquiry" class="${active === "enquiry" ? "is-active" : ""}">Inquiry</a>
+    <div class="site-nav__group">
+      <button type="button" class="site-nav__trigger ${nightlifeActive ? "is-active" : ""}">Access</button>
+      <div class="site-nav__menu" role="menu" aria-label="Nightlife">
+        <a href="/nightlife" class="site-nav__item ${nightlifeActive ? "is-active" : ""}" role="menuitem">Clubs</a>
+        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Events</span>
+      </div>
+    </div>
+    <div class="site-nav__group">
+      <button type="button" class="site-nav__trigger ${travelActive ? "is-active" : ""}">Travel</button>
+      <div class="site-nav__menu" role="menu" aria-label="Travel">
+        <a href="/chauffeuring" class="site-nav__item ${travelActive ? "is-active" : ""}" role="menuitem">Chauffeur</a>
+        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Yachts</span>
+      </div>
+    </div>
+    <div class="site-nav__group">
+      <button type="button" class="site-nav__trigger ${operationsActive ? "is-active" : ""}">Protection</button>
+      <div class="site-nav__menu" role="menu" aria-label="Protection">
+        <span class="site-nav__item is-disabled" role="menuitem" aria-disabled="true">Close protection</span>
+        <a href="/security" class="site-nav__item ${operationsActive ? "is-active" : ""}" role="menuitem">Security</a>
+      </div>
+    </div>
   </nav>`;
 
   header.innerHTML = `
