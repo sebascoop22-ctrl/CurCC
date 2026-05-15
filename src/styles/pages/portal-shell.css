@@ -1804,11 +1804,64 @@ body,
 }
 
 /* Form controls inside migrated modules */
-.pp-shell__content > #legacy-mount .admin-form {
+.pp-shell__content > #legacy-mount .admin-form:not(.admin-settings-form) {
   display: grid !important;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 0.85rem 0.95rem;
   align-items: start;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-form {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.25rem !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid {
+  display: grid !important;
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  gap: 0.75rem 1rem !important;
+  width: 100% !important;
+  align-items: start;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field {
+  grid-column: span 6;
+  min-width: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.3rem;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.pp-col-3 {
+  grid-column: span 3 !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.pp-col-4 {
+  grid-column: span 4 !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.pp-col-6 {
+  grid-column: span 6 !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.pp-col-8 {
+  grid-column: span 8 !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.full,
+.pp-shell__content > #legacy-mount .admin-settings-grid > .cc-field.pp-col-12 {
+  grid-column: 1 / -1 !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-quick-edit-modal .admin-settings-grid {
+  grid-template-columns: 1fr !important;
+}
+
+.pp-shell__content > #legacy-mount .admin-quick-edit-modal .admin-settings-grid > .cc-field {
+  grid-column: 1 / -1 !important;
 }
 
 .pp-shell__content > #legacy-mount .club-form-grid {

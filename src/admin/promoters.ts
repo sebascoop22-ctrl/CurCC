@@ -250,6 +250,34 @@ export async function loadPromoterRevisionsForAdmin(
   return { ok: true, rows };
 }
 
+export async function adminUpdatePromoterProfile(
+  supabase: SupabaseClient,
+  input: {
+    id: string;
+    displayName: string;
+    bio: string;
+    profileImageUrl: string;
+    portfolioClubSlugs: string[];
+    approvalNotes?: string;
+  },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = input.id.trim();
+  if (!id) return { ok: false, message: "Promoter id is required." };
+  const payload: Record<string, unknown> = {
+    display_name: input.displayName.trim() || "Promoter",
+    bio: input.bio.trim(),
+    profile_image_url: input.profileImageUrl.trim(),
+    portfolio_club_slugs: input.portfolioClubSlugs,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.approvalNotes !== undefined) {
+    payload.approval_notes = input.approvalNotes.trim();
+  }
+  const { error } = await supabase.from("promoters").update(payload).eq("id", id);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
 export async function approvePromoterRevision(
   supabase: SupabaseClient,
   revisionId: string,

@@ -95,6 +95,8 @@ const ADMIN_NAV: PortalNavConfig = {
           legacyView: "promoters",
           mode: "admin",
           icon: "⌂",
+          subtitle:
+            "Catalog table with quick edit and tabbed detail for finance, jobs, invoices, and club access.",
         },
         {
           id: "admin.invoices",
@@ -135,6 +137,8 @@ const ADMIN_NAV: PortalNavConfig = {
           legacyView: "clubs",
           mode: "admin",
           icon: "▣",
+          subtitle:
+            "Full-width venue catalog: quick edit public copy or open financial, rates, media, and access tabs.",
         },
         {
           id: "admin.cars",

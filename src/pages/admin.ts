@@ -107,7 +107,6 @@ import {
   downloadPdfFromBase64,
 } from "../lib/promoter-invoice-edge";
 import { adminPromoterRequestDecision } from "../lib/promoter-request-edge";
-import { attachClubAddressAutocomplete } from "../admin/places-autocomplete";
 import { mountDataTable } from "../portal/data-table";
 import { renderStatusBadge } from "../portal/badge";
 import { getSupabaseClient } from "../lib/supabase";
@@ -138,6 +137,15 @@ import type {
   PromoterTableSaleQueueRow,
   PromoterTableSaleReportRow,
 } from "../types";
+import { writeClubCatalogUrl, type ClubCatalogState } from "./admin/club-catalog";
+import { type PromoterCatalogState } from "./admin/promoter-catalog";
+import {
+  defaultClubCatalogState,
+  defaultPromoterCatalogState,
+  setupAdminCatalogViews,
+  syncCatalogStateFromUrl,
+  type AdminCatalogWireDeps,
+} from "./admin/admin-catalog-wire";
 import "../styles/pages/admin.css";
 
 /** Desk = CRM; catalog = clubs, cars, weekly flyers */
@@ -181,8 +189,9 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
     subtitle: "Access requests from the portal. Approve or deny with clear actions.",
   },
   promoters: {
-    title: "Promoter profiles",
-    subtitle: "Review profiles and pending revision payloads.",
+    title: "Promoter catalog",
+    subtitle:
+      "All promoter profiles in one table. Quick edit public fields or open the full tabbed editor for finance, jobs, invoices, and club access.",
   },
   jobs: {
     title: "Promoter jobs",
@@ -227,9 +236,9 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
     subtitle: "Resolve club-raised disputes linked to promoter jobs and related records.",
   },
   clubs: {
-    title: "Clubs",
+    title: "Clubs catalog",
     subtitle:
-      "Catalog fields, bank and tax details, guestlists, and the primary nightlife ledger rate used for bookings.",
+      "Table of all venues. Quick edit for public copy, or open all details for financial, rates, media, jobs, promoters, and accounts.",
   },
   cars: {
     title: "Cars",
@@ -384,12 +393,6 @@ function parseGuestlists(raw: string): Club["guestlists"] {
       notes: notesRaw.trim(),
     };
   });
-}
-
-function guestlistsText(rows: Club["guestlists"]): string {
-  return rows
-    .map((g) => `${g.days.join("|")},${g.recurrence},${g.notes ?? ""}`)
-    .join("\n");
 }
 
 function asClubsCsv(rows: Club[]): string {
@@ -855,7 +858,8 @@ export async function initAdminPortal(): Promise<void> {
   let jobsCreateOpen = false;
   let jobsCalendarOpen = false;
   let adminProfileFormOpen = false;
-  let clubFormOpen = false;
+  let clubCatalogState: ClubCatalogState = defaultClubCatalogState();
+  let promoterCatalogState: PromoterCatalogState = defaultPromoterCatalogState();
   let carFormOpen = false;
   let flyerFormOpen = false;
   let invoiceFormOpen = false;
@@ -1170,16 +1174,6 @@ export async function initAdminPortal(): Promise<void> {
           topPromoterName: null,
           topPromoterRealizedProfit: 0,
         };
-  }
-
-  function pickPrimaryNightlifeLedgerRateForClubSlug(slug: string): FinancialClubPaymentRate | null {
-    const t = slug.trim();
-    if (!t) return null;
-    const rows = nativeFinancialClubPaymentRates
-      .filter((r) => r.clubSlug === t && r.department === "nightlife")
-      .slice()
-      .sort((a, b) => a.venueOrServiceName.localeCompare(b.venueOrServiceName));
-    return rows[0] ?? null;
   }
 
   async function persistClubLedgerNightlifeFromClubForm(
@@ -2535,19 +2529,8 @@ export async function initAdminPortal(): Promise<void> {
   function renderDashboard(): void {
     if (listViewMode === "calendar" && !listSupportsCalendar(view)) listViewMode = "table";
     if (listViewMode === "grid" && !listSupportsGrid(view)) listViewMode = "table";
-    const club = clubEntries[selectedClub]?.club ?? cloneClub();
     const car = carEntries[selectedCar]?.car ?? cloneCar();
     const flyer = flyers[selectedFlyer] ?? cloneFlyer();
-    const clubNightlifeLedger = pickPrimaryNightlifeLedgerRateForClubSlug(club.slug);
-    const clubLedgerVenueDefault =
-      (clubNightlifeLedger?.venueOrServiceName || "").trim() ||
-      club.name.trim() ||
-      "Main room";
-    const clubLedgerEff =
-      (clubNightlifeLedger?.effectiveFrom || "").trim().slice(0, 10) ||
-      new Date().toISOString().slice(0, 10);
-    const ledBT = clubNightlifeLedger?.bonusType ?? "none";
-    const ledActive = clubNightlifeLedger ? clubNightlifeLedger.isActive !== false : true;
     const enquiry = selectedEnquiry
       ? enquiries.find((x) => x.id === selectedEnquiry)
       : enquiries[0];
@@ -2567,7 +2550,6 @@ export async function initAdminPortal(): Promise<void> {
         ? clients.find((c) => c.id === selectedClientId)
         : undefined;
 
-    const vt = club.venueType;
     const gs = car.gridSize;
     const vh = ADMIN_VIEW_HEADINGS[view];
     const adminNavSection = (
@@ -2616,8 +2598,7 @@ export async function initAdminPortal(): Promise<void> {
                 <button class="cc-btn cc-btn--ghost" id="admin-export-clubs-csv" type="button">Export clubs.csv</button>
                 ${
                   view === "clubs"
-                    ? `<button class="cc-btn cc-btn--gold" id="admin-save-club" type="button">Save club to DB</button>
-                 <button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
+                    ? `<button class="cc-btn cc-btn--ghost" id="admin-save-all-clubs" type="button">Save all clubs</button>`
                     : ""
                 }
                 ${
@@ -2660,7 +2641,9 @@ export async function initAdminPortal(): Promise<void> {
                       : view === "promoter_requests"
                         ? "Pending rows first. Use the detail panel to approve or deny."
                         : view === "promoters"
-                          ? "Choose a promoter for profile and revisions."
+                          ? "Search the catalog, quick edit, or open the tabbed editor."
+                        : view === "clubs"
+                          ? "Full-width table. Quick edit public fields or open all details."
                           : view === "jobs"
                             ? "Choose a promoter to attach jobs and history."
                             : view === "guestlist_queue"
@@ -2717,8 +2700,11 @@ export async function initAdminPortal(): Promise<void> {
                 <div class="admin-actions">
                   ${
                     view === "clubs" || view === "cars" || view === "flyers" || view === "jobs"
-                      ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>
-                     <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
+                      ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add">Add new</button>${
+                          view === "cars" || view === "flyers" || view === "jobs"
+                            ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-delete">Delete selected</button>`
+                            : ""
+                        }`
                       : view === "clients"
                         ? `<button class="cc-btn cc-btn--ghost" type="button" id="admin-add-client">Add client</button>
                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-delete-client">Delete selected</button>`
@@ -2745,102 +2731,8 @@ export async function initAdminPortal(): Promise<void> {
                 : `<p class="admin-note">Profile form hidden. Click to open.</p><button class="pp-btn pp-btn--primary" type="button" id="open-admin-profile-form">Open Form</button>`
             }
             `
-                : view === "clubs"
-                ? `
-            ${
-              clubFormOpen
-                ? `<form class="admin-form admin-club-editor" id="club-form" data-collapsible="true" data-collapsible-open="2">
-              <h4 class="full">Core Details</h4>
-              <div class="cc-field pp-col-4"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
-              <div class="cc-field pp-col-8"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
-              <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${escapeAttr(club.shortDescription)}</textarea></div>
-              <p class="admin-maps-hint" style="margin:0 0 0.75rem">Nightlife discovery cards (carousel + all venues): optional overrides. Leave blank to use name, short description, and the first image URL in the list below.</p>
-              <h4 class="full">Discovery Card</h4>
-              <div class="cc-field pp-col-4"><label>Card title override</label><input name="discoveryCardTitle" value="${escapeAttr(club.discoveryCardTitle ?? "")}" placeholder="Defaults to name" /></div>
-              <div class="cc-field full"><label>Card blurb override</label><textarea name="discoveryCardBlurb" placeholder="Defaults to short description">${escapeAttr(club.discoveryCardBlurb ?? "")}</textarea></div>
-              <div class="cc-field full"><label>Card image URL override</label><input name="discoveryCardImage" value="${escapeAttr(club.discoveryCardImage ?? "")}" placeholder="/clubs/… or https://…" /></div>
-              <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${escapeAttr(club.longDescription)}</textarea></div>
-              <h4 class="full">Location & Schedule</h4>
-              <div class="cc-field pp-col-4"><label>Location tag</label><input name="locationTag" value="${escapeAttr(club.locationTag)}" /></div>
-              <div class="cc-field full">
-                <label for="club-address-input">Address</label>
-                <input id="club-address-input" name="address" autocomplete="off" value="${escapeAttr(club.address)}" />
-                <p class="admin-maps-hint" id="club-address-maps-hint"></p>
-              </div>
-              <div class="cc-field pp-col-4"><label>Days Open</label><input name="daysOpen" value="${escapeAttr(club.daysOpen)}" /></div>
-              <div class="cc-field pp-col-4"><label>Best Visit Days (| separated)</label><input name="bestVisitDays" value="${escapeAttr(club.bestVisitDays.join("|"))}" /></div>
-              <div class="cc-field pp-col-4"><label>Featured Day</label><input name="featuredDay" value="${escapeAttr(club.featuredDay)}" /></div>
-              <div class="cc-field pp-col-3"><label>Venue type</label>
-                <select name="venueType">
-                  <option value="lounge" ${vt === "lounge" ? "selected" : ""}>Lounge</option>
-                  <option value="club" ${vt === "club" ? "selected" : ""}>Club</option>
-                  <option value="dining" ${vt === "dining" ? "selected" : ""}>Dining</option>
-                </select>
-              </div>
-              <div class="cc-field pp-col-3"><label>Lat</label><input name="lat" type="number" step="any" value="${club.lat}" /></div>
-              <div class="cc-field pp-col-3"><label>Lng</label><input name="lng" type="number" step="any" value="${club.lng}" /></div>
-              <div class="cc-field pp-col-6"><label>Website</label><input name="website" placeholder="https://…" value="${escapeAttr(club.website)}" /></div>
-              <h4 class="full">Pricing & Positioning</h4>
-              <div class="cc-field pp-col-3"><label>Min spend</label><input name="minSpend" value="${escapeAttr(club.minSpend)}" /></div>
-              <div class="cc-field pp-col-3"><label>Entry (women)</label><input name="entryPricingWomen" value="${escapeAttr(club.entryPricingWomen)}" /></div>
-              <div class="cc-field pp-col-3"><label>Entry (men)</label><input name="entryPricingMen" value="${escapeAttr(club.entryPricingMen)}" /></div>
-              <div class="cc-field pp-col-3"><label>Featured on site</label>
-                <select name="featured">
-                  <option value="true" ${club.featured ? "selected" : ""}>Yes</option>
-                  <option value="false" ${!club.featured ? "selected" : ""}>No</option>
-                </select>
-              </div>
-              <div class="cc-field pp-col-4"><label>Tables standard</label><input name="tablesStandard" value="${escapeAttr(club.tablesStandard)}" /></div>
-              <div class="cc-field pp-col-4"><label>Tables luxury</label><input name="tablesLuxury" value="${escapeAttr(club.tablesLuxury)}" /></div>
-              <div class="cc-field pp-col-4"><label>Tables VIP</label><input name="tablesVip" value="${escapeAttr(club.tablesVip)}" /></div>
-              <div class="cc-field full"><label>Known for (one per line)</label><textarea name="knownFor">${escapeAttr(club.knownFor.join("\n"))}</textarea></div>
-              <div class="cc-field full"><label>Amenities (one per line)</label><textarea name="amenities">${escapeAttr(club.amenities.join("\n"))}</textarea></div>
-              <h4 class="full">Media</h4>
-              <div class="cc-field full"><label>Images (one URL per line)</label><textarea name="images" id="club-images-text">${escapeAttr(club.images.join("\n"))}</textarea></div>
-              <div class="cc-field full admin-upload-row">
-                <label for="club-image-file">Upload image</label>
-                <input id="club-image-file" type="file" accept="image/*" />
-                <button type="button" class="cc-btn cc-btn--ghost" id="club-image-upload">Upload to storage &amp; append URL</button>
-              </div>
-              <h4 class="full">Payment Details</h4>
-              <div class="cc-field pp-col-4"><label>Method</label><input name="paymentMethod" value="${escapeAttr(club.paymentDetails?.method ?? "")}" /></div>
-              <div class="cc-field pp-col-8"><label>Beneficiary</label><input name="beneficiaryName" value="${escapeAttr(club.paymentDetails?.beneficiaryName ?? "")}" /></div>
-              <div class="cc-field pp-col-4"><label>Account no</label><input name="accountNumber" value="${escapeAttr(club.paymentDetails?.accountNumber ?? "")}" /></div>
-              <div class="cc-field pp-col-4"><label>Sort code</label><input name="sortCode" value="${escapeAttr(club.paymentDetails?.sortCode ?? "")}" /></div>
-              <div class="cc-field pp-col-4"><label>Payout Email</label><input name="payoutEmail" value="${escapeAttr(club.paymentDetails?.payoutEmail ?? "")}" /></div>
-              <div class="cc-field pp-col-6"><label>IBAN</label><input name="iban" value="${escapeAttr(club.paymentDetails?.iban ?? "")}" /></div>
-              <div class="cc-field pp-col-6"><label>SWIFT/BIC</label><input name="swiftBic" value="${escapeAttr(club.paymentDetails?.swiftBic ?? "")}" /></div>
-              <div class="cc-field full"><label>Reference</label><input name="paymentReference" value="${escapeAttr(club.paymentDetails?.reference ?? "")}" /></div>
-              <h4 class="full">Tax Details</h4>
-              <div class="cc-field pp-col-6"><label>Registered name</label><input name="taxRegisteredName" value="${escapeAttr(club.taxDetails?.registeredName ?? "")}" /></div>
-              <div class="cc-field pp-col-3"><label>Tax ID</label><input name="taxId" value="${escapeAttr(club.taxDetails?.taxId ?? "")}" /></div>
-              <div class="cc-field pp-col-3"><label>VAT number</label><input name="vatNumber" value="${escapeAttr(club.taxDetails?.vatNumber ?? "")}" /></div>
-              <div class="cc-field pp-col-4"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
-              <div class="cc-field pp-col-4"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
-              <div class="cc-field full"><label>Tax Notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
-              <h4 class="full">Ledger: nightlife payouts</h4>
-              <p class="admin-note full">Primary nightlife rate row for booking math (same data as Financials → Club rates). Leave the venue label empty to skip updating the ledger when you save the club.</p>
-              <input type="hidden" name="clubLedgerRateId" value="${escapeAttr(clubNightlifeLedger?.id ?? "")}" />
-              <div class="cc-field pp-col-6"><label>Venue / service label</label><input name="clubLedgerVenueOrServiceName" value="${escapeAttr(clubLedgerVenueDefault)}" placeholder="e.g. Main room" /></div>
-              <div class="cc-field pp-col-2"><label>Male ratio</label><input name="clubLedgerMaleRate" type="number" step="0.01" value="${clubNightlifeLedger?.maleRate ?? 0}" /></div>
-              <div class="cc-field pp-col-2"><label>Female ratio</label><input name="clubLedgerFemaleRate" type="number" step="0.01" value="${clubNightlifeLedger?.femaleRate ?? 0}" /></div>
-              <div class="cc-field pp-col-2"><label>Base rate</label><input name="clubLedgerBaseRate" type="number" step="0.01" value="${clubNightlifeLedger?.baseRate ?? 0}" /></div>
-              <div class="cc-field pp-col-4"><label>Bonus type</label>
-                <select name="clubLedgerBonusType">
-                  <option value="none"${ledBT === "none" ? " selected" : ""}>None</option>
-                  <option value="flat"${ledBT === "flat" ? " selected" : ""}>Flat</option>
-                  <option value="stacking"${ledBT === "stacking" ? " selected" : ""}>Stacking</option>
-                </select>
-              </div>
-              <div class="cc-field pp-col-4"><label>Bonus goal</label><input name="clubLedgerBonusGoal" type="number" step="1" value="${clubNightlifeLedger?.bonusGoal ?? 0}" /></div>
-              <div class="cc-field pp-col-4"><label>Bonus amount</label><input name="clubLedgerBonusAmount" type="number" step="0.01" value="${clubNightlifeLedger?.bonusAmount ?? 0}" /></div>
-              <div class="cc-field pp-col-4"><label>Effective from</label><input name="clubLedgerEffectiveFrom" type="date" value="${escapeAttr(clubLedgerEff)}" /></div>
-              <div class="cc-field pp-col-4"><label>Ledger row</label><label class="admin-check-row"><input type="checkbox" name="clubLedgerIsActive" value="true"${ledActive ? " checked" : ""} /><span>Active</span></label></div>
-              <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
-            </form>`
-                : `<p class="admin-note">Club form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-form">Open Form</button>`
-            }
-            `
+                                : view === "clubs"
+                ? `<div id="admin-club-catalog-detail-host" class="admin-entity-catalog-host"></div>`
                 : view === "cars"
                   ? `
             ${
@@ -2943,86 +2835,8 @@ export async function initAdminPortal(): Promise<void> {
               }
             </div>`;
                         })()
-                      : view === "promoters"
-                      ? `
-            <div class="admin-form">
-              <h4 class="full">Promoter profile</h4>
-              ${
-                promoters.find((p) => p.id === selectedPromoterId)
-                  ? (() => {
-                      const p = promoters.find((x) => x.id === selectedPromoterId)!;
-                      return `<div class="cc-field"><label>Name</label><input value="${escapeAttr(p.displayName)}" disabled /></div>
-                      <div class="cc-field"><label>Approval</label><input value="${escapeAttr(p.approvalStatus)}" disabled /></div>
-                      <div class="cc-field full"><label>Bio</label><textarea disabled>${escapeAttr(p.bio)}</textarea></div>
-                      <div class="cc-field full"><label>Primary image</label><input value="${escapeAttr(p.profileImageUrl)}" disabled /></div>
-                      <div class="cc-field full"><label>Photo gallery (${(p.profileImageUrls ?? []).length})</label><textarea disabled rows="3">${escapeAttr((p.profileImageUrls ?? []).join("\n"))}</textarea></div>
-                      <div class="cc-field full"><label>Portfolio clubs</label><input value="${escapeAttr((p.portfolioClubSlugs ?? []).join(", "))}" disabled /></div>`;
-                    })()
-                  : `<p class="admin-note full">No promoters yet.</p>`
-              }
-              ${
-                selectedPromoterId
-                  ? `
-              <h4 class="full">Promoter interactions</h4>
-              <div class="admin-actions full">
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="jobs">Open Jobs</button>
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="financials">Open Financials</button>
-                <button type="button" class="cc-btn cc-btn--ghost" data-admin-menu-view="invoices">Open Invoices</button>
-              </div>
-              <div class="full promoter-table-wrap">
-                <table>
-                  <thead><tr><th>Date</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Comp</th></tr></thead>
-                  <tbody>${
-                    promoterJobs.length
-                      ? promoterJobs
-                          .slice()
-                          .sort((a, b) => (a.jobDate < b.jobDate ? 1 : a.jobDate > b.jobDate ? -1 : 0))
-                          .map(
-                            (j) =>
-                              `<tr><td>${escapeAttr(j.jobDate)}</td><td>${escapeAttr(j.clubSlug ?? "—")}</td><td>${escapeAttr(j.service)}</td><td>${escapeAttr(j.status)}</td><td>${j.guestsCount}</td><td>${escapeAttr(`£${j.shiftFee.toFixed(2)} + £${j.guestlistFee.toFixed(2)}/guest`)}</td></tr>`,
-                          )
-                          .join("")
-                      : "<tr><td colspan='6'>No jobs logged for this promoter yet.</td></tr>"
-                  }</tbody>
-                </table>
-              </div>`
-                  : ""
-              }
-              <h4 class="full">Pending revisions</h4>
-              <div class="full admin-list admin-list--inline">
-                ${
-                  promoterRevisions.length
-                    ? promoterRevisions
-                        .map(
-                          (r) =>
-                            `<button type="button" data-revision-id="${escapeAttr(r.id)}" class="${r.id === selectedRevisionId ? "is-active" : ""}">${escapeAttr(r.status)} · ${escapeAttr(r.created_at)}</button>`,
-                        )
-                        .join("")
-                    : `<p class="admin-note">No revision requests.</p>`
-                }
-              </div>
-              ${
-                promoterRevisions.find((r) => r.id === selectedRevisionId)
-                  ? (() => {
-                      const r = promoterRevisions.find((x) => x.id === selectedRevisionId)!;
-                      const pay = r.payload;
-                      const imgC = Array.isArray(pay.profile_image_urls)
-                        ? pay.profile_image_urls.length
-                        : 0;
-                      const portC = Array.isArray(pay.portfolio_club_slugs)
-                        ? pay.portfolio_club_slugs.length
-                        : 0;
-                      return `<p class="admin-note full">Summary: <strong>${imgC}</strong> photo URL(s), <strong>${portC}</strong> portfolio club slug(s).</p>
-                      <div class="cc-field full"><label>Revision payload</label><pre class="admin-json">${escapeAttr(JSON.stringify(r.payload, null, 2))}</pre></div>
-                      <div class="cc-field full"><label>Review notes</label><textarea id="promoter-review-notes">${escapeAttr(r.review_notes || "")}</textarea></div>
-                      <div class="admin-actions full">
-                        <button class="cc-btn cc-btn--gold" type="button" id="promoter-approve-revision">Approve</button>
-                        <button class="cc-btn cc-btn--ghost" type="button" id="promoter-reject-revision">Reject</button>
-                      </div>`;
-                    })()
-                  : ""
-              }
-            </div>`
+                                            : view === "promoters"
+                      ? `<div id="admin-promoter-catalog-detail-host" class="admin-entity-catalog-host"></div>`
                       : view === "club_accounts"
                         ? (() => {
                             const acct = clubAccounts.find((x) => x.id === selectedClubAccountId) ?? clubAccounts[0];
@@ -3398,7 +3212,6 @@ export async function initAdminPortal(): Promise<void> {
     const setCloseAfterSave = (): void => {
       pendingDashboardModalClose = () => {
         if (formId === "admin-profile-form") adminProfileFormOpen = false;
-        if (formId === "club-form") clubFormOpen = false;
         if (formId === "car-form") carFormOpen = false;
         if (formId === "flyer-form") flyerFormOpen = false;
         if (formId === "promoter-invoice-form") invoiceFormOpen = false;
@@ -3498,6 +3311,49 @@ export async function initAdminPortal(): Promise<void> {
     document.addEventListener("keydown", keyHandler);
 
     adminRoot.append(host);
+  }
+
+  function catalogWireDeps(): AdminCatalogWireDeps {
+    return {
+      supabase,
+      adminRoot,
+      view,
+      getClubEntries: () => clubEntries,
+      setClubEntries: (entries) => {
+        clubEntries = entries;
+      },
+      getClubCatalogState: () => clubCatalogState,
+      setClubCatalogState: (s) => {
+        clubCatalogState = s;
+      },
+      getPromoterCatalogState: () => promoterCatalogState,
+      setPromoterCatalogState: (s) => {
+        promoterCatalogState = s;
+      },
+      listSearch,
+      getRates: () => nativeFinancialClubPaymentRates,
+      promoters,
+      getPromoterRevisions: () => promoterRevisions,
+      nativeFinancialPromoters,
+      getPromoterJobs: () => promoterJobs,
+      promoterInvoices,
+      promoterSignupRequests,
+      getTransactions: () => financialTransactions,
+      financialPeriodFrom,
+      financialPeriodTo,
+      mediaBucket: ADMIN_MEDIA_BUCKET,
+      safeUploadPath,
+      validateClub: validateClubShape,
+      reloadRates: async () => {
+        const rulesOnly = await listFinancialClubPaymentRates(supabase);
+        if (rulesOnly.ok) nativeFinancialClubPaymentRates = rulesOnly.data;
+      },
+      reloadAccounts: reloadClubAccounts,
+      reloadPromoters,
+      reloadAllFromDb,
+      flash,
+      renderDashboard,
+    };
   }
 
   function bindDashboardEvents(): void {
@@ -5343,7 +5199,7 @@ export async function initAdminPortal(): Promise<void> {
             },
           });
         }
-      } else if (view === "promoters" || view === "jobs" || view === "invoices") {
+      } else if (view === "jobs" || view === "invoices") {
         listEl.className = "admin-list";
         if (!promoters.length) {
           listEl.innerHTML = `<p class="admin-note">No promoters loaded.</p>`;
@@ -5843,30 +5699,26 @@ export async function initAdminPortal(): Promise<void> {
       } else if (view === "admin_profile") {
         listEl.className = "admin-list";
         listEl.innerHTML = `<p class="admin-note">Profile settings only. Website editors (clubs/cars/flyers) appear under the Website section.</p>`;
-      } else {
-        const isClubs = view === "clubs";
-        const items = isClubs ? clubEntries : carEntries;
-        const activeIndex = isClubs ? selectedClub : selectedCar;
+      } else if (view === "clubs" || view === "promoters") {
+        listEl.className = "admin-list";
+        listEl.innerHTML = "";
+      } else if (view === "cars") {
+        const items = carEntries;
+        const activeIndex = selectedCar;
         listEl.className = "admin-list";
         const q = listSearch.trim().toLowerCase();
         const filtered = items
           .map((entry, idx) => ({ entry, idx }))
           .filter(({ entry }) => {
             if (!q) return true;
-            const slug = isClubs
-              ? (entry as ClubEntry).club.slug
-              : (entry as CarEntry).car.slug;
-            const name = isClubs
-              ? (entry as ClubEntry).club.name
-              : (entry as CarEntry).car.name;
-            return `${slug} ${name}`.toLowerCase().includes(q);
+            return `${entry.car.slug} ${entry.car.name}`.toLowerCase().includes(q);
           });
         if (!filtered.length) {
           listEl.innerHTML = `<p class="admin-note">No items yet.</p>`;
         } else {
           listEl.innerHTML = "";
           mountDataTable(listHost, {
-            id: isClubs ? "admin-clubs-list" : "admin-cars-list",
+            id: "admin-cars-list",
             rows: filtered,
             rowId: (r) => String(r.idx),
             activeRowId: String(activeIndex),
@@ -5876,9 +5728,7 @@ export async function initAdminPortal(): Promise<void> {
                 label: "",
                 width: "64px",
                 render: ({ entry }) => {
-                  const image = isClubs
-                    ? (entry as ClubEntry).club.images?.[0]
-                    : (entry as CarEntry).car.images?.[0];
+                  const image = entry.car.images?.[0];
                   if (image) {
                     return `<img src="${escapeAttr(image)}" alt="" style="width:44px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--portal-border)" />`;
                   }
@@ -5889,31 +5739,16 @@ export async function initAdminPortal(): Promise<void> {
                 key: "slug",
                 label: "Slug",
                 sortable: true,
-                accessor: ({ entry }) =>
-                  isClubs
-                    ? (entry as ClubEntry).club.slug
-                    : (entry as CarEntry).car.slug,
-                render: ({ entry }) => {
-                  const slug = isClubs
-                    ? (entry as ClubEntry).club.slug
-                    : (entry as CarEntry).car.slug;
-                  return `<code class="admin-list-code">${escapeAttr(slug)}</code>`;
-                },
+                accessor: ({ entry }) => entry.car.slug,
+                render: ({ entry }) =>
+                  `<code class="admin-list-code">${escapeAttr(entry.car.slug)}</code>`,
               },
               {
                 key: "name",
                 label: "Name",
                 sortable: true,
-                accessor: ({ entry }) =>
-                  isClubs
-                    ? (entry as ClubEntry).club.name
-                    : (entry as CarEntry).car.name,
-                render: ({ entry }) => {
-                  const name = isClubs
-                    ? (entry as ClubEntry).club.name
-                    : (entry as CarEntry).car.name;
-                  return escapeAttr(adminDisplayTruncate(name, 40));
-                },
+                accessor: ({ entry }) => entry.car.name,
+                render: ({ entry }) => escapeAttr(adminDisplayTruncate(entry.car.name, 40)),
               },
               {
                 key: "actions",
@@ -5925,8 +5760,7 @@ export async function initAdminPortal(): Promise<void> {
               },
             ],
             onRowClick: (row) => {
-              if (isClubs) selectedClub = row.idx;
-              else selectedCar = row.idx;
+              selectedCar = row.idx;
               renderDashboard();
             },
           });
@@ -5934,10 +5768,8 @@ export async function initAdminPortal(): Promise<void> {
             btn.addEventListener("click", (ev) => {
               ev.stopPropagation();
               const i = Number((btn as HTMLElement).getAttribute("data-item-edit") || "0");
-              if (isClubs) selectedClub = i;
-              else selectedCar = i;
-              if (isClubs) clubFormOpen = true;
-              else carFormOpen = true;
+              selectedCar = i;
+              carFormOpen = true;
               renderDashboard();
             });
           });
@@ -5945,13 +5777,8 @@ export async function initAdminPortal(): Promise<void> {
             btn.addEventListener("click", (ev) => {
               ev.stopPropagation();
               const i = Number((btn as HTMLElement).getAttribute("data-item-delete") || "0");
-              if (isClubs) {
-                selectedClub = i;
-                (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
-              } else {
-                selectedCar = i;
-                (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
-              }
+              selectedCar = i;
+              (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
             });
           });
         }
@@ -5971,7 +5798,6 @@ export async function initAdminPortal(): Promise<void> {
         else if (view === "club_accounts") selectedClubAccountId = id;
         else if (view === "club_edits") selectedClubRevisionId = id;
         else if (view === "job_disputes") selectedClubDisputeId = id;
-        if (view === "clubs") clubFormOpen = true;
         if (view === "cars") carFormOpen = true;
         if (view === "flyers") flyerFormOpen = true;
         if (view === "admin_profile") adminProfileFormOpen = true;
@@ -6029,7 +5855,6 @@ export async function initAdminPortal(): Promise<void> {
       });
     });
     adminRoot.querySelector("#admin-add-top")?.addEventListener("click", () => {
-      if (view === "clubs") clubFormOpen = true;
       if (view === "cars") carFormOpen = true;
       if (view === "flyers") flyerFormOpen = true;
       (adminRoot.querySelector("#admin-add") as HTMLButtonElement | null)?.click();
@@ -6056,12 +5881,18 @@ export async function initAdminPortal(): Promise<void> {
 
     adminRoot.querySelector("#admin-add")?.addEventListener("click", () => {
       if (view === "clubs") {
-        clubFormOpen = true;
+        const slug = `new-club-${Date.now()}`;
         clubEntries.push({
           dbId: null,
-          club: cloneClub({ slug: "new-club", name: "New Club" }),
+          club: cloneClub({ slug, name: "New Club" }),
         });
-        selectedClub = clubEntries.length - 1;
+        clubCatalogState = {
+          ...defaultClubCatalogState(),
+          mode: "detail",
+          detailSlug: slug,
+          detailTab: "general",
+        };
+        writeClubCatalogUrl(slug, "general");
       } else if (view === "cars") {
         carFormOpen = true;
         carEntries.push({
@@ -6085,10 +5916,6 @@ export async function initAdminPortal(): Promise<void> {
     });
     adminRoot.querySelector("#open-admin-profile-form")?.addEventListener("click", () => {
       adminProfileFormOpen = true;
-      renderDashboard();
-    });
-    adminRoot.querySelector("#open-club-form")?.addEventListener("click", () => {
-      clubFormOpen = true;
       renderDashboard();
     });
     adminRoot.querySelector("#open-car-form")?.addEventListener("click", () => {
@@ -7230,16 +7057,6 @@ export async function initAdminPortal(): Promise<void> {
         renderDashboard();
       });
     }
-    if (view === "clubs" && clubFormOpen) {
-      const clubRow = clubEntries[selectedClub]?.club ?? cloneClub();
-      const clubModalTitle = clubRow.slug.trim()
-        ? `Edit club — ${clubRow.name.trim() || clubRow.slug.trim()}`
-        : "New club";
-      mountDashboardFormModal("club-form", clubModalTitle, () => {
-        clubFormOpen = false;
-        renderDashboard();
-      });
-    }
     if (view === "cars" && carFormOpen) {
       mountDashboardFormModal("car-form", "Car editor", () => {
         carFormOpen = false;
@@ -7293,24 +7110,8 @@ export async function initAdminPortal(): Promise<void> {
         ? "Type to search Google Places; choosing a result fills address, latitude, and longitude."
         : "Tip: set VITE_GOOGLE_MAPS_API_KEY (enable Maps JavaScript API + Places API; restrict the key by HTTP referrer) to enable address search.";
     }
-    const mapsClubForm = adminRoot.querySelector("#club-form");
-    if (mapsClubForm && mapsKey) {
-      const address = mapsClubForm.querySelector<HTMLInputElement>('input[name="address"]');
-      const lat = mapsClubForm.querySelector<HTMLInputElement>('input[name="lat"]');
-      const lng = mapsClubForm.querySelector<HTMLInputElement>('input[name="lng"]');
-      if (address && lat && lng) {
-        void attachClubAddressAutocomplete({
-          addressInput: address,
-          latInput: lat,
-          lngInput: lng,
-          apiKey: mapsKey,
-        }        ).catch(() =>
-          flash(
-            "Could not load Google Maps — check API key, billing, and Places API.",
-            "error",
-          ),
-        );
-      }
+    if (view === "clubs" || view === "promoters") {
+      setupAdminCatalogViews(catalogWireDeps());
     }
   }
 
@@ -7347,6 +7148,7 @@ export async function initAdminPortal(): Promise<void> {
       ).trim(),
     };
     await reloadAllFromDb();
+    syncCatalogStateFromUrl(catalogWireDeps());
     renderDashboard();
   }
 
