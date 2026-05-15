@@ -2,7 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { escAttr, escHtml } from "../../portal/html";
 import { mountDataTable } from "../../portal/data-table";
 import { renderStatusBadge } from "../../portal/badge";
-import type { PromoterRevisionRow } from "../../admin/promoters";
+import {
+  loadPromoterJobs,
+  loadPromoterPreferences,
+  loadPromoterRevisionsForAdmin,
+  type PromoterRevisionRow,
+} from "../../admin/promoters";
 import type {
   FinancialPromoterProfile,
   PromoterInvoice,
@@ -263,7 +268,7 @@ export type PromoterCatalogBindCtx = {
   supabase: SupabaseClient;
   adminRoot: HTMLElement;
   promoters: PromoterProfile[];
-  state: PromoterCatalogState;
+  getState: () => PromoterCatalogState;
   listSearch: string;
   revisions: PromoterRevisionRow[];
   financialPromoters: FinancialPromoterProfile[];
@@ -367,10 +372,16 @@ export function bindPromoterCatalogEvents(ctx: PromoterCatalogBindCtx): void {
     }
     const tabBtn = t.closest("[data-promoter-detail-tab]");
     if (tabBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const state = ctx.getState();
+      const detailId = state.detailId.trim();
+      if (!detailId || state.mode !== "detail") return;
       const tab = parsePromoterDetailTab(tabBtn.getAttribute("data-promoter-detail-tab") || "");
+      if (tab === state.detailTab) return;
       ctx.onStateChange({ detailTab: tab });
-      writePromoterCatalogUrl(ctx.state.detailId, tab);
-      ctx.renderDashboard();
+      writePromoterCatalogUrl(detailId, tab);
+      void refreshPromoterCatalogDetail(ctx);
       return;
     }
     if (t.closest("[data-promoter-quick-close]")) {
@@ -379,7 +390,7 @@ export function bindPromoterCatalogEvents(ctx: PromoterCatalogBindCtx): void {
       return;
     }
     if (t.closest("[data-promoter-edit-all-details]")) {
-      const id = ctx.state.quickEditId;
+      const id = ctx.getState().quickEditId;
       adminRoot.querySelector("#promoter-quick-edit-host")?.remove();
       if (!id) return;
       ctx.onStateChange({ mode: "detail", detailId: id, detailTab: "profile", quickEditId: null });
@@ -388,7 +399,7 @@ export function bindPromoterCatalogEvents(ctx: PromoterCatalogBindCtx): void {
       return;
     }
     if (t.closest("[data-promoter-quick-save]")) {
-      const id = ctx.state.quickEditId;
+      const id = ctx.getState().quickEditId;
       const form = adminRoot.querySelector("#promoter-quick-edit-form") as HTMLFormElement | null;
       const p = ctx.promoters.find((x) => x.id === id);
       if (!form || !p) return;
@@ -451,10 +462,73 @@ export function bindPromoterCatalogEvents(ctx: PromoterCatalogBindCtx): void {
   });
 }
 
+let promoterDetailMountSeq = 0;
+
+function promoterDetailMountStillCurrent(
+  seq: number,
+  ctx: PromoterCatalogBindCtx,
+  detailId: string,
+  tab: PromoterDetailTab,
+): boolean {
+  if (seq !== promoterDetailMountSeq) return false;
+  const s = ctx.getState();
+  return s.mode === "detail" && s.detailId.trim() === detailId && s.detailTab === tab;
+}
+
+export async function refreshPromoterCatalogDetail(ctx: PromoterCatalogBindCtx): Promise<void> {
+  const seq = ++promoterDetailMountSeq;
+  const host = ctx.adminRoot.querySelector("#admin-promoter-catalog-detail-host") as HTMLElement | null;
+  if (!host) {
+    ctx.renderDashboard();
+    return;
+  }
+  const state = ctx.getState();
+  if (state.mode !== "detail") return;
+  const detailId = state.detailId.trim();
+  const tab = state.detailTab;
+  if (!detailId) return;
+
+  const p = ctx.promoters.find((x) => x.id === detailId);
+  if (!p) {
+    if (!promoterDetailMountStillCurrent(seq, ctx, detailId, tab)) return;
+    host.innerHTML = `<p class="admin-note">Promoter not found.</p>`;
+    return;
+  }
+  const tabData = await loadPromoterDetailTabData(ctx, p);
+  if (!promoterDetailMountStillCurrent(seq, ctx, detailId, tab)) return;
+  const tabHtml = buildPromoterTabHtml(tab, p, tabData);
+  if (!promoterDetailMountStillCurrent(seq, ctx, detailId, tab)) return;
+  host.innerHTML = renderPromoterDetailHtml(p, tab, tabHtml);
+}
+
+async function loadPromoterDetailTabData(
+  ctx: PromoterCatalogBindCtx,
+  p: PromoterProfile,
+): Promise<Parameters<typeof buildPromoterTabHtml>[2]> {
+  const [jobsRes, revRes, prefRes] = await Promise.all([
+    loadPromoterJobs(ctx.supabase, p.id),
+    loadPromoterRevisionsForAdmin(ctx.supabase, p.id),
+    loadPromoterPreferences(ctx.supabase, p.id),
+  ]);
+  const fin = ctx.financialPromoters.find((x) => x.userId === p.userId) ?? null;
+  const jobs = jobsRes.ok ? jobsRes.rows : [];
+  const revisions = revRes.ok ? revRes.rows : [];
+  const clubPrefs = (prefRes.ok ? prefRes.rows : []).map((x) => ({
+    clubSlug: x.clubSlug,
+    weekdays: x.weekdays,
+    status: x.status,
+    notes: "",
+  }));
+  const invoices = ctx.invoices.filter((inv) => inv.promoterId === p.id);
+  const signup = ctx.signupRequests.find((r) => r.authUserId === p.userId) ?? null;
+  return { revisions, financial: fin, jobs, invoices, clubPrefs, signupRequest: signup };
+}
+
 async function savePromoterDetail(ctx: PromoterCatalogBindCtx): Promise<void> {
-  const p = ctx.promoters.find((x) => x.id === ctx.state.detailId);
+  const state = ctx.getState();
+  const p = ctx.promoters.find((x) => x.id === state.detailId);
   if (!p) return;
-  if (ctx.state.detailTab === "profile") {
+  if (state.detailTab === "profile") {
     const form = ctx.adminRoot.querySelector("#promoter-tab-profile-form") as HTMLFormElement | null;
     if (!form) return;
     const fd = new FormData(form);
@@ -469,7 +543,7 @@ async function savePromoterDetail(ctx: PromoterCatalogBindCtx): Promise<void> {
     ctx.renderDashboard();
     return;
   }
-  if (ctx.state.detailTab === "financial") {
+  if (state.detailTab === "financial") {
     const form = ctx.adminRoot.querySelector("#promoter-tab-financial-form") as HTMLFormElement | null;
     if (!form) return;
     const fd = new FormData(form);

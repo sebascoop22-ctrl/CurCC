@@ -146,8 +146,8 @@ export function renderClubDetailHtml(
 export type ClubCatalogBindCtx = {
   supabase: SupabaseClient;
   adminRoot: HTMLElement;
-  entries: ClubEntry[];
-  state: ClubCatalogState;
+  getEntries: () => ClubEntry[];
+  getState: () => ClubCatalogState;
   listSearch: string;
   rates: FinancialClubPaymentRate[];
   promoters: PromoterProfile[];
@@ -176,16 +176,40 @@ export type ClubCatalogBindCtx = {
 };
 
 function getEntry(ctx: ClubCatalogBindCtx, slug: string): ClubEntry | null {
-  const i = findClubEntryIndex(ctx.entries, slug);
-  return i >= 0 ? ctx.entries[i]! : null;
+  const entries = ctx.getEntries();
+  const i = findClubEntryIndex(entries, slug);
+  return i >= 0 ? entries[i]! : null;
 }
 
 function updateEntryClub(ctx: ClubCatalogBindCtx, slug: string, club: Club): void {
-  const i = findClubEntryIndex(ctx.entries, slug);
+  const entries = ctx.getEntries();
+  const i = findClubEntryIndex(entries, slug);
   if (i < 0) return;
-  const next = [...ctx.entries];
+  const next = [...entries];
   next[i] = { ...next[i]!, club };
   ctx.onEntriesChange(next);
+}
+
+let clubDetailMountSeq = 0;
+
+function clubDetailMountStillCurrent(
+  seq: number,
+  ctx: ClubCatalogBindCtx,
+  slug: string,
+  tab: ClubDetailTab,
+): boolean {
+  if (seq !== clubDetailMountSeq) return false;
+  const s = ctx.getState();
+  return s.mode === "detail" && s.detailSlug.trim() === slug && s.detailTab === tab;
+}
+
+export async function refreshClubCatalogDetail(ctx: ClubCatalogBindCtx): Promise<void> {
+  const host = ctx.adminRoot.querySelector("#admin-club-catalog-detail-host") as HTMLElement | null;
+  if (!host) {
+    ctx.renderDashboard();
+    return;
+  }
+  await mountClubCatalogDetail(host, ctx);
 }
 
 export function mountClubCatalogListTable(
@@ -193,7 +217,7 @@ export function mountClubCatalogListTable(
   ctx: ClubCatalogBindCtx,
 ): void {
   const q = ctx.listSearch.trim().toLowerCase();
-  const rows = ctx.entries
+  const rows = ctx.getEntries()
     .map((entry, idx) => ({ entry, idx }))
     .filter(({ entry }) => {
       if (!q) return true;
@@ -245,13 +269,22 @@ export async function mountClubCatalogDetail(
   host: HTMLElement,
   ctx: ClubCatalogBindCtx,
 ): Promise<void> {
-  const entry = getEntry(ctx, ctx.state.detailSlug);
+  const seq = ++clubDetailMountSeq;
+  const state = ctx.getState();
+  if (state.mode !== "detail") return;
+  const slug = state.detailSlug.trim();
+  const tab = state.detailTab;
+  if (!slug) return;
+
+  const entry = getEntry(ctx, slug);
   if (!entry) {
+    if (!clubDetailMountStillCurrent(seq, ctx, slug, tab)) return;
     host.innerHTML = `<p class="admin-note">Club not found. <button type="button" class="cc-btn cc-btn--ghost" data-club-back-catalog>Back to catalog</button></p>`;
     return;
   }
-  const tabHtml = await buildClubDetailTabHtml(ctx, entry.club);
-  host.innerHTML = renderClubDetailHtml(entry.club, ctx.state.detailTab, tabHtml);
+  const tabHtml = await buildClubDetailTabHtml(ctx, entry.club, tab, seq);
+  if (!clubDetailMountStillCurrent(seq, ctx, slug, tab)) return;
+  host.innerHTML = renderClubDetailHtml(entry.club, tab, tabHtml);
   wireClubDetailFieldEnhancements(host);
 }
 
@@ -262,21 +295,24 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
 
   adminRoot.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement;
+    const entries = ctx.getEntries();
     const quickBtn = t.closest("[data-club-quick-edit]") as HTMLElement | null;
     const quickIdx = quickBtn?.getAttribute("data-club-quick-edit");
     if (quickIdx != null) {
       ev.preventDefault();
       ev.stopPropagation();
       const i = Number(quickIdx);
-      if (!Number.isFinite(i) || !ctx.entries[i]) return;
+      if (!Number.isFinite(i) || !entries[i]) return;
       ctx.onStateChange({ quickEditIndex: i });
       ctx.renderDashboard();
       return;
     }
     const allIdx = t.closest("[data-club-all-details]")?.getAttribute("data-club-all-details");
     if (allIdx != null) {
+      ev.preventDefault();
+      ev.stopPropagation();
       const i = Number(allIdx);
-      const slug = ctx.entries[i]?.club.slug?.trim();
+      const slug = entries[i]?.club.slug?.trim();
       if (!slug) return;
       ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "general", tabCache: null });
       writeClubCatalogUrl(slug, "general");
@@ -286,7 +322,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
     const delIdx = t.closest("[data-club-delete]")?.getAttribute("data-club-delete");
     if (delIdx != null) {
       const i = Number(delIdx);
-      const entry = ctx.entries[i];
+      const entry = entries[i];
       if (!entry) return;
       if (!window.confirm(`Delete club “${entry.club.slug}”?`)) return;
       void (async () => {
@@ -296,7 +332,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
           ctx.flash(res.message, "error");
           return;
         }
-        const next = ctx.entries.filter((_, j) => j !== i);
+        const next = entries.filter((_, j) => j !== i);
         ctx.onEntriesChange(next);
         ctx.flash("Club deleted.");
         ctx.renderDashboard();
@@ -311,10 +347,16 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
     }
     const tabBtn = t.closest("[data-club-detail-tab]") as HTMLElement | null;
     if (tabBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const state = ctx.getState();
+      const slug = state.detailSlug.trim();
+      if (!slug || state.mode !== "detail") return;
       const tab = parseClubDetailTab(tabBtn.getAttribute("data-club-detail-tab") || "");
+      if (tab === state.detailTab) return;
       ctx.onStateChange({ detailTab: tab, tabCache: null });
-      writeClubCatalogUrl(ctx.state.detailSlug, tab);
-      ctx.renderDashboard();
+      writeClubCatalogUrl(slug, tab);
+      void refreshClubCatalogDetail(ctx);
       return;
     }
     if (t.closest("[data-club-quick-close]")) {
@@ -323,8 +365,9 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       return;
     }
     if (t.closest("[data-club-edit-all-details]")) {
-      const i = ctx.state.quickEditIndex;
-      const slug = i != null ? ctx.entries[i]?.club.slug?.trim() : "";
+      const state = ctx.getState();
+      const i = state.quickEditIndex;
+      const slug = i != null ? entries[i]?.club.slug?.trim() : "";
       adminRoot.querySelector("#club-quick-edit-host")?.remove();
       if (!slug) return;
       ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "general", quickEditIndex: null, tabCache: null });
@@ -333,10 +376,11 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       return;
     }
     if (t.closest("[data-club-quick-save]")) {
-      const i = ctx.state.quickEditIndex;
+      const state = ctx.getState();
+      const i = state.quickEditIndex;
       if (i == null) return;
       const form = adminRoot.querySelector("#club-quick-edit-form") as HTMLFormElement | null;
-      const entry = ctx.entries[i];
+      const entry = entries[i];
       if (!form || !entry) return;
       const club = applyClubPublicFromFormData(entry.club, new FormData(form));
       const errs = ctx.validateClub(club);
@@ -377,7 +421,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
   adminRoot.addEventListener("submit", (ev) => {
     const form = (ev.target as HTMLElement).closest("form");
     if (!form) return;
-    const slug = ctx.state.detailSlug.trim();
+    const slug = ctx.getState().detailSlug.trim();
     if (!slug) return;
     if (form.id === "club-tab-rates-form") {
       ev.preventDefault();
@@ -455,7 +499,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
 
   const uploadBtn = adminRoot.querySelector("#club-tab-image-upload");
   uploadBtn?.addEventListener("click", () => {
-    const slug = ctx.state.detailSlug.trim();
+    const slug = ctx.getState().detailSlug.trim();
     if (!slug) return;
     const input = adminRoot.querySelector("#club-tab-image-file") as HTMLInputElement | null;
     const ta = adminRoot.querySelector("#club-tab-images-text") as HTMLTextAreaElement | null;
@@ -483,7 +527,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
 }
 
 async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
-  const slug = ctx.state.detailSlug.trim();
+  const slug = ctx.getState().detailSlug.trim();
   const entry = getEntry(ctx, slug);
   if (!entry) {
     ctx.flash("Club not found.", "error");
@@ -519,7 +563,7 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
     };
   }
   if (mediaForm) club = applyClubFullFromFormData(club, new FormData(mediaForm));
-  const idx = findClubEntryIndex(ctx.entries, slug);
+  const idx = findClubEntryIndex(ctx.getEntries(), slug);
   const errs = ctx.validateClub(club);
   if (errs.length) {
     ctx.flash(errs.join(" "), "error");
@@ -537,8 +581,13 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
 export async function buildClubDetailTabHtml(
   ctx: ClubCatalogBindCtx,
   club: Club,
+  tab: ClubDetailTab,
+  mountSeq: number,
 ): Promise<string> {
-  let cache = ctx.state.tabCache;
+  const slug = club.slug.trim();
+  if (!clubDetailMountStillCurrent(mountSeq, ctx, slug, tab)) return "";
+
+  let cache = ctx.getState().tabCache;
   if (!cache) {
     cache = await loadClubTabCache(
       ctx.supabase,
@@ -546,9 +595,15 @@ export async function buildClubDetailTabHtml(
       ctx.financialPeriodFrom,
       ctx.financialPeriodTo,
     );
-    ctx.onStateChange({ tabCache: cache });
+    if (!clubDetailMountStillCurrent(mountSeq, ctx, slug, tab)) return "";
+    const afterLoad = ctx.getState();
+    if (!afterLoad.tabCache) {
+      ctx.onStateChange({ tabCache: cache });
+    }
   }
-  const heroIdx = ctx.state.heroImageIndex;
+  if (!clubDetailMountStillCurrent(mountSeq, ctx, slug, tab)) return "";
+
+  const latest = ctx.getState();
   const txForClub = ctx.transactions.filter(
     (t) =>
       String(t.notes || "")
@@ -558,10 +613,10 @@ export async function buildClubDetailTabHtml(
         .toLowerCase()
         .includes(club.name.toLowerCase()),
   );
-  return renderClubTabPanelHtml(ctx.state.detailTab, club, {
+  return renderClubTabPanelHtml(tab, club, {
     rates: ctx.rates,
-    editingRateId: ctx.state.editingRateId,
-    heroIndex: heroIdx,
+    editingRateId: latest.editingRateId,
+    heroIndex: latest.heroImageIndex,
     bookings: cache.bookings,
     transactions: txForClub,
     jobs: cache.jobs,

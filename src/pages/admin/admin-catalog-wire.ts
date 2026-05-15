@@ -3,9 +3,6 @@ import {
   adminUpdatePromoterProfile,
   approvePromoterRevision,
   createPromoterJob,
-  loadPromoterJobs,
-  loadPromoterPreferences,
-  loadPromoterRevisionsForAdmin,
   type PromoterRevisionRow,
 } from "../../admin/promoters";
 import { upsertClubToDb } from "../../admin/catalog";
@@ -33,10 +30,9 @@ import {
 import type { ClubEntry } from "./club-catalog-shared";
 import {
   bindPromoterCatalogEvents,
-  buildPromoterTabHtml,
   defaultPromoterCatalogState,
   mountPromoterCatalogListTable,
-  renderPromoterDetailHtml,
+  refreshPromoterCatalogDetail,
   renderPromoterQuickEditModalHtml,
   syncPromoterCatalogFromUrl,
   type PromoterCatalogBindCtx,
@@ -106,8 +102,8 @@ export function setupAdminCatalogViews(deps: AdminCatalogWireDeps): void {
     const ctx: ClubCatalogBindCtx = {
       supabase: deps.supabase,
       adminRoot: deps.adminRoot,
-      entries: deps.getClubEntries(),
-      state,
+      getEntries: deps.getClubEntries,
+      getState: deps.getClubCatalogState,
       listSearch: deps.listSearch,
       rates: deps.getRates(),
       promoters: deps.promoters,
@@ -176,7 +172,7 @@ export function setupAdminCatalogViews(deps: AdminCatalogWireDeps): void {
       supabase: deps.supabase,
       adminRoot: deps.adminRoot,
       promoters: deps.promoters,
-      state,
+      getState: deps.getPromoterCatalogState,
       listSearch: deps.listSearch,
       revisions: deps.getPromoterRevisions(),
       financialPromoters: deps.nativeFinancialPromoters,
@@ -216,7 +212,7 @@ export function setupAdminCatalogViews(deps: AdminCatalogWireDeps): void {
       mountPromoterCatalogListTable(listHost, pctx);
     }
     if (state.mode === "detail" && detailHost) {
-      void mountPromoterDetail(detailHost, deps, state);
+      void refreshPromoterCatalogDetail(pctx);
     }
 
     const qid = state.quickEditId;
@@ -230,44 +226,6 @@ export function setupAdminCatalogViews(deps: AdminCatalogWireDeps): void {
       }
     }
   }
-}
-
-async function mountPromoterDetail(
-  host: HTMLElement,
-  deps: AdminCatalogWireDeps,
-  state: PromoterCatalogState,
-): Promise<void> {
-  const p = deps.promoters.find((x) => x.id === state.detailId);
-  if (!p) {
-    host.innerHTML = `<p class="admin-note">Promoter not found.</p>`;
-    return;
-  }
-  host.innerHTML = `<p class="admin-note">Loading promoter…</p>`;
-  const [jobsRes, revRes, prefRes] = await Promise.all([
-    loadPromoterJobs(deps.supabase, p.id),
-    loadPromoterRevisionsForAdmin(deps.supabase, p.id),
-    loadPromoterPreferences(deps.supabase, p.id),
-  ]);
-  const fin = deps.nativeFinancialPromoters.find((x) => x.userId === p.userId) ?? null;
-  const jobs = jobsRes.ok ? jobsRes.rows : [];
-  const revisions = revRes.ok ? revRes.rows : [];
-  const clubPrefs = (prefRes.ok ? prefRes.rows : []).map((x) => ({
-    clubSlug: x.clubSlug,
-    weekdays: x.weekdays,
-    status: x.status,
-    notes: "",
-  }));
-  const invoices = deps.promoterInvoices.filter((inv) => inv.promoterId === p.id);
-  const signup = deps.promoterSignupRequests.find((r) => r.authUserId === p.userId) ?? null;
-  const tabHtml = buildPromoterTabHtml(state.detailTab, p, {
-    revisions,
-    financial: fin,
-    jobs,
-    invoices,
-    clubPrefs,
-    signupRequest: signup,
-  });
-  host.innerHTML = renderPromoterDetailHtml(p, state.detailTab, tabHtml);
 }
 
 export { defaultClubCatalogState, defaultPromoterCatalogState };
