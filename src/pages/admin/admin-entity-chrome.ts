@@ -33,13 +33,22 @@ export function renderEntityDetailChrome(input: {
   activeTab: string;
   tabDataAttr: string;
   bodyHtml: string;
+  /** Persisted on `.admin-entity-detail` for tab switches when state/URL drift. */
+  catalogSlug?: string;
+  catalogEntityId?: string;
 }): string {
   const tabBar = renderBrowserTabBar(input.tabs, input.activeTab, input.tabDataAttr);
   const subtitle = input.subtitle
     ? `<code class="admin-entity-detail__slug">${escHtml(input.subtitle)}</code>`
     : "";
+  const rootAttrs = [
+    input.catalogSlug ? `data-catalog-slug="${escAttr(input.catalogSlug)}"` : "",
+    input.catalogEntityId ? `data-catalog-entity-id="${escAttr(input.catalogEntityId)}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return `
-    <div class="admin-entity-detail">
+    <div class="admin-entity-detail"${rootAttrs ? ` ${rootAttrs}` : ""}>
       <header class="admin-entity-detail__header">
         <div class="admin-entity-detail__header-left">
           <button type="button" class="cc-btn cc-btn--ghost admin-entity-detail__back" ${input.backDataAttr}>

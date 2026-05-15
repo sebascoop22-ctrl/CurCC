@@ -1457,6 +1457,7 @@ html[data-cc-theme="light"] .admin-flash--error {
 .admin-workspace--club-detail .admin-list-panel,
 .admin-workspace--promoter-detail .admin-list-panel {
   display: none;
+  pointer-events: none;
 }
 
 .admin-workspace--club-detail .admin-grid,

@@ -15,6 +15,7 @@ import {
   applyClubPublicFromFormData,
   findClubEntryIndex,
   parseClubDetailTab,
+  resolveClubCatalogSlug,
 } from "./club-catalog-shared";
 import {
   loadClubTabCache,
@@ -31,7 +32,7 @@ import {
   adminFieldTextarea,
   adminSettingsSection,
 } from "./admin-form-fields";
-import { writeEntityUrlParams } from "./entity-url";
+import { readEntityUrlParams, writeEntityUrlParams } from "./entity-url";
 
 export type ClubCatalogMode = "list" | "detail";
 
@@ -62,10 +63,22 @@ export function syncClubCatalogFromUrl(
   state: ClubCatalogState,
 ): ClubCatalogState {
   const params = new URLSearchParams(window.location.search);
-  const slug = String(params.get("slug") ?? "").trim();
-  const tab = parseClubDetailTab(String(params.get("tab") ?? ""));
-  if (slug && findClubEntryIndex(entries, slug) >= 0) {
-    return { ...state, mode: "detail", detailSlug: slug, detailTab: tab, quickEditIndex: null };
+  const urlSlug = String(params.get("slug") ?? "").trim();
+  const urlTab = parseClubDetailTab(String(params.get("tab") ?? ""));
+  const hasTabParam = params.has("tab");
+  const slug = resolveClubCatalogSlug(
+    entries,
+    urlSlug,
+    state.mode === "detail" ? state.detailSlug : "",
+  );
+  if (slug) {
+    return {
+      ...state,
+      mode: "detail",
+      detailSlug: slug,
+      detailTab: hasTabParam ? urlTab : state.detailTab,
+      quickEditIndex: null,
+    };
   }
   return {
     ...state,
@@ -140,7 +153,21 @@ export function renderClubDetailHtml(
     activeTab: tab,
     tabDataAttr: "data-club-detail-tab",
     bodyHtml: tabPanelHtml,
+    catalogSlug: club.slug.trim(),
   });
+}
+
+function resolveClubSlugFromCtx(ctx: ClubCatalogBindCtx): string | null {
+  const detailRoot = ctx.adminRoot.querySelector(
+    "#admin-club-catalog-detail-host .admin-entity-detail",
+  ) as HTMLElement | null;
+  const state = ctx.getState();
+  return resolveClubCatalogSlug(
+    ctx.getEntries(),
+    state.detailSlug,
+    readEntityUrlParams().slug,
+    detailRoot?.dataset.catalogSlug ?? "",
+  );
 }
 
 export type ClubCatalogBindCtx = {
@@ -200,7 +227,8 @@ function clubDetailMountStillCurrent(
 ): boolean {
   if (seq !== clubDetailMountSeq) return false;
   const s = ctx.getState();
-  return s.mode === "detail" && s.detailSlug.trim() === slug && s.detailTab === tab;
+  const current = resolveClubCatalogSlug(ctx.getEntries(), s.detailSlug, slug);
+  return s.mode === "detail" && current === slug && s.detailTab === tab;
 }
 
 export async function refreshClubCatalogDetail(ctx: ClubCatalogBindCtx): Promise<void> {
@@ -272,7 +300,12 @@ export async function mountClubCatalogDetail(
   const seq = ++clubDetailMountSeq;
   const state = ctx.getState();
   if (state.mode !== "detail") return;
-  const slug = state.detailSlug.trim();
+  const slug =
+    resolveClubCatalogSlug(
+      ctx.getEntries(),
+      state.detailSlug,
+      readEntityUrlParams().slug,
+    ) ?? "";
   const tab = state.detailTab;
   if (!slug) return;
 
@@ -348,15 +381,23 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
     const tabBtn = t.closest("[data-club-detail-tab]") as HTMLElement | null;
     if (tabBtn) {
       ev.preventDefault();
-      ev.stopPropagation();
+      ev.stopImmediatePropagation();
       const state = ctx.getState();
-      const slug = state.detailSlug.trim();
-      if (!slug || state.mode !== "detail") return;
       const tab = parseClubDetailTab(tabBtn.getAttribute("data-club-detail-tab") || "");
-      if (tab === state.detailTab) return;
-      ctx.onStateChange({ detailTab: tab, tabCache: null });
+      const slug = resolveClubSlugFromCtx(ctx);
+      if (!slug) return;
+      if (state.mode === "detail" && state.detailTab === tab && state.detailSlug.trim() === slug) {
+        return;
+      }
       writeClubCatalogUrl(slug, tab);
-      void refreshClubCatalogDetail(ctx);
+      ctx.onStateChange({
+        mode: "detail",
+        detailSlug: slug,
+        detailTab: tab,
+        tabCache: null,
+        editingRateId: null,
+      });
+      ctx.renderDashboard();
       return;
     }
     if (t.closest("[data-club-quick-close]")) {

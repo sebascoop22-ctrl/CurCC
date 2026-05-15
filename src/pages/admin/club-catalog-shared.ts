@@ -179,7 +179,19 @@ export function applyClubFullFromFormData(club: Club, fd: FormData): Club {
 }
 
 export function findClubEntryIndex(entries: ClubEntry[], slug: string): number {
-  const s = slug.trim();
+  const s = slug.trim().toLowerCase();
   if (!s) return -1;
-  return entries.findIndex((e) => e.club.slug === s);
+  return entries.findIndex((e) => e.club.slug.trim().toLowerCase() === s);
+}
+
+/** Canonical slug from URL/state/DOM hints; case-insensitive match against catalog entries. */
+export function resolveClubCatalogSlug(
+  entries: ClubEntry[],
+  ...candidates: string[]
+): string | null {
+  for (const raw of candidates) {
+    const i = findClubEntryIndex(entries, raw);
+    if (i >= 0) return entries[i]!.club.slug.trim();
+  }
+  return null;
 }

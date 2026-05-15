@@ -16,7 +16,7 @@ import type {
   PromoterSignupRequest,
 } from "../../types";
 import { renderEntityDetailChrome } from "./admin-entity-chrome";
-import { writeEntityUrlParams } from "./entity-url";
+import { readEntityUrlParams, writeEntityUrlParams } from "./entity-url";
 
 export type PromoterCatalogMode = "list" | "detail";
 
@@ -59,15 +59,38 @@ export function defaultPromoterCatalogState(): PromoterCatalogState {
   };
 }
 
+function resolvePromoterDetailId(
+  promoters: PromoterProfile[],
+  ...candidates: string[]
+): string | null {
+  for (const raw of candidates) {
+    const id = raw.trim();
+    if (id && promoters.some((p) => p.id === id)) return id;
+  }
+  return null;
+}
+
 export function syncPromoterCatalogFromUrl(
   promoters: PromoterProfile[],
   state: PromoterCatalogState,
 ): PromoterCatalogState {
   const params = new URLSearchParams(window.location.search);
-  const entityId = String(params.get("entityId") ?? params.get("slug") ?? "").trim();
-  const tab = parsePromoterDetailTab(String(params.get("tab") ?? ""));
-  if (entityId && promoters.some((p) => p.id === entityId)) {
-    return { ...state, mode: "detail", detailId: entityId, detailTab: tab };
+  const urlId = String(params.get("entityId") ?? params.get("slug") ?? "").trim();
+  const urlTab = parsePromoterDetailTab(String(params.get("tab") ?? ""));
+  const hasTabParam = params.has("tab");
+  const detailId = resolvePromoterDetailId(
+    promoters,
+    urlId,
+    state.mode === "detail" ? state.detailId : "",
+  );
+  if (detailId) {
+    return {
+      ...state,
+      mode: "detail",
+      detailId,
+      detailTab: hasTabParam ? urlTab : state.detailTab,
+      quickEditId: null,
+    };
   }
   return {
     ...state,
@@ -231,7 +254,22 @@ export function renderPromoterDetailHtml(
     activeTab: tab,
     tabDataAttr: "data-promoter-detail-tab",
     bodyHtml: tabHtml,
+    catalogEntityId: p.id,
   });
+}
+
+function resolvePromoterIdFromCtx(ctx: PromoterCatalogBindCtx): string | null {
+  const detailRoot = ctx.adminRoot.querySelector(
+    "#admin-promoter-catalog-detail-host .admin-entity-detail",
+  ) as HTMLElement | null;
+  const state = ctx.getState();
+  return resolvePromoterDetailId(
+    ctx.promoters,
+    state.detailId,
+    readEntityUrlParams().entityId,
+    readEntityUrlParams().slug,
+    detailRoot?.dataset.catalogEntityId ?? "",
+  );
 }
 
 export function buildPromoterTabHtml(
@@ -373,15 +411,17 @@ export function bindPromoterCatalogEvents(ctx: PromoterCatalogBindCtx): void {
     const tabBtn = t.closest("[data-promoter-detail-tab]");
     if (tabBtn) {
       ev.preventDefault();
-      ev.stopPropagation();
+      ev.stopImmediatePropagation();
       const state = ctx.getState();
-      const detailId = state.detailId.trim();
-      if (!detailId || state.mode !== "detail") return;
       const tab = parsePromoterDetailTab(tabBtn.getAttribute("data-promoter-detail-tab") || "");
-      if (tab === state.detailTab) return;
-      ctx.onStateChange({ detailTab: tab });
+      const detailId = resolvePromoterIdFromCtx(ctx);
+      if (!detailId) return;
+      if (state.mode === "detail" && state.detailTab === tab && state.detailId === detailId) {
+        return;
+      }
       writePromoterCatalogUrl(detailId, tab);
-      void refreshPromoterCatalogDetail(ctx);
+      ctx.onStateChange({ mode: "detail", detailId, detailTab: tab, quickEditId: null });
+      ctx.renderDashboard();
       return;
     }
     if (t.closest("[data-promoter-quick-close]")) {
