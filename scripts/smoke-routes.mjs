@@ -12,6 +12,7 @@ const requiredPages = [
   "club.html",
   "portal.html",
   "account.html",
+  "service-category.html",
 ];
 
 async function assertExists(filePath) {

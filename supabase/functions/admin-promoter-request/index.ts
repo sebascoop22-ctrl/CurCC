@@ -209,6 +209,29 @@ Deno.serve(async (req) => {
     return json({ error: `promoters: ${prErr.message}` }, 500);
   }
 
+  const { data: existingFin, error: finSelErr } = await adminDb
+    .from("financial_promoters")
+    .select("id")
+    .eq("user_id", newUserId)
+    .maybeSingle();
+  if (finSelErr) {
+    return json({ error: `financial_promoters: ${finSelErr.message}` }, 500);
+  }
+  if (!existingFin?.id) {
+    const { error: finInsErr } = await adminDb.from("financial_promoters").insert({
+      user_id: newUserId,
+      name: displayName,
+      commission_percentage: 0,
+      is_active: true,
+      contact: "",
+      notes: "",
+      sheet_extension: {},
+    });
+    if (finInsErr) {
+      return json({ error: `financial_promoters: ${finInsErr.message}` }, 500);
+    }
+  }
+
   const { error: finErr } = await adminDb
     .from("promoter_signup_requests")
     .update({

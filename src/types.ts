@@ -190,6 +190,10 @@ export interface PromoterJob {
   clientName?: string;
   clientContact?: string;
   notes: string;
+  /** Optional link to the club payment rate row used for this shift. */
+  clubPaymentRateId?: string | null;
+  /** Optional link to a native financial booking row. */
+  financialBookingId?: string | null;
 }
 
 export type PromoterJobService = "guestlist" | "table_sale" | "tickets" | "other";
@@ -355,7 +359,8 @@ export type FinancialLogicType = "headcount_pay" | "commission_percent" | "flat_
 export type FinancialBonusType = "flat" | "stacking" | "none";
 export type FinancialPaymentStatus = "expected" | "attended" | "paid_final";
 
-export interface FinancialRule {
+/** One row on the per-club payment rate sheet (nightlife / services). */
+export interface FinancialClubPaymentRate {
   id: string;
   department: FinancialDepartment;
   clubSlug: string | null;
@@ -370,6 +375,8 @@ export interface FinancialRule {
   isActive: boolean;
   effectiveFrom: string;
   effectiveTo: string | null;
+  /** Optional spreadsheet-aligned fields (Club / Events tabs). */
+  sheetExtension: Record<string, unknown>;
 }
 
 export interface FinancialPromoterProfile {
@@ -380,6 +387,8 @@ export interface FinancialPromoterProfile {
   isActive: boolean;
   contact: string;
   notes: string;
+  /** Optional spreadsheet-aligned fields (promoter payment tab). */
+  sheetExtension: Record<string, unknown>;
 }
 
 export interface FinancialBooking {
@@ -392,7 +401,8 @@ export interface FinancialBooking {
   promoterName: string | null;
   clientId: string | null;
   clientName: string | null;
-  ruleId: string | null;
+  /** FK to financial_club_payment_rates (legacy snapshots may still expose ruleId). */
+  clubPaymentRateId: string | null;
   venueOrServiceName: string;
   paymentStatus: FinancialPaymentStatus;
   maleGuests: number;

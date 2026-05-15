@@ -6,7 +6,7 @@ import type {
   FinancialLogicType,
   FinancialPaymentStatus,
   FinancialPromoterProfile,
-  FinancialRule,
+  FinancialClubPaymentRate,
   FinancialBonusType,
   FinancialConfigChangeRequest,
 } from "../types";
@@ -54,7 +54,8 @@ function parsePaymentStatus(v: unknown): FinancialPaymentStatus {
   return "expected";
 }
 
-function mapRule(raw: Raw): FinancialRule {
+function mapClubPaymentRate(raw: Raw): FinancialClubPaymentRate {
+  const ext = raw.sheet_extension;
   return {
     id: String(raw.id ?? ""),
     department: parseDept(raw.department),
@@ -70,10 +71,13 @@ function mapRule(raw: Raw): FinancialRule {
     isActive: Boolean(raw.is_active),
     effectiveFrom: String(raw.effective_from ?? ""),
     effectiveTo: raw.effective_to != null ? String(raw.effective_to) : null,
+    sheetExtension:
+      ext && typeof ext === "object" && !Array.isArray(ext) ? (ext as Record<string, unknown>) : {},
   };
 }
 
 function mapPromoter(raw: Raw): FinancialPromoterProfile {
+  const ext = raw.sheet_extension;
   return {
     id: String(raw.id ?? ""),
     userId: raw.user_id != null ? String(raw.user_id) : null,
@@ -82,6 +86,8 @@ function mapPromoter(raw: Raw): FinancialPromoterProfile {
     isActive: Boolean(raw.is_active),
     contact: String(raw.contact ?? ""),
     notes: String(raw.notes ?? ""),
+    sheetExtension:
+      ext && typeof ext === "object" && !Array.isArray(ext) ? (ext as Record<string, unknown>) : {},
   };
 }
 
@@ -96,7 +102,12 @@ function mapBooking(raw: Raw): FinancialBooking {
     promoterName: raw.promoter_name != null ? String(raw.promoter_name) : null,
     clientId: raw.client_id != null ? String(raw.client_id) : null,
     clientName: raw.client_name != null ? String(raw.client_name) : null,
-    ruleId: raw.rule_id != null ? String(raw.rule_id) : null,
+    clubPaymentRateId:
+      raw.club_payment_rate_id != null
+        ? String(raw.club_payment_rate_id)
+        : raw.rule_id != null
+          ? String(raw.rule_id)
+          : null,
     venueOrServiceName: String(raw.venue_or_service_name ?? ""),
     paymentStatus: parsePaymentStatus(raw.payment_status),
     maleGuests: Math.max(0, Math.round(asNumber(raw.male_guests))),
@@ -140,25 +151,26 @@ function mapChangeRequest(raw: Raw): FinancialConfigChangeRequest {
   };
 }
 
-export async function listFinancialRules(
+export async function listFinancialClubPaymentRates(
   supabase: SupabaseClient,
-): Promise<Ok<FinancialRule[]> | TypedError> {
+): Promise<Ok<FinancialClubPaymentRate[]> | TypedError> {
   const { data, error } = await supabase
-    .from("financial_rules")
+    .from("financial_club_payment_rates")
     .select("*")
     .order("department", { ascending: true })
     .order("venue_or_service_name", { ascending: true });
   if (error) return dbError(error.message);
-  return { ok: true, data: (data ?? []).map((x) => mapRule(x as Raw)) };
+  return { ok: true, data: (data ?? []).map((x) => mapClubPaymentRate(x as Raw)) };
 }
 
-export async function upsertFinancialRule(
+export async function upsertFinancialClubPaymentRate(
   supabase: SupabaseClient,
-  input: Partial<FinancialRule> & {
+  input: Partial<FinancialClubPaymentRate> & {
     venueOrServiceName: string;
     department: FinancialDepartment;
     clubSlug?: string | null;
     id?: string;
+    sheetExtension?: Record<string, unknown>;
   },
 ): Promise<Ok<string> | TypedError> {
   const venueOrServiceName = input.venueOrServiceName.trim();
@@ -166,6 +178,10 @@ export async function upsertFinancialRule(
   const bonusGoal = Math.max(0, Math.round(Number(input.bonusGoal ?? 0)));
   const department = input.department;
   const logicType = department === "nightlife" ? "flat_fee" : (input.logicType ?? "flat_fee");
+  const sheetExt =
+    input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
+      ? input.sheetExtension
+      : {};
   const payload = {
     id: input.id?.trim() || undefined,
     department,
@@ -181,10 +197,11 @@ export async function upsertFinancialRule(
     is_active: input.isActive !== false,
     effective_from: String(input.effectiveFrom || new Date().toISOString().slice(0, 10)),
     effective_to: input.effectiveTo ?? null,
+    sheet_extension: sheetExt,
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await supabase
-    .from("financial_rules")
+    .from("financial_club_payment_rates")
     .upsert(payload, { onConflict: "id" })
     .select("id")
     .single();
@@ -192,14 +209,14 @@ export async function upsertFinancialRule(
   return { ok: true, data: String((data as Raw).id ?? "") };
 }
 
-export async function archiveFinancialRule(
+export async function archiveFinancialClubPaymentRate(
   supabase: SupabaseClient,
   id: string,
 ): Promise<Ok<true> | TypedError> {
   const ruleId = id.trim();
-  if (!ruleId) return badRequest("Rule id is required.");
+  if (!ruleId) return badRequest("Payment rate id is required.");
   const { error } = await supabase
-    .from("financial_rules")
+    .from("financial_club_payment_rates")
     .update({ is_active: false, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", ruleId);
   if (error) return dbError(error.message);
@@ -214,9 +231,37 @@ export async function listFinancialPromoters(
   return { ok: true, data: (data ?? []).map((x) => mapPromoter(x as Raw)) };
 }
 
+/** Idempotent: ensures a `financial_promoters` row exists for this auth user (ledger / bookings). */
+export async function ensureFinancialPromoterForUser(
+  supabase: SupabaseClient,
+  input: { userId: string; displayName: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const userId = input.userId.trim();
+  if (!userId) return { ok: false, message: "User id is required." };
+  const name = (input.displayName || "").trim() || "Promoter";
+  const { data: existing, error: selErr } = await supabase
+    .from("financial_promoters")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (selErr) return { ok: false, message: selErr.message };
+  if (existing && (existing as { id?: string }).id) return { ok: true };
+  const { error: insErr } = await supabase.from("financial_promoters").insert({
+    user_id: userId,
+    name,
+    commission_percentage: 0,
+    is_active: true,
+    contact: "",
+    notes: "",
+    sheet_extension: {},
+  });
+  if (insErr) return { ok: false, message: insErr.message };
+  return { ok: true };
+}
+
 export async function upsertFinancialPromoter(
   supabase: SupabaseClient,
-  input: Partial<FinancialPromoterProfile> & { name: string; id?: string },
+  input: Partial<FinancialPromoterProfile> & { name: string; id?: string; sheetExtension?: Record<string, unknown> },
 ): Promise<Ok<string> | TypedError> {
   const name = input.name.trim();
   if (!name) return badRequest("Promoter name is required.");
@@ -224,6 +269,10 @@ export async function upsertFinancialPromoter(
   if (commission < 0 || commission > 100) {
     return badRequest("Commission percentage must be between 0 and 100.");
   }
+  const sheetExt =
+    input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
+      ? input.sheetExtension
+      : {};
   const payload = {
     id: input.id?.trim() || undefined,
     user_id: input.userId ?? null,
@@ -232,6 +281,7 @@ export async function upsertFinancialPromoter(
     is_active: input.isActive !== false,
     contact: String(input.contact ?? "").trim(),
     notes: String(input.notes ?? "").trim(),
+    sheet_extension: sheetExt,
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await supabase
@@ -304,7 +354,7 @@ export async function upsertNightlifeFinancialBooking(
     clubSlug?: string | null;
     promoterId: string | null;
     clientId: string | null;
-    ruleId: string;
+    clubPaymentRateId: string;
     venueOrServiceName: string;
     maleGuests: number;
     femaleGuests: number;
@@ -312,26 +362,26 @@ export async function upsertNightlifeFinancialBooking(
     paymentStatus: FinancialPaymentStatus;
   },
 ): Promise<Ok<string> | TypedError> {
-  if (!input.ruleId.trim()) return badRequest("Rule is required for nightlife bookings.");
-  const { data: ruleData, error: ruleErr } = await supabase
-    .from("financial_rules")
+  if (!input.clubPaymentRateId.trim()) return badRequest("Club payment rate is required for nightlife bookings.");
+  const { data: rateData, error: rateErr } = await supabase
+    .from("financial_club_payment_rates")
     .select("*")
-    .eq("id", input.ruleId.trim())
+    .eq("id", input.clubPaymentRateId.trim())
     .maybeSingle();
-  if (ruleErr) return dbError(ruleErr.message);
-  if (!ruleData) return badRequest("Selected rule was not found.");
-  const rule = mapRule(ruleData as Raw);
+  if (rateErr) return dbError(rateErr.message);
+  if (!rateData) return badRequest("Selected club payment rate was not found.");
+  const rate = mapClubPaymentRate(rateData as Raw);
   const calc = computeNightlife({
     maleGuests: input.maleGuests,
     femaleGuests: input.femaleGuests,
-    baseRate: rule.baseRate,
-    logicType: rule.logicType,
-    maleRate: rule.maleRate,
-    femaleRate: rule.femaleRate,
+    baseRate: rate.baseRate,
+    logicType: rate.logicType,
+    maleRate: rate.maleRate,
+    femaleRate: rate.femaleRate,
     otherCosts: input.otherCosts,
-    bonusType: rule.bonusType,
-    bonusGoal: rule.bonusGoal,
-    bonusAmount: rule.bonusAmount,
+    bonusType: rate.bonusType,
+    bonusGoal: rate.bonusGoal,
+    bonusAmount: rate.bonusAmount,
     paymentStatus: input.paymentStatus,
   });
 
@@ -343,20 +393,21 @@ export async function upsertNightlifeFinancialBooking(
     club_slug: input.clubSlug?.trim() || null,
     promoter_id: input.promoterId?.trim() || null,
     client_id: input.clientId?.trim() || null,
-    rule_id: rule.id,
-    venue_or_service_name: input.venueOrServiceName.trim() || rule.venueOrServiceName,
+    club_payment_rate_id: rate.id,
+    venue_or_service_name: input.venueOrServiceName.trim() || rate.venueOrServiceName,
     payment_status: input.paymentStatus,
     rule_snapshot_json: {
-      ruleId: rule.id,
-      department: rule.department,
-      venueOrServiceName: rule.venueOrServiceName,
-      baseRate: rule.baseRate,
-      logicType: rule.logicType,
-      maleRate: rule.maleRate,
-      femaleRate: rule.femaleRate,
-      bonusType: rule.bonusType,
-      bonusGoal: rule.bonusGoal,
-      bonusAmount: rule.bonusAmount,
+      clubPaymentRateId: rate.id,
+      ruleId: rate.id,
+      department: rate.department,
+      venueOrServiceName: rate.venueOrServiceName,
+      baseRate: rate.baseRate,
+      logicType: rate.logicType,
+      maleRate: rate.maleRate,
+      femaleRate: rate.femaleRate,
+      bonusType: rate.bonusType,
+      bonusGoal: rate.bonusGoal,
+      bonusAmount: rate.bonusAmount,
       totalGuests: calc.totalGuests,
       totalRevenue: calc.totalRevenue,
       bonus: calc.bonus,
@@ -395,7 +446,7 @@ export async function upsertServiceFinancialBooking(
     department: "transport" | "protection" | "other";
     promoterId: string | null;
     clientId: string | null;
-    ruleId: string | null;
+    clubPaymentRateId: string | null;
     venueOrServiceName: string;
     totalSpend: number;
     commissionPercentage: number;
@@ -408,6 +459,8 @@ export async function upsertServiceFinancialBooking(
     paymentStatus: input.paymentStatus,
   });
 
+  const rid = input.clubPaymentRateId?.trim() || null;
+
   const bookingPayload = {
     id: input.id?.trim() || undefined,
     booking_reference: input.bookingReference.trim(),
@@ -416,11 +469,12 @@ export async function upsertServiceFinancialBooking(
     club_slug: input.clubSlug?.trim() || null,
     promoter_id: input.promoterId?.trim() || null,
     client_id: input.clientId?.trim() || null,
-    rule_id: input.ruleId?.trim() || null,
+    club_payment_rate_id: rid,
     venue_or_service_name: input.venueOrServiceName.trim(),
     payment_status: input.paymentStatus,
     rule_snapshot_json: {
-      ruleId: input.ruleId?.trim() || null,
+      clubPaymentRateId: rid,
+      ruleId: rid,
       commissionPercentage: input.commissionPercentage,
       projectedAgencyProfit: calc.projectedAgencyProfit,
       realizedAgencyProfit: calc.realizedAgencyProfit,
@@ -508,7 +562,7 @@ export async function listFinancialConfigChangeRequests(
       : Promise.resolve({ data: [], error: null }),
     ruleTargetIds.length
       ? supabase
-          .from("financial_rules")
+          .from("financial_club_payment_rates")
           .select("id,club_slug,clubs(name)")
           .in("id", ruleTargetIds)
       : Promise.resolve({ data: [], error: null }),
@@ -583,7 +637,7 @@ export async function reviewFinancialConfigChangeRequest(
   const payload = (row.payload as Raw | null) ?? {};
   if (targetType === "financial_rule") {
     const { error } = await supabase
-      .from("financial_rules")
+      .from("financial_club_payment_rates")
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq("id", targetId);
     if (error) return dbError(error.message);

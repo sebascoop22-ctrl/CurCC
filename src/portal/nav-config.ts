@@ -165,7 +165,7 @@ const ADMIN_NAV: PortalNavConfig = {
         },
         {
           id: "admin.financial_rules",
-          label: "Rules",
+          label: "Club rates",
           legacyView: "financials",
           mode: "admin",
           icon: "⌘",

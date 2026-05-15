@@ -1,4 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { ensureFinancialPromoterForUser } from "./financial-tracking";
 
 export type AppRole = "admin" | "host" | "promoter" | "club";
 
@@ -92,6 +93,11 @@ async function ensurePromoterRows(
     { onConflict: "user_id" },
   );
   if (promoterError) return { ok: false, message: promoterError.message };
+  const fin = await ensureFinancialPromoterForUser(supabase, {
+    userId: input.userId,
+    displayName,
+  });
+  if (!fin.ok) return fin;
   return { ok: true };
 }
 

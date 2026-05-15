@@ -1424,6 +1424,7 @@ body,
   max-height: min(90vh, 720px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   box-shadow: var(--portal-shadow-2);
 }
 
@@ -1453,6 +1454,8 @@ body,
 
 .pp-modal__body {
   padding: 0.95rem 1rem;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   color: var(--portal-text);
 }
@@ -1463,6 +1466,66 @@ body,
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+.pp-modal__footer--dashboard {
+  flex-wrap: wrap;
+}
+
+.pp-modal--with-footer {
+  position: relative;
+}
+
+.pp-modal--with-footer .pp-modal__footer {
+  flex-shrink: 0;
+}
+
+.pp-modal-guard {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(6, 8, 12, 0.55);
+}
+
+.pp-modal-guard[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.pp-modal-guard__panel {
+  max-width: 26rem;
+  width: 100%;
+  pointer-events: auto;
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--portal-radius);
+  border: 1px solid var(--portal-border);
+  background: var(--portal-surface-2);
+  box-shadow: var(--portal-shadow-2);
+}
+
+.pp-modal-guard__title {
+  margin: 0 0 0.35rem;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.05rem;
+  color: var(--portal-text-strong);
+}
+
+.pp-modal-guard__text {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--portal-muted);
+  line-height: 1.45;
+}
+
+.pp-modal-guard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
 }
 
 .pp-toasts {
@@ -2101,6 +2164,16 @@ body,
 .pp-shell__content > #legacy-mount .finx-modal {
   width: min(920px, calc(100vw - 2rem));
   max-height: min(92vh, 920px);
+}
+
+.pp-shell__content > #legacy-mount .finx-modal.finx-modal--wide-editor {
+  width: min(1080px, calc(100vw - 1.25rem));
+  max-height: min(94vh, 960px);
+}
+
+.pp-shell__content > #legacy-mount .finx-modal.finx-modal--wide-editor .pp-modal__body {
+  max-height: calc(94vh - 7.5rem);
+  overflow-y: auto;
 }
 
 .pp-shell__content > #legacy-mount .finx-modal .admin-form {

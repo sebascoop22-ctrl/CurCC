@@ -1422,3 +1422,29 @@ html[data-cc-theme="light"] .admin-flash--error {
   font-size: 1.1rem;
   color: var(--cc-cream);
 }
+
+/* Club / car catalog editors (accordion + inline controls) */
+.admin-club-editor .pp-form-section__summary,
+.admin-car-editor .pp-form-section__summary {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cc-cream);
+}
+
+.admin-club-editor .pp-form-section__body,
+.admin-car-editor .pp-form-section__body {
+  padding-bottom: 0.35rem;
+}
+
+.admin-check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0;
+}
+
+.admin-check-row input {
+  margin: 0;
+}

@@ -1,0 +1,162 @@
+.service-category-page {
+  padding-block-end: var(--cc-space-xl);
+}
+
+.service-category-hero {
+  padding-block: var(--cc-space-xl);
+  text-align: center;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.service-category-hero h1 {
+  margin-top: 0.35rem;
+  font-family: var(--cc-font-display, "Playfair Display", serif);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.service-category-intro {
+  max-width: 40rem;
+  margin: var(--cc-space-md) auto 0;
+  line-height: 1.65;
+  color: var(--cc-muted);
+}
+
+.service-category-cta-row {
+  margin-top: var(--cc-space-lg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cc-space-md);
+  align-items: center;
+  justify-content: center;
+}
+
+.service-category-back {
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cc-muted);
+  text-decoration: none;
+}
+
+.service-category-back:hover {
+  color: var(--cc-gold);
+}
+
+.service-category-list {
+  padding-block: var(--cc-space-xl);
+  display: grid;
+  gap: var(--cc-space-lg);
+}
+
+.service-category-card {
+  display: grid;
+  gap: var(--cc-space-md);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  background: var(--cc-bg-raised);
+}
+
+@media (min-width: 720px) {
+  .service-category-card {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr);
+    align-items: stretch;
+  }
+}
+
+.service-category-card__media {
+  min-height: 200px;
+  background: var(--cc-bg-deep);
+}
+
+.service-category-card__media img {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.service-category-card__body {
+  padding: var(--cc-space-md) var(--cc-space-lg);
+}
+
+.service-category-card__body h2 {
+  margin: 0 0 var(--cc-space-sm);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.service-category-card__body p {
+  margin: 0;
+  color: var(--cc-muted);
+  line-height: 1.6;
+}
+
+/* Hub pages: Access / Travel / Protection → subcategory cards */
+.service-hub-grid {
+  padding-block: var(--cc-space-xl);
+  display: grid;
+  gap: var(--cc-space-lg);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17.5rem), 1fr));
+}
+
+.service-hub-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
+  overflow: hidden;
+  background: var(--cc-bg-raised);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline-offset: 3px;
+}
+
+.service-hub-card:hover {
+  border-color: rgba(212, 196, 168, 0.35);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.service-hub-card__media {
+  aspect-ratio: 16 / 10;
+  background: var(--cc-bg-deep);
+}
+
+.service-hub-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.service-hub-card__body {
+  padding: var(--cc-space-md) var(--cc-space-lg) var(--cc-space-lg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.service-hub-card__body h2 {
+  margin: 0 0 var(--cc-space-sm);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.service-hub-card__body p {
+  margin: 0;
+  flex: 1;
+  color: var(--cc-muted);
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.service-hub-card__cta {
+  margin-top: var(--cc-space-md);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cc-gold);
+}

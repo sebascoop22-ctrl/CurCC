@@ -52,6 +52,12 @@ function extensionlessHtml(): Plugin {
     if (pathname.startsWith("/src/")) return next();
     if (pathname.startsWith("/assets/")) return next();
     if (pathname.startsWith("/media/")) return next();
+    const servicesMatch = pathname.match(/^\/services\/([^/]+)\/?$/);
+    if (servicesMatch) {
+      req.url = `/service-category.html${search}`;
+      next();
+      return;
+    }
     const clubUrl = tryRewriteClubPageUrl(raw);
     if (clubUrl) {
       req.url = clubUrl;
@@ -97,6 +103,7 @@ export default defineConfig({
         guestCheckin: resolve(__dirname, "guest-checkin.html"),
         privacy: resolve(__dirname, "privacy.html"),
         terms: resolve(__dirname, "terms.html"),
+        serviceCategory: resolve(__dirname, "service-category.html"),
       },
     },
   },

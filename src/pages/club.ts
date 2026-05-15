@@ -13,11 +13,12 @@ import {
 } from "../admin/clubs";
 import {
   listFinancialBookings,
-  listFinancialRules,
+  listFinancialClubPaymentRates,
   submitFinancialConfigChangeRequest,
 } from "../admin/financial-tracking";
 import { renderStatusBadge } from "../portal/badge";
 import { mountDataTable } from "../portal/data-table";
+import { applyCollapsibleFormSections } from "../lib/collapsible-form-sections";
 import { getSupabaseClient } from "../lib/supabase";
 import type { Club } from "../types";
 import "../styles/pages/club.css";
@@ -129,47 +130,6 @@ export async function initClubPortal(): Promise<void> {
     return blocks;
   };
 
-  const applyCollapsibleFormSections = (scope: ParentNode): void => {
-    const blocks = Array.from(
-      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true'], .club-form-grid[data-collapsible='true']"),
-    );
-    for (const block of blocks) {
-      if (block.dataset.collapsibleReady === "1") continue;
-      const headings = Array.from(block.querySelectorAll<HTMLElement>(":scope > h4.full"));
-      if (!headings.length) {
-        block.dataset.collapsibleReady = "1";
-        continue;
-      }
-
-      for (let i = 0; i < headings.length; i += 1) {
-        const heading = headings[i];
-        const nextHeading = headings[i + 1] ?? null;
-        const details = document.createElement("details");
-        details.className = "pp-form-section full";
-        details.open = i === 0;
-
-        const summary = document.createElement("summary");
-        summary.className = "pp-form-section__summary";
-        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
-        details.append(summary);
-
-        const body = document.createElement("div");
-        body.className = "pp-form-section__body";
-        details.append(body);
-
-        let node = heading.nextElementSibling as HTMLElement | null;
-        while (node && node !== nextHeading) {
-          const nextNode = node.nextElementSibling as HTMLElement | null;
-          body.append(node);
-          node = nextNode;
-        }
-
-        heading.replaceWith(details);
-      }
-      block.dataset.collapsibleReady = "1";
-    }
-  };
-
   const render = async (): Promise<void> => {
     const pickerOptions = actingAsAdmin
       ? (accountRows.length
@@ -226,7 +186,7 @@ export async function initClubPortal(): Promise<void> {
         .eq("club_slug", activeClubSlug)
         .in("status", ["open", "under_review"]),
     ]);
-    const ruleRes = await listFinancialRules(supabase);
+    const ruleRes = await listFinancialClubPaymentRates(supabase);
     const year = new Date().getFullYear();
     const bookingRes = await listFinancialBookings(supabase, {
       from: `${year}-01-01`,
@@ -241,7 +201,7 @@ export async function initClubPortal(): Promise<void> {
     const promoterRows = promoterRes.ok ? promoterRes.rows : [];
     const jobRows = jobsRes.ok ? jobsRes.rows : [];
     const pendingDisputes = disputeRes.count ?? 0;
-    const clubFinancialRule = ruleRes.ok
+    const clubFinancialPaymentRate = ruleRes.ok
       ? ruleRes.data.find(
           (r) =>
             r.department === "nightlife" &&
@@ -305,19 +265,19 @@ export async function initClubPortal(): Promise<void> {
         <div class="cc-field pp-col-8"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
         <h4 class="full">Financial Rates (Club Tracking)</h4>
         ${
-          clubFinancialRule
-            ? `<div class="cc-field pp-col-4"><label>Male ratio</label><input name="clubMaleRate" type="number" step="0.01" value="${clubFinancialRule.maleRate}" /></div>
-        <div class="cc-field pp-col-4"><label>Female ratio</label><input name="clubFemaleRate" type="number" step="0.01" value="${clubFinancialRule.femaleRate}" /></div>
-        <div class="cc-field pp-col-4"><label>Base rate (£)</label><input name="clubBaseRate" type="number" step="0.01" value="${clubFinancialRule.baseRate}" /></div>
-        <p class="admin-note full">Current rule: ${esc(clubFinancialRule.venueOrServiceName)} (${esc(clubFinancialRule.logicType)}). Base rate is charged per guest; ratio values are for planning/tracking and changes are sent to admin approvals.</p>`
-            : `<p class="admin-note full">No active nightlife financial rule is linked to this club yet. Ask admin to create one first.</p>`
+          clubFinancialPaymentRate
+            ? `<div class="cc-field pp-col-4"><label>Male ratio</label><input name="clubMaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.maleRate}" /></div>
+        <div class="cc-field pp-col-4"><label>Female ratio</label><input name="clubFemaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.femaleRate}" /></div>
+        <div class="cc-field pp-col-4"><label>Base rate (£)</label><input name="clubBaseRate" type="number" step="0.01" value="${clubFinancialPaymentRate.baseRate}" /></div>
+        <p class="admin-note full">Current club payment rate: ${esc(clubFinancialPaymentRate.venueOrServiceName)} (${esc(clubFinancialPaymentRate.logicType)}). Base rate is charged per guest; ratio values are for planning/tracking and changes are sent to admin approvals.</p>`
+            : `<p class="admin-note full">No active nightlife club payment rate is linked to this club yet. Ask admin to add a rate row on the club sheet first.</p>`
         }
         <div class="admin-actions full">
           <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save Changes</button>
           <button type="button" class="cc-btn cc-btn--ghost" data-club-save="review">Submit for Review</button>
           ${
-            clubFinancialRule
-              ? `<button type="button" class="cc-btn cc-btn--ghost" data-club-financial-request="${esc(clubFinancialRule.id)}">Submit rate update for approval</button>`
+            clubFinancialPaymentRate
+              ? `<button type="button" class="cc-btn cc-btn--ghost" data-club-financial-request="${esc(clubFinancialPaymentRate.id)}">Submit rate update for approval</button>`
               : ""
           }
         </div>
@@ -558,6 +518,16 @@ export async function initClubPortal(): Promise<void> {
           },
           { key: "guests", label: "Guests", sortable: true, accessor: (j) => j.guestsCount },
           { key: "client", label: "Client", accessor: (j) => j.clientName || "—", render: (j) => esc(j.clientName || "—") },
+          {
+            key: "finance",
+            label: "Finance link",
+            accessor: (j) =>
+              j.financialBookingId || j.clubPaymentRateId ? "Linked" : "—",
+            render: (j) =>
+              j.financialBookingId || j.clubPaymentRateId
+                ? `<span class="admin-note" title="booking ${esc(j.financialBookingId || "—")} · rate ${esc(j.clubPaymentRateId || "—")}">Linked</span>`
+                : "—",
+          },
           {
             key: "decision",
             label: "Decision",

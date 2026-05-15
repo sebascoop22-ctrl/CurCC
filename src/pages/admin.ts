@@ -1,3 +1,4 @@
+import { applyCollapsibleFormSections } from "../lib/collapsible-form-sections";
 import {
   fetchCars,
   fetchClubFlyersAdmin,
@@ -84,18 +85,23 @@ import {
 } from "../admin/promoters";
 import {
   archiveFinancialBooking,
-  archiveFinancialRule,
+  archiveFinancialClubPaymentRate,
   getFinancialDashboardSnapshot,
   listFinancialConfigChangeRequests,
   listFinancialBookings,
   listFinancialPromoters,
-  listFinancialRules,
+  listFinancialClubPaymentRates,
   reviewFinancialConfigChangeRequest,
   upsertFinancialPromoter,
-  upsertFinancialRule,
+  upsertFinancialClubPaymentRate,
   upsertNightlifeFinancialBooking,
   upsertServiceFinancialBooking,
 } from "../admin/financial-tracking";
+import {
+  emptyClubFinancialRuleSheetExtension,
+  emptyPromoterFinancialSheetExtension,
+  mergeSheetExtensions,
+} from "../lib/financial/club-financial-sheet-template";
 import {
   callPromoterInvoiceEdge,
   downloadPdfFromBase64,
@@ -116,7 +122,7 @@ import type {
   FinancialConfigChangeRequest,
   FinancialDashboardSnapshot,
   FinancialPromoterProfile,
-  FinancialRule,
+  FinancialClubPaymentRate,
   Car,
   Club,
   ClubFlyer,
@@ -222,7 +228,8 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
   },
   clubs: {
     title: "Clubs",
-    subtitle: "Nightlife catalog: edit fields and save to the database.",
+    subtitle:
+      "Catalog fields, bank and tax details, guestlists, and the primary nightlife ledger rate used for bookings.",
   },
   cars: {
     title: "Cars",
@@ -544,27 +551,6 @@ function buildAdminJobsCalendarHtml(
   return `<div class="admin-jobs__cal-grid">${head}${cells}</div>`;
 }
 
-function adminListTableWrap(tableInner: string): string {
-  return `<div class="admin-list-table-wrap"><table class="admin-table admin-list-table">${tableInner}</table></div>`;
-}
-
-function bindAdminListRows(
-  listEl: Element,
-  rowSelector: string,
-  handler: (row: HTMLElement) => void,
-): void {
-  listEl.querySelectorAll<HTMLElement>(rowSelector).forEach((row) => {
-    const run = () => handler(row);
-    row.addEventListener("click", run);
-    row.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        run();
-      }
-    });
-  });
-}
-
 function validateClubShape(club: Club): string[] {
   const err: string[] = [];
   const slug = club.slug.trim();
@@ -874,6 +860,8 @@ export async function initAdminPortal(): Promise<void> {
   let flyerFormOpen = false;
   let invoiceFormOpen = false;
   let clubAccountsFormOpen = false;
+  /** When set, next successful save from the dashboard edit modal should close the modal and re-render. */
+  let pendingDashboardModalClose: (() => void) | null = null;
   let promoterInvoices: PromoterInvoice[] = [];
   let _financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
   let financialPeriodFrom = "";
@@ -897,7 +885,7 @@ export async function initAdminPortal(): Promise<void> {
   let financialTransactions: FinancialTransactionRow[] = [];
   let financialRecurringTemplates: FinancialRecurringTemplate[] = [];
   let financialPayees: FinancialPayee[] = [];
-  let nativeFinancialRules: FinancialRule[] = [];
+  let nativeFinancialClubPaymentRates: FinancialClubPaymentRate[] = [];
   let nativeFinancialPromoters: FinancialPromoterProfile[] = [];
   let nativeFinancialBookings: FinancialBooking[] = [];
   let financialChangeRequests: FinancialConfigChangeRequest[] = [];
@@ -924,6 +912,7 @@ export async function initAdminPortal(): Promise<void> {
   let financialRuleEditorOpen = false;
   let financialEditingRuleId: string | null = null;
   let financialPromoterEditorOpen = false;
+  let financialEditingPromoterId: string | null = null;
   let financialBookingEditorOpen = false;
   let financialEditingBookingId: string | null = null;
   let financialDeleteConfirmOpen = false;
@@ -1151,7 +1140,7 @@ export async function initAdminPortal(): Promise<void> {
     const payees = await loadFinancialPayees(supabase);
     financialPayees = payees.ok ? payees.rows : [];
     const [rulesRes, promotersRes, bookingsRes, snapshotRes] = await Promise.all([
-      listFinancialRules(supabase),
+      listFinancialClubPaymentRates(supabase),
       listFinancialPromoters(supabase),
       listFinancialBookings(supabase, {
         from,
@@ -1159,7 +1148,7 @@ export async function initAdminPortal(): Promise<void> {
       }),
       getFinancialDashboardSnapshot(supabase, from, to),
     ]);
-    nativeFinancialRules = rulesRes.ok ? rulesRes.data : [];
+    nativeFinancialClubPaymentRates = rulesRes.ok ? rulesRes.data : [];
     nativeFinancialPromoters = promotersRes.ok ? promotersRes.data : [];
     nativeFinancialBookings = bookingsRes.ok ? bookingsRes.data : [];
     const promoterSeedRes = await loadPromotersForAdmin(supabase);
@@ -1181,6 +1170,54 @@ export async function initAdminPortal(): Promise<void> {
           topPromoterName: null,
           topPromoterRealizedProfit: 0,
         };
+  }
+
+  function pickPrimaryNightlifeLedgerRateForClubSlug(slug: string): FinancialClubPaymentRate | null {
+    const t = slug.trim();
+    if (!t) return null;
+    const rows = nativeFinancialClubPaymentRates
+      .filter((r) => r.clubSlug === t && r.department === "nightlife")
+      .slice()
+      .sort((a, b) => a.venueOrServiceName.localeCompare(b.venueOrServiceName));
+    return rows[0] ?? null;
+  }
+
+  async function persistClubLedgerNightlifeFromClubForm(
+    form: HTMLFormElement,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const fd = new FormData(form);
+    const venueOrServiceName = String(fd.get("clubLedgerVenueOrServiceName") || "").trim();
+    if (!venueOrServiceName) return { ok: true };
+    const clubSlug = String(fd.get("slug") || "").trim();
+    if (!clubSlug) {
+      return { ok: false, message: "Set a club slug before saving the ledger nightlife row." };
+    }
+    const idRaw = String(fd.get("clubLedgerRateId") || "").trim();
+    let bonusType = String(fd.get("clubLedgerBonusType") || "none").trim();
+    if (bonusType !== "flat" && bonusType !== "stacking") bonusType = "none";
+    const existing = idRaw
+      ? nativeFinancialClubPaymentRates.find((r) => r.id === idRaw)
+      : undefined;
+    const res = await upsertFinancialClubPaymentRate(supabase, {
+      id: idRaw || undefined,
+      department: "nightlife",
+      clubSlug,
+      venueOrServiceName,
+      logicType: "flat_fee",
+      maleRate: Number(fd.get("clubLedgerMaleRate") || 0) || 0,
+      femaleRate: Number(fd.get("clubLedgerFemaleRate") || 0) || 0,
+      baseRate: Number(fd.get("clubLedgerBaseRate") || 0) || 0,
+      bonusType: bonusType as "none" | "flat" | "stacking",
+      bonusGoal: Number(fd.get("clubLedgerBonusGoal") || 0) || 0,
+      bonusAmount: Number(fd.get("clubLedgerBonusAmount") || 0) || 0,
+      effectiveFrom:
+        String(fd.get("clubLedgerEffectiveFrom") || "").trim().slice(0, 10) ||
+        new Date().toISOString().slice(0, 10),
+      isActive: fd.get("clubLedgerIsActive") != null,
+      sheetExtension: existing?.sheetExtension ?? {},
+    });
+    if (!res.ok) return { ok: false, message: res.message };
+    return { ok: true };
   }
 
   async function saveFinancialTxPatch(
@@ -1415,77 +1452,32 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   function renderGuestlistQueueDetailHtml(): string {
+    const refresh = `<div class="admin-actions full"><button type="button" class="cc-btn cc-btn--ghost" data-gl-refresh>Refresh queue</button></div>`;
     if (!guestlistQueueRows.length) {
       return `<div class="admin-form">
         <p class="admin-note full">No pending guestlist names. Promoters add guests from assigned guestlist jobs in their portal.</p>
-        <div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost" data-gl-refresh>Refresh queue</button></div>
+        ${refresh}
       </div>`;
     }
-    const rows = guestlistQueueRows
-      .map(
-        (q) => `<tr data-gl-row data-entry-id="${escapeAttr(q.id)}">
-      <td>${escapeAttr(q.createdAt.slice(0, 16).replace("T", " "))}</td>
-      <td>${escapeAttr(q.promoterDisplayName)}</td>
-      <td>${escapeAttr(q.jobDate)}</td>
-      <td><code class="admin-list-code">${escapeAttr(q.clubSlug ?? "—")}</code></td>
-      <td class="admin-list-col--wide"><strong>${escapeAttr(q.guestName)}</strong><br /><span class="admin-note">${escapeAttr(q.guestContact || "—")}</span></td>
-      <td style="white-space:nowrap">
-        <input type="text" data-gl-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
-        <button type="button" class="cc-btn cc-btn--gold" data-gl-approve data-entry-id="${escapeAttr(q.id)}">Approve</button>
-        <button type="button" class="cc-btn cc-btn--ghost" data-gl-reject data-entry-id="${escapeAttr(q.id)}">Reject</button>
-      </td>
-    </tr>`,
-      )
-      .join("");
     return `<div class="admin-form">
       <p class="admin-note full">Approved names update the job guest total. When the job is marked complete, payout uses approved guests only (if the promoter added any names in the system; otherwise the manual guest count on the job still applies).</p>
-      <div class="admin-actions full" style="margin-bottom:0.75rem">
-        <button type="button" class="cc-btn cc-btn--ghost" data-gl-refresh>Refresh queue</button>
-      </div>
-      <div class="promoter-table-wrap full">
-        <table>
-          <thead><tr><th>Submitted</th><th>Promoter</th><th>Job date</th><th>Club</th><th>Guest</th><th>Review</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      ${refresh}
+      <p class="admin-note full" style="margin-top:0.75rem">Use the <strong>list panel</strong> on the left to sort, search, and approve or reject each pending name.</p>
     </div>`;
   }
 
   function renderNightAdjustmentQueueDetailHtml(): string {
+    const refresh = `<div class="admin-actions full"><button type="button" class="cc-btn cc-btn--ghost" data-pna-refresh>Refresh queue</button></div>`;
     if (!nightAdjQueueRows.length) {
       return `<div class="admin-form">
         <p class="admin-note full">No pending night requests.</p>
-        <div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost" data-pna-refresh>Refresh queue</button></div>
+        ${refresh}
       </div>`;
     }
-    const rows = nightAdjQueueRows
-      .map(
-        (q) => `<tr data-pna-row data-pna-id="${escapeAttr(q.id)}">
-      <td>${escapeAttr(q.promoterDisplayName)}</td>
-      <td>${escapeAttr(q.nightDate)}</td>
-      <td>${q.availableOverride ? "Available" : "Unavailable"}</td>
-      <td>${escapeAttr(q.startTime ?? "—")}</td>
-      <td>${escapeAttr(q.endTime ?? "—")}</td>
-      <td class="admin-list-col--wide">${escapeAttr(q.notes || "—")}</td>
-      <td style="white-space:nowrap">
-        <input type="text" data-pna-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
-        <button type="button" class="cc-btn cc-btn--gold" data-pna-approve data-pna-id="${escapeAttr(q.id)}">Approve</button>
-        <button type="button" class="cc-btn cc-btn--ghost" data-pna-reject data-pna-id="${escapeAttr(q.id)}">Reject</button>
-      </td>
-    </tr>`,
-      )
-      .join("");
     return `<div class="admin-form">
       <p class="admin-note full">Approved overrides are the record for that calendar night alongside weekly availability.</p>
-      <div class="admin-actions full" style="margin-bottom:0.75rem">
-        <button type="button" class="cc-btn cc-btn--ghost" data-pna-refresh>Refresh queue</button>
-      </div>
-      <div class="promoter-table-wrap full">
-        <table>
-          <thead><tr><th>Promoter</th><th>Night</th><th>Override</th><th>From</th><th>To</th><th>Notes</th><th>Review</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      ${refresh}
+      <p class="admin-note full" style="margin-top:0.75rem">Use the <strong>list panel</strong> on the left to sort, search, and approve or reject each request.</p>
     </div>`;
   }
 
@@ -1528,30 +1520,7 @@ export async function initAdminPortal(): Promise<void> {
       <div class="admin-actions full" style="margin-bottom:0.75rem">
         <button type="button" class="cc-btn cc-btn--ghost" data-ts-refresh>Refresh queue</button>
       </div>
-      <div class="promoter-table-wrap full">
-        <table>
-          <thead><tr><th>Submitted</th><th>Promoter</th><th>Date</th><th>Club</th><th>Tier</th><th>Tables</th><th>Min spend</th><th>Notes</th><th>Review</th></tr></thead>
-          <tbody>${tableSalesQueueRows
-            .map(
-              (q) => `<tr data-ts-row data-entry-id="${escapeAttr(q.id)}">
-      <td>${escapeAttr(q.createdAt.slice(0, 16).replace("T", " "))}</td>
-      <td>${escapeAttr(q.promoterDisplayName)}</td>
-      <td>${escapeAttr(q.saleDate)}</td>
-      <td><code class="admin-list-code">${escapeAttr(q.clubSlug)}</code></td>
-      <td>${escapeAttr(q.tier)}</td>
-      <td>${q.tableCount}</td>
-      <td>${escapeAttr(`£${q.totalMinSpend.toFixed(2)}`)}</td>
-      <td class="admin-list-col--wide">${escapeAttr(q.notes || "—")}</td>
-      <td style="white-space:nowrap">
-        <input type="text" data-ts-notes placeholder="Notes" style="max-width:9rem;margin-right:0.35rem" />
-        <button type="button" class="cc-btn cc-btn--gold" data-ts-approve data-entry-id="${escapeAttr(q.id)}">Approve</button>
-        <button type="button" class="cc-btn cc-btn--ghost" data-ts-reject data-entry-id="${escapeAttr(q.id)}">Reject</button>
-      </td>
-    </tr>`,
-            )
-            .join("")}</tbody>
-        </table>
-      </div>
+      <p class="admin-note full" style="margin-top:0.75rem">Review pending submissions in the <strong>list panel</strong> on the left.</p>
     </div>`;
 
     const reportRows =
@@ -1975,7 +1944,7 @@ export async function initAdminPortal(): Promise<void> {
     const payeeFilterOptions = `<option value="">All payees</option>${financialPayees
       .map((p) => `<option value="${escapeAttr(p.id)}"${financialFilterPayeeId === p.id ? " selected" : ""}>${escapeAttr(p.name)}</option>`)
       .join("")}`;
-    const ruleOptions = nativeFinancialRules
+    const ruleOptions = nativeFinancialClubPaymentRates
       .filter((r) => r.isActive)
       .map(
         (r) =>
@@ -1989,13 +1958,26 @@ export async function initAdminPortal(): Promise<void> {
     const promoterAccountOptions = promoterAccountSeedRows
       .map(
         (p) =>
-          `<option value="${escapeAttr(p.userId)}">${escapeAttr(`${p.displayName} (${p.userId.slice(0, 8)}…)`)}</option>`,
+          `<option value="${escapeAttr(p.userId)}" data-display-name="${escapeAttr(p.displayName)}">${escapeAttr(`${p.displayName} (${p.userId.slice(0, 8)}…)`)}</option>`,
       )
       .join("");
     const clubOptions = clubEntries
       .filter((c) => c.club.slug.trim())
       .map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name || c.club.slug)}</option>`)
       .join("");
+    const ruleSheetCopyOptions = `<option value="">(pick rule)</option>${nativeFinancialClubPaymentRates
+      .filter((r) => !financialEditingRuleId || r.id !== financialEditingRuleId)
+      .map(
+        (r) =>
+          `<option value="${escapeAttr(r.id)}">${escapeAttr(`${r.department} · ${r.venueOrServiceName}`)}</option>`,
+      )
+      .join("")}`;
+    const promoterSheetCopyOptions = `<option value="">(pick promoter)</option>${nativeFinancialPromoters
+      .filter((p) => !financialEditingPromoterId || p.id !== financialEditingPromoterId)
+      .map((p) => `<option value="${escapeAttr(p.id)}">${escapeAttr(p.name)}</option>`)
+      .join("")}`;
+    const finRuleSheetPanel = `<details class="full cc-details" style="margin-top:0.75rem"><summary>Spreadsheet extension (clubs / events)</summary><div class="cc-field"><label>Copy JSON from rule</label><select id="fin-rule-sheet-copy-source">${ruleSheetCopyOptions}</select> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-rule-sheet-merge>Merge</button></div><div class="cc-field full"><label>Extension JSON</label><textarea name="sheetExtensionJson" rows="10" spellcheck="false" class="cc-input" style="font-family:ui-monospace,monospace;font-size:12px;"></textarea></div><div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-rule-sheet-template>Empty template</button></div><p class="admin-note">Optional fields from your Excel (guestlist, tables, event overrides). Numeric rates on this row drive booking calculations.</p></details>`;
+    const finPromoterSheetPanel = `<details class="full cc-details" style="margin-top:0.75rem"><summary>Spreadsheet extension (promoter)</summary><div class="cc-field"><label>Copy JSON from promoter</label><select id="fin-promoter-sheet-copy-source">${promoterSheetCopyOptions}</select> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-promoter-sheet-merge>Merge</button></div><div class="cc-field full"><label>Extension JSON</label><textarea name="promoterSheetExtensionJson" rows="10" spellcheck="false" class="cc-input" style="font-family:ui-monospace,monospace;font-size:12px;"></textarea></div><div class="admin-actions"><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-promoter-sheet-template>Empty template</button></div><p class="admin-note">Schedule, bank, tax from your sheet; commission % remains the field above.</p></details>`;
     const pendingApprovalRows =
       financialChangeRequests.length === 0
         ? "<tr><td colspan='9' class='admin-note'>No pending approvals.</td></tr>"
@@ -2082,9 +2064,9 @@ export async function initAdminPortal(): Promise<void> {
       activePortalView.startsWith("admin.financial_") ? activePortalView : "admin.financial_dashboard";
     if (financeScope === "admin.financial_rules") {
       const rulesRows =
-        nativeFinancialRules.length === 0
+        nativeFinancialClubPaymentRates.length === 0
           ? "<tr><td colspan='12' class='admin-note'>No financial rules yet.</td></tr>"
-          : nativeFinancialRules
+          : nativeFinancialClubPaymentRates
               .map(
                 (r) =>
                   `<tr>
@@ -2105,10 +2087,10 @@ export async function initAdminPortal(): Promise<void> {
               .join("");
       return `
         <div class="admin-form finx-card">
-          <h4 class="full">Financial Rules</h4>
-          <p class="admin-note full">Dedicated rules workspace. Create rules here and verify they persist immediately in the table.</p>
+          <h4 class="full">Club payment rates</h4>
+          <p class="admin-note full">Per-club sheet rows (department + venue). Bookings and jobs reference these rate ids.</p>
           <div class="admin-actions full">
-            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-rule-editor="open">Create new rule</button>
+            <button type="button" class="cc-btn cc-btn--gold" data-fin-open-rule-editor="open">Add club rate row</button>
             <button type="button" class="cc-btn cc-btn--ghost" data-fin-refresh>Refresh period</button>
           </div>
           <div class="promoter-table-wrap full">
@@ -2120,12 +2102,12 @@ export async function initAdminPortal(): Promise<void> {
         </div>
         ${
           financialRuleEditorOpen
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial rule"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial rule</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save rule</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Club payment rate"><div class="pp-modal__header"><h4 class="pp-modal__title">${financialEditingRuleId ? "Edit club payment rate" : "Add club payment rate row"}</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div>${finRuleSheetPanel}<div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save club rate</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
             : ""
         }
         ${
           financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "club rate row" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
             : ""
         }
       `;
@@ -2195,12 +2177,12 @@ export async function initAdminPortal(): Promise<void> {
         </div>
         ${
           financialBookingEditorOpen
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Club payment rate (nightlife)</label><select name="clubPaymentRateId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and the selected club payment rate.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
             : ""
         }
         ${
           financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "club rate row" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
             : ""
         }
       `;
@@ -2261,12 +2243,12 @@ export async function initAdminPortal(): Promise<void> {
         </div>
         ${
           financialBookingEditorOpen
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Club payment rate (nightlife)</label><select name="clubPaymentRateId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and the selected club payment rate.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
             : ""
         }
         ${
           financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "club rate row" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
             : ""
         }
       `;
@@ -2299,6 +2281,15 @@ export async function initAdminPortal(): Promise<void> {
             `<tr><td>${escapeAttr(r.name)}</td><td>${escapeAttr(`£${r.profit.toFixed(2)}`)}</td><td>${r.guests}</td><td>${r.bookings}</td><td>${r.bookings ? escapeAttr(`£${(r.profit / r.bookings).toFixed(2)}`) : "£0.00"}</td></tr>`,
         )
         .join("");
+      const promoterProfileRows =
+        nativeFinancialPromoters.length === 0
+          ? "<tr><td colspan='4' class='admin-note'>No promoter profiles yet.</td></tr>"
+          : nativeFinancialPromoters
+              .map(
+                (p) =>
+                  `<tr><td>${escapeAttr(p.name)}</td><td>${escapeAttr(String(p.commissionPercentage))}</td><td>${escapeAttr(adminDisplayTruncate(p.contact || "—", 28))}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-promoter="${escapeAttr(p.id)}">Edit</button></td></tr>`,
+              )
+              .join("");
       return `
         <div class="admin-form finx-card">
           <h4 class="full">Promoter Hub</h4>
@@ -2317,10 +2308,18 @@ export async function initAdminPortal(): Promise<void> {
               <tbody>${promoterLeaderboardScoped || "<tr><td colspan='5' class='admin-note'>No promoter data in period.</td></tr>"}</tbody>
             </table>
           </div>
+          <h4 class="full" style="margin-top:1rem">Financial promoter profiles</h4>
+          <p class="admin-note full">Ledger identities used on bookings; edit to adjust commission, contact, or extension JSON.</p>
+          <div class="promoter-table-wrap full">
+            <table>
+              <thead><tr><th>Name</th><th>Commission %</th><th>Contact</th><th>Actions</th></tr></thead>
+              <tbody>${promoterProfileRows}</tbody>
+            </table>
+          </div>
         </div>
         ${
           financialPromoterEditorOpen
-            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial promoter"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial promoter</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
+            ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${financialEditingPromoterId ? "Edit financial promoter" : "Create financial promoter"}"><div class="pp-modal__header"><h4 class="pp-modal__title">${financialEditingPromoterId ? "Edit financial promoter" : "Create new financial promoter"}</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><input type="hidden" name="id" value="${financialEditingPromoterId ? escapeAttr(financialEditingPromoterId) : ""}" /><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>${finPromoterSheetPanel}<div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
             : ""
         }
       `;
@@ -2361,7 +2360,7 @@ export async function initAdminPortal(): Promise<void> {
           <span>Transport ${escapeAttr(`£${nativeFinancialSnapshot.transportRealizedProfit.toFixed(2)}`)}</span>
           <span>Protection ${escapeAttr(`£${nativeFinancialSnapshot.protectionRealizedProfit.toFixed(2)}`)}</span>
           <span>Other ${escapeAttr(`£${nativeFinancialSnapshot.otherRealizedProfit.toFixed(2)}`)}</span>
-          <span>${nativeFinancialRules.filter((x) => x.isActive).length} active rules</span>
+          <span>${nativeFinancialClubPaymentRates.filter((x) => x.isActive).length} active club rate rows</span>
           <span>${nativeFinancialPromoters.length} promoter profiles</span>
           <span>${nativeFinancialBookings.length} financial bookings</span>
         </div>
@@ -2375,22 +2374,22 @@ export async function initAdminPortal(): Promise<void> {
       </div>
       ${
         financialRuleEditorOpen
-          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial rule"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial rule</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save rule</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Club payment rate"><div class="pp-modal__header"><h4 class="pp-modal__title">${financialEditingRuleId ? "Edit club payment rate" : "Add club payment rate row"}</h4><button type="button" class="pp-modal__close" data-fin-close-rule-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-rule-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club link</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Logic</label><select name="logicType"><option value="headcount_pay">Headcount Pay</option><option value="commission_percent">Commission %</option><option value="flat_fee">Flat Fee</option></select></div><div class="cc-field"><label>Male rate</label><input name="maleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Female rate</label><input name="femaleRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Base rate</label><input name="baseRate" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Bonus type</label><select name="bonusType"><option value="none">None</option><option value="flat">Flat</option><option value="stacking">Stacking</option></select></div><div class="cc-field"><label>Bonus goal</label><input name="bonusGoal" type="number" step="1" value="0" /></div><div class="cc-field"><label>Bonus amount</label><input name="bonusAmount" type="number" step="0.01" value="0" /></div><div class="cc-field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div>${finRuleSheetPanel}<div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save club rate</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-rule-editor>Cancel</button></div></form></div></div></div></div>`
           : ""
       }
       ${
         financialPromoterEditorOpen
-          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial promoter"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial promoter</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${financialEditingPromoterId ? "Edit financial promoter" : "Create financial promoter"}"><div class="pp-modal__header"><h4 class="pp-modal__title">${financialEditingPromoterId ? "Edit financial promoter" : "Create new financial promoter"}</h4><button type="button" class="pp-modal__close" data-fin-close-promoter-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-promoter-form" class="admin-form"><input type="hidden" name="id" value="${financialEditingPromoterId ? escapeAttr(financialEditingPromoterId) : ""}" /><div class="cc-field"><label>Promoter account</label><select name="userId"><option value="">(select account)</option>${promoterAccountOptions}</select></div><div class="cc-field"><label>Name</label><input name="name" /></div><div class="cc-field"><label>Commission % (admin only)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="0" /></div><div class="cc-field"><label>Contact</label><input name="contact" /></div><div class="cc-field full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>${finPromoterSheetPanel}<div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save promoter</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-promoter-editor>Cancel</button></div></form></div></div></div></div>`
           : ""
       }
       ${
         financialBookingEditorOpen
-          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Rule (nightlife)</label><select name="ruleId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and selected rule.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Create financial booking"><div class="pp-modal__header"><h4 class="pp-modal__title">Create new financial booking</h4><button type="button" class="pp-modal__close" data-fin-close-booking-editor aria-label="Close">×</button></div><div class="pp-modal__body"><form id="financial-booking-form" class="admin-form"><div class="cc-field"><label>Department</label><select name="department"><option value="nightlife">Nightlife</option><option value="transport">Transport</option><option value="protection">Protection</option><option value="other">Other</option></select></div><div class="cc-field"><label>Club</label><select name="clubSlug"><option value="">(none)</option>${clubOptions}</select></div><div class="cc-field"><label>Booking reference</label><input name="bookingReference" /></div><div class="cc-field"><label>Date</label><input name="bookingDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" /></div><div class="cc-field"><label>Promoter</label><select name="promoterId"><option value="">(none)</option>${promoterOptions}</select></div><div class="cc-field"><label>Club payment rate (nightlife)</label><select name="clubPaymentRateId"><option value="">(none)</option>${ruleOptions}</select></div><div class="cc-field"><label>Venue/Service</label><input name="venueOrServiceName" /></div><div class="cc-field"><label>Male guests</label><input name="maleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Female guests</label><input name="femaleGuests" type="number" min="0" step="1" value="0" data-fin-calc /></div><div class="cc-field"><label>Other costs</label><input name="otherCosts" type="number" min="0" step="0.01" value="0" data-fin-calc /></div><div class="cc-field"><label>Total spend (transport/protection)</label><input name="totalSpend" type="number" min="0" step="0.01" value="0" /></div><div class="cc-field"><label>Commission % (transport/protection)</label><input name="commissionPercentage" type="number" min="0" max="100" step="0.01" value="10" /></div><div class="cc-field"><label>Status</label><select name="paymentStatus"><option value="expected">Expected</option><option value="attended">Attended</option><option value="paid_final">Paid & Final</option></select></div><p class="admin-note full" id="fin-booking-preview">Projected rate auto-calculates from male/female and the selected club payment rate.</p><div class="admin-actions full"><button type="submit" class="cc-btn cc-btn--gold">Save booking</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-close-booking-editor>Cancel</button></div></form></div></div></div></div>`
           : ""
       }
       ${
         financialDeleteConfirmOpen && financialDeleteConfirmType && financialDeleteConfirmId
-          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "rule" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
+          ? `<div class="pp-modal-host finx-modal-host"><div class="pp-modal__overlay"><div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="Confirm delete"><div class="pp-modal__header"><h4 class="pp-modal__title">Confirm delete</h4><button type="button" class="pp-modal__close" data-fin-delete-cancel aria-label="Close">×</button></div><div class="pp-modal__body"><p class="admin-note">Are you sure you want to delete this ${escapeAttr(financialDeleteConfirmType === "rule" ? "club rate row" : "financial job")}? This action archives it from active views.</p><div class="admin-actions"><button type="button" class="cc-btn cc-btn--gold" data-fin-delete-confirm>Yes, delete</button><button type="button" class="cc-btn cc-btn--ghost" data-fin-delete-cancel>Cancel</button></div></div></div></div></div>`
           : ""
       }
       <div class="admin-form finx-card" style="margin-top:1rem">
@@ -2526,28 +2525,11 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   function listSupportsCalendar(v: AdminView): boolean {
-    return (
-      v === "enquiries" ||
-      v === "promoter_requests" ||
-      v === "club_edits" ||
-      v === "job_disputes" ||
-      v === "flyers"
-    );
+    return v === "enquiries";
   }
 
   function listSupportsGrid(v: AdminView): boolean {
-    return (
-      v === "enquiries" ||
-      v === "clients" ||
-      v === "promoter_requests" ||
-      v === "promoters" ||
-      v === "club_accounts" ||
-      v === "club_edits" ||
-      v === "job_disputes" ||
-      v === "flyers" ||
-      v === "clubs" ||
-      v === "cars"
-    );
+    return v === "enquiries";
   }
 
   function renderDashboard(): void {
@@ -2556,6 +2538,16 @@ export async function initAdminPortal(): Promise<void> {
     const club = clubEntries[selectedClub]?.club ?? cloneClub();
     const car = carEntries[selectedCar]?.car ?? cloneCar();
     const flyer = flyers[selectedFlyer] ?? cloneFlyer();
+    const clubNightlifeLedger = pickPrimaryNightlifeLedgerRateForClubSlug(club.slug);
+    const clubLedgerVenueDefault =
+      (clubNightlifeLedger?.venueOrServiceName || "").trim() ||
+      club.name.trim() ||
+      "Main room";
+    const clubLedgerEff =
+      (clubNightlifeLedger?.effectiveFrom || "").trim().slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
+    const ledBT = clubNightlifeLedger?.bonusType ?? "none";
+    const ledActive = clubNightlifeLedger ? clubNightlifeLedger.isActive !== false : true;
     const enquiry = selectedEnquiry
       ? enquiries.find((x) => x.id === selectedEnquiry)
       : enquiries[0];
@@ -2757,7 +2749,7 @@ export async function initAdminPortal(): Promise<void> {
                 ? `
             ${
               clubFormOpen
-                ? `<form class="admin-form" id="club-form" data-collapsible="true">
+                ? `<form class="admin-form admin-club-editor" id="club-form" data-collapsible="true" data-collapsible-open="2">
               <h4 class="full">Core Details</h4>
               <div class="cc-field pp-col-4"><label for="club-slug">Slug</label><input id="club-slug" name="slug" required value="${escapeAttr(club.slug)}" /></div>
               <div class="cc-field pp-col-8"><label for="club-name">Name</label><input id="club-name" name="name" required value="${escapeAttr(club.name)}" /></div>
@@ -2826,6 +2818,24 @@ export async function initAdminPortal(): Promise<void> {
               <div class="cc-field pp-col-4"><label>Tax country</label><input name="taxCountryCode" value="${escapeAttr(club.taxDetails?.countryCode ?? "")}" maxlength="8" /></div>
               <div class="cc-field pp-col-4"><label>VAT registered</label><select name="isVatRegistered"><option value="true"${club.taxDetails?.isVatRegistered ? " selected" : ""}>yes</option><option value="false"${!club.taxDetails?.isVatRegistered ? " selected" : ""}>no</option></select></div>
               <div class="cc-field full"><label>Tax Notes</label><textarea name="taxNotes">${escapeAttr(club.taxDetails?.notes ?? "")}</textarea></div>
+              <h4 class="full">Ledger: nightlife payouts</h4>
+              <p class="admin-note full">Primary nightlife rate row for booking math (same data as Financials → Club rates). Leave the venue label empty to skip updating the ledger when you save the club.</p>
+              <input type="hidden" name="clubLedgerRateId" value="${escapeAttr(clubNightlifeLedger?.id ?? "")}" />
+              <div class="cc-field pp-col-6"><label>Venue / service label</label><input name="clubLedgerVenueOrServiceName" value="${escapeAttr(clubLedgerVenueDefault)}" placeholder="e.g. Main room" /></div>
+              <div class="cc-field pp-col-2"><label>Male ratio</label><input name="clubLedgerMaleRate" type="number" step="0.01" value="${clubNightlifeLedger?.maleRate ?? 0}" /></div>
+              <div class="cc-field pp-col-2"><label>Female ratio</label><input name="clubLedgerFemaleRate" type="number" step="0.01" value="${clubNightlifeLedger?.femaleRate ?? 0}" /></div>
+              <div class="cc-field pp-col-2"><label>Base rate</label><input name="clubLedgerBaseRate" type="number" step="0.01" value="${clubNightlifeLedger?.baseRate ?? 0}" /></div>
+              <div class="cc-field pp-col-4"><label>Bonus type</label>
+                <select name="clubLedgerBonusType">
+                  <option value="none"${ledBT === "none" ? " selected" : ""}>None</option>
+                  <option value="flat"${ledBT === "flat" ? " selected" : ""}>Flat</option>
+                  <option value="stacking"${ledBT === "stacking" ? " selected" : ""}>Stacking</option>
+                </select>
+              </div>
+              <div class="cc-field pp-col-4"><label>Bonus goal</label><input name="clubLedgerBonusGoal" type="number" step="1" value="${clubNightlifeLedger?.bonusGoal ?? 0}" /></div>
+              <div class="cc-field pp-col-4"><label>Bonus amount</label><input name="clubLedgerBonusAmount" type="number" step="0.01" value="${clubNightlifeLedger?.bonusAmount ?? 0}" /></div>
+              <div class="cc-field pp-col-4"><label>Effective from</label><input name="clubLedgerEffectiveFrom" type="date" value="${escapeAttr(clubLedgerEff)}" /></div>
+              <div class="cc-field pp-col-4"><label>Ledger row</label><label class="admin-check-row"><input type="checkbox" name="clubLedgerIsActive" value="true"${ledActive ? " checked" : ""} /><span>Active</span></label></div>
               <div class="cc-field full"><label>Guestlists (days,recurrence,notes per line)</label><textarea name="guestlists">${escapeAttr(guestlistsText(club.guestlists))}</textarea></div>
             </form>`
                 : `<p class="admin-note">Club form hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-club-form">Open Form</button>`
@@ -2835,7 +2845,7 @@ export async function initAdminPortal(): Promise<void> {
                   ? `
             ${
               carFormOpen
-                ? `<form class="admin-form" id="car-form" data-collapsible="true">
+                ? `<form class="admin-form admin-car-editor" id="car-form" data-collapsible="true" data-collapsible-open="2">
               <h4 class="full">Core Details</h4>
               <div class="cc-field pp-col-4"><label for="car-slug">Slug</label><input id="car-slug" name="slug" required value="${escapeAttr(car.slug)}" /></div>
               <div class="cc-field pp-col-8"><label for="car-name">Name</label><input id="car-name" name="name" required value="${escapeAttr(car.name)}" /></div>
@@ -3149,59 +3159,104 @@ export async function initAdminPortal(): Promise<void> {
     bindDashboardEvents();
   }
 
-  function applyCollapsibleFormSections(scope: ParentNode): void {
-    const blocks = Array.from(
-      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true'], .club-form-grid[data-collapsible='true']"),
-    );
-    for (const block of blocks) {
-      if (block.dataset.collapsibleReady === "1") continue;
-      const headings = Array.from(block.querySelectorAll<HTMLElement>(":scope > h4.full"));
-      if (!headings.length) {
-        block.dataset.collapsibleReady = "1";
-        continue;
+  function flushPendingDashboardModalClose(): void {
+    if (!pendingDashboardModalClose) return;
+    const fn = pendingDashboardModalClose;
+    pendingDashboardModalClose = null;
+    fn();
+  }
+
+  type DashboardModalSaveKind = "submit" | "click";
+
+  const DASHBOARD_MODAL_FORM_META: Record<
+    string,
+    { saveLabel: string; saveKind: DashboardModalSaveKind; saveClickSelector?: string }
+  > = {
+    "admin-profile-form": { saveLabel: "Save profile", saveKind: "submit" },
+    "club-form": { saveLabel: "Save club to database", saveKind: "click", saveClickSelector: "#admin-save-club" },
+    "car-form": { saveLabel: "Save car to database", saveKind: "click", saveClickSelector: "#admin-save-car" },
+    "flyer-form": { saveLabel: "Save flyer", saveKind: "click", saveClickSelector: "#flyer-save-db" },
+    "promoter-invoice-form": {
+      saveLabel: "Generate invoice",
+      saveKind: "click",
+      saveClickSelector: "#promoter-invoice-generate",
+    },
+    "club-accounts-form": {
+      saveLabel: "Generate invite code",
+      saveKind: "click",
+      saveClickSelector: "#club-account-create",
+    },
+  };
+
+  function serializeDashboardModalFieldsForDirty(formRoot: HTMLElement): string {
+    const parts: string[] = [];
+    formRoot.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      "input:not([type=file]), textarea, select",
+    ).forEach((el, idx) => {
+      const name = el.name || el.id || `c${idx}`;
+      if (el instanceof HTMLInputElement && el.type === "password") {
+        parts.push(`${name}=pw:${el.value.length}`);
+        return;
       }
-
-      for (let i = 0; i < headings.length; i += 1) {
-        const heading = headings[i];
-        const nextHeading = headings[i + 1] ?? null;
-        const details = document.createElement("details");
-        details.className = "pp-form-section full";
-        details.open = i === 0;
-
-        const summary = document.createElement("summary");
-        summary.className = "pp-form-section__summary";
-        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
-        details.append(summary);
-
-        const body = document.createElement("div");
-        body.className = "pp-form-section__body";
-        details.append(body);
-
-        let node = heading.nextElementSibling as HTMLElement | null;
-        while (node && node !== nextHeading) {
-          const nextNode = node.nextElementSibling as HTMLElement | null;
-          body.append(node);
-          node = nextNode;
-        }
-
-        heading.replaceWith(details);
+      if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
+        parts.push(`${name}=${el.checked ? "1" : "0"}`);
+        return;
       }
+      parts.push(`${name}=${encodeURIComponent(String(el.value ?? ""))}`);
+    });
+    return parts.sort().join("|");
+  }
 
-      block.dataset.collapsibleReady = "1";
+  function readDashboardModalDirtySignature(formId: string, formEl: HTMLElement): string {
+    if (
+      formId === "admin-profile-form" ||
+      formId === "club-form" ||
+      formId === "car-form" ||
+      formId === "flyer-form" ||
+      formId === "club-accounts-form" ||
+      formId === "promoter-invoice-form"
+    ) {
+      return serializeDashboardModalFieldsForDirty(formEl);
+    }
+    return "";
+  }
+
+  function discardDashboardModalEdits(formId: string, baseline: string, formEl: HTMLElement): void {
+    if (formId === "club-accounts-form") {
+      const email = adminRoot.querySelector("#club-account-email") as HTMLInputElement | null;
+      const notes = adminRoot.querySelector("#club-account-notes") as HTMLTextAreaElement | null;
+      if (email) email.value = "";
+      if (notes) notes.value = "";
+      return;
+    }
+    if (formId === "promoter-invoice-form" && baseline) {
+      const fe = formEl as HTMLFormElement;
+      const rows = baseline.split("|");
+      const map = new Map<string, string>();
+      for (const row of rows) {
+        const eq = row.indexOf("=");
+        if (eq < 0) continue;
+        map.set(decodeURIComponent(row.slice(0, eq)), decodeURIComponent(row.slice(eq + 1)));
+      }
+      const pid = fe.elements.namedItem("promoterId") as HTMLSelectElement | null;
+      const from = fe.elements.namedItem("from") as HTMLInputElement | null;
+      const to = fe.elements.namedItem("to") as HTMLInputElement | null;
+      if (pid && map.has("promoterId")) pid.value = map.get("promoterId") ?? "";
+      if (from && map.has("from")) from.value = map.get("from") ?? "";
+      if (to && map.has("to")) to.value = map.get("to") ?? "";
     }
   }
 
-  function mountDashboardFormModal(
-    formId: string,
-    title: string,
-    onClose: () => void,
-  ): void {
+  function mountDashboardFormModal(formId: string, title: string, onClose: () => void): void {
     const form = adminRoot.querySelector<HTMLElement>(`#${formId}`);
     if (!form || form.closest(".pp-modal")) return;
-    const host = document.createElement("div");
-    host.className = "pp-modal-host finx-modal-host";
-    host.innerHTML = `<div class="pp-modal__overlay">
-      <div class="pp-modal finx-modal" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+    const meta = DASHBOARD_MODAL_FORM_META[formId];
+    const wideCatalogModal = formId === "club-form" || formId === "car-form";
+    if (!meta) {
+      const host = document.createElement("div");
+      host.className = "pp-modal-host finx-modal-host";
+      host.innerHTML = `<div class="pp-modal__overlay">
+      <div class="pp-modal finx-modal${wideCatalogModal ? " finx-modal--wide-editor" : ""}" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
         <div class="pp-modal__header">
           <h4 class="pp-modal__title">${escapeAttr(title)}</h4>
           <button type="button" class="pp-modal__close" aria-label="Close">×</button>
@@ -3209,19 +3264,246 @@ export async function initAdminPortal(): Promise<void> {
         <div class="pp-modal__body"></div>
       </div>
     </div>`;
+      const body = host.querySelector(".pp-modal__body") as HTMLElement | null;
+      body?.append(form);
+      const close = (): void => {
+        host.remove();
+        onClose();
+      };
+      host.querySelector(".pp-modal__close")?.addEventListener("click", close);
+      host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
+        if (ev.target === ev.currentTarget) close();
+      });
+      adminRoot.append(host);
+      return;
+    }
+
+    const host = document.createElement("div");
+    host.className = "pp-modal-host finx-modal-host";
+    host.innerHTML = `<div class="pp-modal__overlay">
+      <div class="pp-modal finx-modal pp-modal--with-footer${wideCatalogModal ? " finx-modal--wide-editor" : ""}" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+        <div class="pp-modal__header">
+          <h4 class="pp-modal__title">${escapeAttr(title)}</h4>
+          <button type="button" class="pp-modal__close" data-dashboard-modal-x aria-label="Close">×</button>
+        </div>
+        <div class="pp-modal__body"></div>
+        <div class="pp-modal__footer pp-modal__footer--dashboard">
+          <button type="button" class="cc-btn cc-btn--ghost" data-dashboard-modal-done>Close</button>
+          <button type="button" class="cc-btn cc-btn--gold" data-dashboard-modal-save>${escapeAttr(meta.saveLabel)}</button>
+        </div>
+        <div class="pp-modal-guard" data-dashboard-modal-guard hidden>
+          <div class="pp-modal-guard__panel" role="alertdialog" aria-modal="true" aria-labelledby="dash-guard-title">
+            <p id="dash-guard-title" class="pp-modal-guard__title">Unsaved changes</p>
+            <p class="pp-modal-guard__text">Save your edits before closing, or exit without saving.</p>
+            <div class="pp-modal-guard__actions">
+              <button type="button" class="cc-btn cc-btn--gold" data-dashboard-guard-save>Save &amp; close</button>
+              <button type="button" class="cc-btn cc-btn--ghost" data-dashboard-guard-discard>Exit without saving</button>
+              <button type="button" class="cc-btn cc-btn--ghost" data-dashboard-guard-cancel>Keep editing</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
     const body = host.querySelector(".pp-modal__body") as HTMLElement | null;
     body?.append(form);
-    host.querySelector(".pp-modal__close")?.addEventListener("click", onClose);
-    host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
-      if (ev.target === ev.currentTarget) onClose();
+    const guard = host.querySelector("[data-dashboard-modal-guard]") as HTMLElement | null;
+
+    const discardClubSnapshot =
+      formId === "club-form" && clubEntries[selectedClub]
+        ? structuredClone(clubEntries[selectedClub].club)
+        : null;
+    const discardCarSnapshot =
+      formId === "car-form" && carEntries[selectedCar]
+        ? structuredClone(carEntries[selectedCar].car)
+        : null;
+    const discardFlyerSnapshot =
+      formId === "flyer-form" && flyers[selectedFlyer] != null
+        ? structuredClone(flyers[selectedFlyer] as ClubFlyer)
+        : null;
+    const discardProfileEmail =
+      formId === "admin-profile-form"
+        ? ((form.querySelector('[name="email"]') as HTMLInputElement | null)?.value ?? "")
+        : "";
+    const discardProfileUsername =
+      formId === "admin-profile-form"
+        ? ((form.querySelector('[name="username"]') as HTMLInputElement | null)?.value ?? "")
+        : "";
+
+    let discardInvoiceSerialized = "";
+    let modalArmed = false;
+    let userEditedSinceArm = false;
+    const editListenerAbort = new AbortController();
+    const onTrustedFormEdit = (ev: Event): void => {
+      if (!ev.isTrusted || !modalArmed) return;
+      userEditedSinceArm = true;
+    };
+    form.addEventListener("input", onTrustedFormEdit, {
+      passive: true,
+      signal: editListenerAbort.signal,
     });
+    form.addEventListener("change", onTrustedFormEdit, {
+      passive: true,
+      signal: editListenerAbort.signal,
+    });
+    const armModal = (): void => {
+      if (!host.isConnected) return;
+      userEditedSinceArm = false;
+      if (formId === "promoter-invoice-form") {
+        discardInvoiceSerialized = readDashboardModalDirtySignature(formId, form);
+      }
+      modalArmed = true;
+    };
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.setTimeout(armModal, 0);
+        });
+      });
+    });
+
+    const isDirty = (): boolean => modalArmed && userEditedSinceArm;
+
+    let keyHandler: ((ev: KeyboardEvent) => void) | null = null;
+    const teardown = (): void => {
+      pendingDashboardModalClose = null;
+      editListenerAbort.abort();
+      if (keyHandler) {
+        document.removeEventListener("keydown", keyHandler);
+        keyHandler = null;
+      }
+      host.remove();
+      onClose();
+    };
+
+    const hideGuard = (): void => {
+      if (guard) {
+        guard.hidden = true;
+        guard.setAttribute("aria-hidden", "true");
+      }
+    };
+
+    const showGuard = (): void => {
+      if (guard) {
+        guard.hidden = false;
+        guard.removeAttribute("aria-hidden");
+      }
+    };
+
+    const attemptClose = (): void => {
+      if (!modalArmed) return;
+      if (isDirty()) showGuard();
+      else teardown();
+    };
+
+    const setCloseAfterSave = (): void => {
+      pendingDashboardModalClose = () => {
+        if (formId === "admin-profile-form") adminProfileFormOpen = false;
+        if (formId === "club-form") clubFormOpen = false;
+        if (formId === "car-form") carFormOpen = false;
+        if (formId === "flyer-form") flyerFormOpen = false;
+        if (formId === "promoter-invoice-form") invoiceFormOpen = false;
+        if (formId === "club-accounts-form") clubAccountsFormOpen = false;
+        renderDashboard();
+      };
+    };
+
+    const triggerSave = (closeAfter: boolean): void => {
+      if (closeAfter) setCloseAfterSave();
+      if (meta.saveKind === "submit" && form instanceof HTMLFormElement) {
+        form.requestSubmit();
+        return;
+      }
+      if (meta.saveKind === "click" && meta.saveClickSelector) {
+        (adminRoot.querySelector(meta.saveClickSelector) as HTMLButtonElement | null)?.click();
+      }
+    };
+
+    host.querySelector("[data-dashboard-modal-x]")?.addEventListener("click", attemptClose);
+    host.querySelector("[data-dashboard-modal-done]")?.addEventListener("click", attemptClose);
+    host.querySelector(".pp-modal__overlay")?.addEventListener("click", (ev) => {
+      if (ev.target !== ev.currentTarget) return;
+      attemptClose();
+    });
+    host.querySelector("[data-dashboard-modal-save]")?.addEventListener("click", () => {
+      triggerSave(false);
+    });
+    host.querySelector("[data-dashboard-guard-save]")?.addEventListener(
+      "click",
+      (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        hideGuard();
+        triggerSave(true);
+      },
+      { capture: true },
+    );
+    host.querySelector("[data-dashboard-guard-discard]")?.addEventListener(
+      "click",
+      (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        hideGuard();
+        if (formId === "club-form" && discardClubSnapshot) {
+          const cur = clubEntries[selectedClub];
+          if (cur) clubEntries[selectedClub] = { ...cur, club: cloneClub(discardClubSnapshot) };
+        } else if (formId === "car-form" && discardCarSnapshot) {
+          const cur = carEntries[selectedCar];
+          if (cur) carEntries[selectedCar] = { ...cur, car: cloneCar(discardCarSnapshot) };
+        } else if (formId === "flyer-form" && discardFlyerSnapshot) {
+          flyers[selectedFlyer] = cloneFlyer(discardFlyerSnapshot);
+        } else if (formId === "admin-profile-form") {
+          const em = form.querySelector('[name="email"]') as HTMLInputElement | null;
+          const un = form.querySelector('[name="username"]') as HTMLInputElement | null;
+          const pw = form.querySelector('[name="password"]') as HTMLInputElement | null;
+          const pwc = form.querySelector('[name="passwordConfirm"]') as HTMLInputElement | null;
+          if (em) em.value = discardProfileEmail;
+          if (un) un.value = discardProfileUsername;
+          if (pw) pw.value = "";
+          if (pwc) pwc.value = "";
+        } else {
+          discardDashboardModalEdits(
+            formId,
+            formId === "promoter-invoice-form" ? discardInvoiceSerialized : "",
+            form,
+          );
+        }
+        teardown();
+      },
+      { capture: true },
+    );
+    host.querySelector("[data-dashboard-guard-cancel]")?.addEventListener(
+      "click",
+      (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        hideGuard();
+      },
+      { capture: true },
+    );
+
+    guard?.addEventListener("click", (ev) => {
+      if (ev.target === guard) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideGuard();
+      }
+    });
+
+    keyHandler = (ev: KeyboardEvent): void => {
+      if (ev.key !== "Escape") return;
+      if (!modalArmed) return;
+      ev.preventDefault();
+      attemptClose();
+    };
+    document.addEventListener("keydown", keyHandler);
+
     adminRoot.append(host);
   }
 
   function bindDashboardEvents(): void {
     applyCollapsibleFormSections(adminRoot);
     const editingRule = financialEditingRuleId
-      ? nativeFinancialRules.find((r) => r.id === financialEditingRuleId) ?? null
+      ? nativeFinancialClubPaymentRates.find((r) => r.id === financialEditingRuleId) ?? null
       : null;
     const ruleFormEl = adminRoot.querySelector("#financial-rule-form") as HTMLFormElement | null;
     if (ruleFormEl) {
@@ -3267,6 +3549,46 @@ export async function initAdminPortal(): Promise<void> {
       (ruleFormEl.elements.namedItem("bonusAmount") as HTMLInputElement | null)!.value = String(editingRule.bonusAmount);
       (ruleFormEl.elements.namedItem("effectiveFrom") as HTMLInputElement | null)!.value =
         editingRule.effectiveFrom.slice(0, 10);
+      const sheetJson = ruleFormEl.elements.namedItem("sheetExtensionJson") as HTMLTextAreaElement | null;
+      if (sheetJson) {
+        sheetJson.value = JSON.stringify(editingRule.sheetExtension ?? {}, null, 2);
+      }
+    }
+    const editingPromoter = financialEditingPromoterId
+      ? nativeFinancialPromoters.find((p) => p.id === financialEditingPromoterId) ?? null
+      : null;
+    const promoterFormEl = adminRoot.querySelector("#financial-promoter-form") as HTMLFormElement | null;
+    if (promoterFormEl && editingPromoter) {
+      const idEl = promoterFormEl.elements.namedItem("id") as HTMLInputElement | null;
+      if (idEl) idEl.value = editingPromoter.id;
+      (promoterFormEl.elements.namedItem("userId") as HTMLSelectElement | null)!.value =
+        editingPromoter.userId || "";
+      (promoterFormEl.elements.namedItem("name") as HTMLInputElement | null)!.value = editingPromoter.name;
+      (promoterFormEl.elements.namedItem("commissionPercentage") as HTMLInputElement | null)!.value = String(
+        editingPromoter.commissionPercentage,
+      );
+      (promoterFormEl.elements.namedItem("contact") as HTMLInputElement | null)!.value =
+        editingPromoter.contact;
+      (promoterFormEl.elements.namedItem("notes") as HTMLTextAreaElement | null)!.value =
+        editingPromoter.notes;
+      const pta = promoterFormEl.elements.namedItem("promoterSheetExtensionJson") as HTMLTextAreaElement | null;
+      if (pta) {
+        pta.value = JSON.stringify(editingPromoter.sheetExtension ?? {}, null, 2);
+      }
+    }
+    if (promoterFormEl && !promoterFormEl.dataset.userIdAutofillBound) {
+      promoterFormEl.dataset.userIdAutofillBound = "1";
+      const uidSel = promoterFormEl.elements.namedItem("userId") as HTMLSelectElement | null;
+      uidSel?.addEventListener("change", () => {
+        const opt = uidSel.selectedOptions[0];
+        const dn = opt?.dataset.displayName?.trim();
+        if (!dn) return;
+        const idInput = promoterFormEl.elements.namedItem("id") as HTMLInputElement | null;
+        const editing = Boolean(idInput?.value?.trim());
+        const nameInput = promoterFormEl.elements.namedItem("name") as HTMLInputElement | null;
+        if (!nameInput) return;
+        if (!editing || !nameInput.value.trim()) nameInput.value = dn;
+      });
     }
     const editingBooking = financialEditingBookingId
       ? nativeFinancialBookings.find((b) => b.id === financialEditingBookingId) ?? null
@@ -3300,8 +3622,8 @@ export async function initAdminPortal(): Promise<void> {
         editingBooking.bookingDate.slice(0, 10);
       (bookingFormEl.elements.namedItem("promoterId") as HTMLSelectElement | null)!.value =
         editingBooking.promoterId || "";
-      (bookingFormEl.elements.namedItem("ruleId") as HTMLSelectElement | null)!.value =
-        editingBooking.ruleId || "";
+      (bookingFormEl.elements.namedItem("clubPaymentRateId") as HTMLSelectElement | null)!.value =
+        editingBooking.clubPaymentRateId || "";
       (bookingFormEl.elements.namedItem("venueOrServiceName") as HTMLInputElement | null)!.value =
         editingBooking.venueOrServiceName;
       (bookingFormEl.elements.namedItem("maleGuests") as HTMLInputElement | null)!.value =
@@ -3314,42 +3636,6 @@ export async function initAdminPortal(): Promise<void> {
         String(editingBooking.totalSpend);
       (bookingFormEl.elements.namedItem("paymentStatus") as HTMLSelectElement | null)!.value =
         editingBooking.paymentStatus;
-    }
-    if (view === "admin_profile" && adminProfileFormOpen) {
-      mountDashboardFormModal("admin-profile-form", "Admin profile", () => {
-        adminProfileFormOpen = false;
-        renderDashboard();
-      });
-    }
-    if (view === "clubs" && clubFormOpen) {
-      mountDashboardFormModal("club-form", "Club editor", () => {
-        clubFormOpen = false;
-        renderDashboard();
-      });
-    }
-    if (view === "cars" && carFormOpen) {
-      mountDashboardFormModal("car-form", "Car editor", () => {
-        carFormOpen = false;
-        renderDashboard();
-      });
-    }
-    if (view === "flyers" && flyerFormOpen) {
-      mountDashboardFormModal("flyer-form", "Flyer editor", () => {
-        flyerFormOpen = false;
-        renderDashboard();
-      });
-    }
-    if (view === "invoices" && invoiceFormOpen) {
-      mountDashboardFormModal("promoter-invoice-form", "Invoice actions", () => {
-        invoiceFormOpen = false;
-        renderDashboard();
-      });
-    }
-    if (view === "club_accounts" && clubAccountsFormOpen) {
-      mountDashboardFormModal("club-accounts-form", "Club account tools", () => {
-        clubAccountsFormOpen = false;
-        renderDashboard();
-      });
     }
     if (!guestlistQueueDelegationBound) {
       guestlistQueueDelegationBound = true;
@@ -3759,6 +4045,16 @@ export async function initAdminPortal(): Promise<void> {
         }
         const openPromoterEditor = t.closest("[data-fin-open-promoter-editor]") as HTMLButtonElement | null;
         if (openPromoterEditor) {
+          financialEditingPromoterId = null;
+          financialPromoterEditorOpen = true;
+          renderDashboard();
+          return;
+        }
+        const editPromoterBtn = t.closest("[data-fin-edit-promoter]") as HTMLButtonElement | null;
+        if (editPromoterBtn) {
+          const pid = editPromoterBtn.dataset.finEditPromoter?.trim() || "";
+          if (!pid) return;
+          financialEditingPromoterId = pid;
           financialPromoterEditorOpen = true;
           renderDashboard();
           return;
@@ -3822,7 +4118,7 @@ export async function initAdminPortal(): Promise<void> {
           void (async () => {
             const res =
               type === "rule"
-                ? await archiveFinancialRule(supabase, id)
+                ? await archiveFinancialClubPaymentRate(supabase, id)
                 : await archiveFinancialBooking(supabase, id);
             if (!res.ok) {
               flash(res.message, "error");
@@ -3832,7 +4128,7 @@ export async function initAdminPortal(): Promise<void> {
             financialDeleteConfirmType = null;
             financialDeleteConfirmId = null;
             await reloadFinancialReport();
-            flash(type === "rule" ? "Financial rule deleted." : "Financial job deleted.");
+            flash(type === "rule" ? "Club payment rate archived." : "Financial job deleted.");
             renderDashboard();
           })();
           return;
@@ -3843,8 +4139,87 @@ export async function initAdminPortal(): Promise<void> {
           renderDashboard();
           return;
         }
+        if (t.closest("[data-fin-rule-sheet-template]")) {
+          ev.preventDefault();
+          const form = adminRoot.querySelector("#financial-rule-form") as HTMLFormElement | null;
+          const ta = form?.elements.namedItem("sheetExtensionJson") as HTMLTextAreaElement | null;
+          if (ta) {
+            ta.value = JSON.stringify(emptyClubFinancialRuleSheetExtension(), null, 2);
+            flash("Inserted empty extension template.");
+          }
+          return;
+        }
+        if (t.closest("[data-fin-rule-sheet-merge]")) {
+          ev.preventDefault();
+          const form = adminRoot.querySelector("#financial-rule-form") as HTMLFormElement | null;
+          const sel = form?.querySelector("#fin-rule-sheet-copy-source") as HTMLSelectElement | null;
+          const ta = form?.elements.namedItem("sheetExtensionJson") as HTMLTextAreaElement | null;
+          const rid = sel?.value?.trim();
+          if (!form || !ta || !rid) {
+            flash("Pick a rule to merge from.", "error");
+            return;
+          }
+          const src = nativeFinancialClubPaymentRates.find((r) => r.id === rid);
+          if (!src) {
+            flash("Rule not found.", "error");
+            return;
+          }
+          let cur: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(ta.value.trim() || "{}") as unknown;
+            if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+              cur = parsed as Record<string, unknown>;
+            }
+          } catch {
+            flash("Current JSON is invalid; fix or clear before merge.", "error");
+            return;
+          }
+          ta.value = JSON.stringify(mergeSheetExtensions(cur, src.sheetExtension ?? {}), null, 2);
+          flash("Merged extension JSON from selected rule.");
+          return;
+        }
+        if (t.closest("[data-fin-promoter-sheet-template]")) {
+          ev.preventDefault();
+          const form = adminRoot.querySelector("#financial-promoter-form") as HTMLFormElement | null;
+          const ta = form?.elements.namedItem("promoterSheetExtensionJson") as HTMLTextAreaElement | null;
+          if (ta) {
+            ta.value = JSON.stringify(emptyPromoterFinancialSheetExtension(), null, 2);
+            flash("Inserted empty promoter extension template.");
+          }
+          return;
+        }
+        if (t.closest("[data-fin-promoter-sheet-merge]")) {
+          ev.preventDefault();
+          const form = adminRoot.querySelector("#financial-promoter-form") as HTMLFormElement | null;
+          const sel = form?.querySelector("#fin-promoter-sheet-copy-source") as HTMLSelectElement | null;
+          const ta = form?.elements.namedItem("promoterSheetExtensionJson") as HTMLTextAreaElement | null;
+          const pid = sel?.value?.trim();
+          if (!form || !ta || !pid) {
+            flash("Pick a promoter to merge from.", "error");
+            return;
+          }
+          const src = nativeFinancialPromoters.find((p) => p.id === pid);
+          if (!src) {
+            flash("Promoter not found.", "error");
+            return;
+          }
+          let cur: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(ta.value.trim() || "{}") as unknown;
+            if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+              cur = parsed as Record<string, unknown>;
+            }
+          } catch {
+            flash("Current JSON is invalid; fix or clear before merge.", "error");
+            return;
+          }
+          ta.value = JSON.stringify(mergeSheetExtensions(cur, src.sheetExtension ?? {}), null, 2);
+          flash("Merged extension JSON from selected promoter.");
+          return;
+        }
         if (t.closest("[data-fin-close-promoter-editor]")) {
           financialPromoterEditorOpen = false;
+          financialEditingPromoterId = null;
           renderDashboard();
           return;
         }
@@ -3978,11 +4353,11 @@ export async function initAdminPortal(): Promise<void> {
           const form = t.closest("#financial-booking-form") as HTMLFormElement | null;
           if (!form) return;
           const fd = new FormData(form);
-          const ruleId = String(fd.get("ruleId") || "").trim();
+          const rateId = String(fd.get("clubPaymentRateId") || "").trim();
           const male = Number(fd.get("maleGuests") || 0) || 0;
           const female = Number(fd.get("femaleGuests") || 0) || 0;
           const costs = Number(fd.get("otherCosts") || 0) || 0;
-          const rule = nativeFinancialRules.find((r) => r.id === ruleId);
+          const rule = nativeFinancialClubPaymentRates.find((r) => r.id === rateId);
           const previewEl = adminRoot.querySelector("#fin-booking-preview") as HTMLElement | null;
           if (previewEl && rule) {
             const totalRevenue = (male + female) * rule.baseRate;
@@ -3998,7 +4373,7 @@ export async function initAdminPortal(): Promise<void> {
             previewEl.textContent = `Auto projected profit: £${projected.toFixed(2)} (revenue £${totalRevenue.toFixed(2)}, bonus £${bonus.toFixed(2)}, costs £${costs.toFixed(2)}).`;
           } else if (previewEl) {
             previewEl.textContent =
-              "Projected revenue auto-calculates from base rate per guest and selected rule.";
+              "Projected revenue auto-calculates from base rate per guest and the selected club payment rate.";
           }
         }
       });
@@ -4186,7 +4561,22 @@ export async function initAdminPortal(): Promise<void> {
           ev.preventDefault();
           const fd = new FormData(ruleForm as HTMLFormElement);
           void (async () => {
-            const res = await upsertFinancialRule(supabase, {
+            let sheetExtension: Record<string, unknown> = {};
+            const rawJson = String(fd.get("sheetExtensionJson") || "").trim();
+            if (rawJson) {
+              try {
+                const parsed = JSON.parse(rawJson) as unknown;
+                if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                  flash("Extension JSON must be a single object.", "error");
+                  return;
+                }
+                sheetExtension = parsed as Record<string, unknown>;
+              } catch {
+                flash("Extension JSON is not valid JSON.", "error");
+                return;
+              }
+            }
+            const res = await upsertFinancialClubPaymentRate(supabase, {
               id: financialEditingRuleId || undefined,
               department: String(fd.get("department") || "other").trim() as
                 | "nightlife"
@@ -4209,6 +4599,7 @@ export async function initAdminPortal(): Promise<void> {
               bonusGoal: Number(fd.get("bonusGoal") || 0) || 0,
               bonusAmount: Number(fd.get("bonusAmount") || 0) || 0,
               effectiveFrom: String(fd.get("effectiveFrom") || "").trim(),
+              sheetExtension,
             });
             if (!res.ok) {
               flash(res.message, "error");
@@ -4227,18 +4618,36 @@ export async function initAdminPortal(): Promise<void> {
           ev.preventDefault();
           const fd = new FormData(promoterForm as HTMLFormElement);
           void (async () => {
+            let sheetExtension: Record<string, unknown> = {};
+            const rawJson = String(fd.get("promoterSheetExtensionJson") || "").trim();
+            if (rawJson) {
+              try {
+                const parsed = JSON.parse(rawJson) as unknown;
+                if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                  flash("Extension JSON must be a single object.", "error");
+                  return;
+                }
+                sheetExtension = parsed as Record<string, unknown>;
+              } catch {
+                flash("Extension JSON is not valid JSON.", "error");
+                return;
+              }
+            }
             const res = await upsertFinancialPromoter(supabase, {
+              id: String(fd.get("id") || "").trim() || undefined,
               userId: String(fd.get("userId") || "").trim() || null,
               name: String(fd.get("name") || "").trim(),
               commissionPercentage: Number(fd.get("commissionPercentage") || 0) || 0,
               contact: String(fd.get("contact") || "").trim(),
               notes: String(fd.get("notes") || "").trim(),
+              sheetExtension,
             });
             if (!res.ok) {
               flash(res.message, "error");
               return;
             }
             financialPromoterEditorOpen = false;
+            financialEditingPromoterId = null;
             await reloadFinancialReport();
             flash("Financial promoter saved.");
             renderDashboard();
@@ -4261,7 +4670,7 @@ export async function initAdminPortal(): Promise<void> {
               | "attended"
               | "paid_final";
             if (department === "nightlife") {
-              const ruleId = String(fd.get("ruleId") || "").trim();
+              const clubPaymentRateId = String(fd.get("clubPaymentRateId") || "").trim();
               const res = await upsertNightlifeFinancialBooking(supabase, {
                 id: financialEditingBookingId || undefined,
                 bookingReference,
@@ -4269,7 +4678,7 @@ export async function initAdminPortal(): Promise<void> {
                 clubSlug,
                 promoterId,
                 clientId: null,
-                ruleId,
+                clubPaymentRateId,
                 venueOrServiceName,
                 maleGuests: Number(fd.get("maleGuests") || 0) || 0,
                 femaleGuests: Number(fd.get("femaleGuests") || 0) || 0,
@@ -4291,7 +4700,7 @@ export async function initAdminPortal(): Promise<void> {
                   : "other") as "transport" | "protection" | "other",
                 promoterId,
                 clientId: null,
-                ruleId: String(fd.get("ruleId") || "").trim() || null,
+                clubPaymentRateId: String(fd.get("clubPaymentRateId") || "").trim() || null,
                 venueOrServiceName,
                 totalSpend: Number(fd.get("totalSpend") || 0) || 0,
                 commissionPercentage: Number(fd.get("commissionPercentage") || 0) || 0,
@@ -4426,26 +4835,32 @@ export async function initAdminPortal(): Promise<void> {
 
       if (!adminProfile.userId) {
         flash("Missing admin session context. Reload and try again.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       if (!email) {
         flash("Email is required.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         flash("Enter a valid email address.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       if (!username) {
         flash("Username is required.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       if (password && password.length < 8) {
         flash("New password must be at least 8 characters.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       if (password && password !== passwordConfirm) {
         flash("Password confirmation does not match.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
 
@@ -4454,6 +4869,7 @@ export async function initAdminPortal(): Promise<void> {
       const passwordChanged = Boolean(password);
       if (!emailChanged && !usernameChanged && !passwordChanged) {
         flash("No profile changes to save.");
+        flushPendingDashboardModalClose();
         return;
       }
 
@@ -4468,6 +4884,7 @@ export async function initAdminPortal(): Promise<void> {
         if (profileReadError) {
           flash(`Could not verify admin profile: ${profileReadError.message}`, "error");
           if (saveBtn) saveBtn.disabled = false;
+          pendingDashboardModalClose = null;
           return;
         }
         const role = String(profileRow?.role || "admin");
@@ -4482,6 +4899,7 @@ export async function initAdminPortal(): Promise<void> {
         if (profileWriteError) {
           flash(`Could not save username to profile: ${profileWriteError.message}`, "error");
           if (saveBtn) saveBtn.disabled = false;
+          pendingDashboardModalClose = null;
           return;
         }
 
@@ -4503,6 +4921,7 @@ export async function initAdminPortal(): Promise<void> {
           if (authError) {
             flash(`Could not update auth settings: ${authError.message}`, "error");
             if (saveBtn) saveBtn.disabled = false;
+            pendingDashboardModalClose = null;
             return;
           }
         }
@@ -4517,7 +4936,11 @@ export async function initAdminPortal(): Promise<void> {
             ? "Profile saved. Check your inbox to confirm the new email if required."
             : "Profile settings updated.",
         );
-        renderDashboard();
+        if (pendingDashboardModalClose) {
+          flushPendingDashboardModalClose();
+        } else {
+          renderDashboard();
+        }
       })().finally(() => {
         if (saveBtn) saveBtn.disabled = false;
       });
@@ -4561,8 +4984,10 @@ export async function initAdminPortal(): Promise<void> {
       const v = validateClubShape(c);
       if (v.length) {
         flash(v.join(" "), "error");
+        pendingDashboardModalClose = null;
         return;
       }
+      const clubFormEl = adminRoot.querySelector("#club-form") as HTMLFormElement | null;
       void (async () => {
         const res = await upsertClubToDb(supabase, c, {
           sortOrder: selectedClub + 1,
@@ -4570,11 +4995,32 @@ export async function initAdminPortal(): Promise<void> {
         });
         if (!res.ok) {
           flash(`Save failed: ${res.message}`, "error");
+          pendingDashboardModalClose = null;
           return;
+        }
+        if (clubFormEl) {
+          const lr = await persistClubLedgerNightlifeFromClubForm(clubFormEl);
+          if (!lr.ok) {
+            flash(`Club saved; ledger row not updated: ${lr.message}`, "error");
+            pendingDashboardModalClose = null;
+            await syncClubIdsFromDb();
+            const rulesOnly = await listFinancialClubPaymentRates(supabase);
+            if (rulesOnly.ok) nativeFinancialClubPaymentRates = rulesOnly.data;
+            renderDashboard();
+            return;
+          }
+          if (String(new FormData(clubFormEl).get("clubLedgerVenueOrServiceName") || "").trim()) {
+            const rulesOnly = await listFinancialClubPaymentRates(supabase);
+            if (rulesOnly.ok) nativeFinancialClubPaymentRates = rulesOnly.data;
+          }
         }
         await syncClubIdsFromDb();
         flash("Club saved to database.");
-        renderDashboard();
+        if (pendingDashboardModalClose) {
+          flushPendingDashboardModalClose();
+        } else {
+          renderDashboard();
+        }
       })();
     });
 
@@ -4607,6 +5053,7 @@ export async function initAdminPortal(): Promise<void> {
       const v = validateCarShape(c);
       if (v.length) {
         flash(v.join(" "), "error");
+        pendingDashboardModalClose = null;
         return;
       }
       void (async () => {
@@ -4616,11 +5063,16 @@ export async function initAdminPortal(): Promise<void> {
         });
         if (!res.ok) {
           flash(`Save failed: ${res.message}`, "error");
+          pendingDashboardModalClose = null;
           return;
         }
         await syncCarIdsFromDb();
         flash("Car saved to database.");
-        renderDashboard();
+        if (pendingDashboardModalClose) {
+          flushPendingDashboardModalClose();
+        } else {
+          renderDashboard();
+        }
       })();
     });
 
@@ -4767,6 +5219,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (e) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(e.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(e.id)}">Delete</button>`,
@@ -4774,14 +5227,14 @@ export async function initAdminPortal(): Promise<void> {
             ],
             onRowClick: (row) => {
               const id = row.id ?? null;
-            selectedEnquiry = id;
-            void (async () => {
-              if (id) {
-                const g = await loadEnquiryGuests(supabase, id);
-                enquiryGuests = g.ok ? g.rows : [];
-              } else enquiryGuests = [];
-              renderDashboard();
-            })();
+              selectedEnquiry = id;
+              void (async () => {
+                if (id) {
+                  const g = await loadEnquiryGuests(supabase, id);
+                  enquiryGuests = g.ok ? g.rows : [];
+                } else enquiryGuests = [];
+                renderDashboard();
+              })();
             },
           });
           }
@@ -4824,6 +5277,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (c) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(c.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(c.id)}">Delete</button>`,
@@ -4877,6 +5331,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (q) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(q.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(q.id)}">Delete</button>`,
@@ -4926,6 +5381,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (p) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(p.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(p.id)}">Delete</button>`,
@@ -4954,6 +5410,13 @@ export async function initAdminPortal(): Promise<void> {
             activeRowId: selectedClubAccountId,
             columns: [
               { key: "club", label: "Club", sortable: true, accessor: (a) => a.club_slug },
+              {
+                key: "email",
+                label: "Invite email",
+                sortable: true,
+                accessor: (a) => a.invite_email,
+                render: (a) => escapeAttr(adminDisplayTruncate(a.invite_email || "—", 36)),
+              },
               { key: "role", label: "Role", sortable: true, accessor: (a) => a.role },
               {
                 key: "status",
@@ -4965,6 +5428,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (a) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(a.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(a.id)}">Delete</button>`,
@@ -5000,6 +5464,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (r) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(r.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(r.id)}">Delete</button>`,
@@ -5035,6 +5500,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: (d) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(d.id)}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(d.id)}">Delete</button>`,
@@ -5048,42 +5514,330 @@ export async function initAdminPortal(): Promise<void> {
         }
       } else if (view === "guestlist_queue") {
         listEl.className = "admin-list";
-        listEl.innerHTML = `<p class="admin-note">${guestlistQueueRows.length} pending name(s). Open <strong>Guestlist</strong> in the sidebar if you switched away.</p>`;
+        const gq = listSearch.trim().toLowerCase();
+        const filteredGl = guestlistQueueRows.filter((r) => {
+          if (!gq) return true;
+          const hay = [r.promoterDisplayName, r.jobDate, r.clubSlug, r.guestName, r.guestContact, r.createdAt]
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(gq);
+        });
+        if (!guestlistQueueRows.length) {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-guestlist-queue",
+            rows: [],
+            columns: [{ key: "s", label: "Submitted", accessor: () => "" }],
+            empty: {
+              title: "No pending guestlist names",
+              description: "Promoters add guests from assigned guestlist jobs in their portal.",
+            },
+            paginated: false,
+          });
+        } else if (!filteredGl.length) {
+          listEl.innerHTML = `<p class="admin-note">No rows match your search.</p>`;
+        } else {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-guestlist-queue",
+            rows: filteredGl,
+            rowId: (r) => r.id,
+            columns: [
+              {
+                key: "submitted",
+                label: "Submitted",
+                sortable: true,
+                accessor: (r) => r.createdAt.slice(0, 16).replace("T", " "),
+              },
+              {
+                key: "promoter",
+                label: "Promoter",
+                sortable: true,
+                accessor: (r) => r.promoterDisplayName,
+              },
+              { key: "jobDate", label: "Job date", sortable: true, accessor: (r) => r.jobDate },
+              {
+                key: "club",
+                label: "Club",
+                sortable: true,
+                accessor: (r) => r.clubSlug ?? "",
+                render: (r) => `<code class="admin-list-code">${escapeAttr(r.clubSlug ?? "—")}</code>`,
+              },
+              {
+                key: "guest",
+                label: "Guest",
+                accessor: (r) => r.guestName,
+                render: (r) =>
+                  `<strong>${escapeAttr(adminDisplayTruncate(r.guestName, 32))}</strong><br /><span class="admin-note">${escapeAttr(r.guestContact || "—")}</span>`,
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                align: "right",
+                render: (r) =>
+                  `<input type="text" data-gl-notes placeholder="Notes" class="pp-input" style="max-width:6.5rem;display:inline-block;vertical-align:middle;margin-right:0.35rem" />
+                   <button type="button" class="cc-btn cc-btn--gold cc-btn--small" data-gl-approve data-entry-id="${escapeAttr(r.id)}">Approve</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-gl-reject data-entry-id="${escapeAttr(r.id)}">Reject</button>`,
+              },
+            ],
+            paginated: false,
+          });
+        }
       } else if (view === "night_adjustments") {
         listEl.className = "admin-list";
-        listEl.innerHTML = `<p class="admin-note">${nightAdjQueueRows.length} pending night request(s).</p>`;
+        const nq = listSearch.trim().toLowerCase();
+        const filteredNa = nightAdjQueueRows.filter((r) => {
+          if (!nq) return true;
+          const hay = [r.promoterDisplayName, r.nightDate, r.notes, r.startTime, r.endTime].join(" ").toLowerCase();
+          return hay.includes(nq);
+        });
+        if (!nightAdjQueueRows.length) {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-night-adjustments",
+            rows: [],
+            columns: [{ key: "p", label: "Promoter", accessor: () => "" }],
+            empty: {
+              title: "No pending night requests",
+              description: "Promoters submit one-off availability overrides from their portal.",
+            },
+            paginated: false,
+          });
+        } else if (!filteredNa.length) {
+          listEl.innerHTML = `<p class="admin-note">No rows match your search.</p>`;
+        } else {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-night-adjustments",
+            rows: filteredNa,
+            rowId: (r) => r.id,
+            columns: [
+              {
+                key: "promoter",
+                label: "Promoter",
+                sortable: true,
+                accessor: (r) => r.promoterDisplayName,
+              },
+              { key: "night", label: "Night", sortable: true, accessor: (r) => r.nightDate },
+              {
+                key: "override",
+                label: "Override",
+                sortable: true,
+                accessor: (r) => (r.availableOverride ? "Available" : "Unavailable"),
+              },
+              { key: "from", label: "From", accessor: (r) => r.startTime ?? "—" },
+              { key: "to", label: "To", accessor: (r) => r.endTime ?? "—" },
+              {
+                key: "notes",
+                label: "Notes",
+                accessor: (r) => r.notes || "—",
+                render: (r) => escapeAttr(adminDisplayTruncate(r.notes || "—", 48)),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                align: "right",
+                render: (r) =>
+                  `<input type="text" data-pna-notes placeholder="Notes" class="pp-input" style="max-width:6.5rem;display:inline-block;vertical-align:middle;margin-right:0.35rem" />
+                   <button type="button" class="cc-btn cc-btn--gold cc-btn--small" data-pna-approve data-pna-id="${escapeAttr(r.id)}">Approve</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-pna-reject data-pna-id="${escapeAttr(r.id)}">Reject</button>`,
+              },
+            ],
+            paginated: false,
+          });
+        }
       } else if (view === "table_sales") {
         listEl.className = "admin-list";
-        listEl.innerHTML = `<p class="admin-note">${tableSalesQueueRows.length} pending table submission(s). Use <strong>Tables</strong> for review, office entry, and the dated report.</p>`;
+        const tq = listSearch.trim().toLowerCase();
+        const filteredTs = tableSalesQueueRows.filter((r) => {
+          if (!tq) return true;
+          const hay = [
+            r.promoterDisplayName,
+            r.saleDate,
+            r.clubSlug,
+            r.tier,
+            String(r.tableCount),
+            String(r.totalMinSpend),
+            r.notes,
+            r.createdAt,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(tq);
+        });
+        if (!tableSalesQueueRows.length) {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-table-sales-queue",
+            rows: [],
+            columns: [{ key: "d", label: "Date", accessor: () => "" }],
+            empty: {
+              title: "No pending table submissions",
+              description: "Promoter-submitted table sales appear here for review.",
+            },
+            paginated: false,
+          });
+        } else if (!filteredTs.length) {
+          listEl.innerHTML = `<p class="admin-note">No rows match your search.</p>`;
+        } else {
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-table-sales-queue",
+            rows: filteredTs,
+            rowId: (r) => r.id,
+            columns: [
+              {
+                key: "submitted",
+                label: "Submitted",
+                sortable: true,
+                accessor: (r) => r.createdAt.slice(0, 16).replace("T", " "),
+              },
+              {
+                key: "promoter",
+                label: "Promoter",
+                sortable: true,
+                accessor: (r) => r.promoterDisplayName,
+              },
+              { key: "date", label: "Date", sortable: true, accessor: (r) => r.saleDate },
+              {
+                key: "club",
+                label: "Club",
+                sortable: true,
+                accessor: (r) => r.clubSlug,
+                render: (r) => `<code class="admin-list-code">${escapeAttr(r.clubSlug)}</code>`,
+              },
+              { key: "tier", label: "Tier", sortable: true, accessor: (r) => r.tier },
+              { key: "tables", label: "Tables", sortable: true, accessor: (r) => r.tableCount },
+              {
+                key: "spend",
+                label: "Min spend",
+                sortable: true,
+                accessor: (r) => r.totalMinSpend,
+                render: (r) => escapeAttr(`£${r.totalMinSpend.toFixed(2)}`),
+              },
+              {
+                key: "notes",
+                label: "Notes",
+                accessor: (r) => r.notes || "—",
+                render: (r) => escapeAttr(adminDisplayTruncate(r.notes || "—", 40)),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                align: "right",
+                render: (r) =>
+                  `<input type="text" data-ts-notes placeholder="Notes" class="pp-input" style="max-width:6.5rem;display:inline-block;vertical-align:middle;margin-right:0.35rem" />
+                   <button type="button" class="cc-btn cc-btn--gold cc-btn--small" data-ts-approve data-entry-id="${escapeAttr(r.id)}">Approve</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-ts-reject data-entry-id="${escapeAttr(r.id)}">Reject</button>`,
+              },
+            ],
+            paginated: false,
+          });
+        }
       } else if (view === "financials") {
         listEl.className = "admin-list";
-        listEl.innerHTML = `<p class="admin-note">Financial reporting is generated from \`financial_transactions\`.</p>`;
+        listEl.innerHTML = "";
+        mountDataTable(listHost, {
+          id: "admin-financials-hint",
+          rows: [],
+          columns: [{ key: "x", label: "Item", accessor: () => "" }],
+          empty: {
+            title: "Financial workspace",
+            description:
+              "Rules, bookings, payees, and period summaries are edited in the main panel. This list stays empty here by design.",
+          },
+          paginated: false,
+        });
       } else if (view === "flyers") {
-        listEl.className = "admin-list admin-list--table";
-        const activeIndex = selectedFlyer;
+        listEl.className = "admin-list";
+        const fq = listSearch.trim().toLowerCase();
+        const filteredFlyers = flyers
+          .map((flyer, idx) => ({ flyer, idx }))
+          .filter(({ flyer }) => {
+            if (!fq) return true;
+            return `${flyer.clubSlug} ${flyer.eventDate} ${flyer.title} ${flyer.description}`
+              .toLowerCase()
+              .includes(fq);
+          });
         if (!flyers.length) {
           listEl.innerHTML = `<p class="admin-note">No flyers. Add one below.</p>`;
+        } else if (!filteredFlyers.length) {
+          listEl.innerHTML = `<p class="admin-note">No rows match your search.</p>`;
         } else {
-          const rows = flyers
-            .map((f, i) => {
-              const active = i === activeIndex ? " is-active" : "";
-              return `<tr class="admin-list-row${active}" data-i="${i}" tabindex="0" role="button">
-                <td>${escapeAttr(adminDisplayTruncate(f.clubSlug, 24))}</td>
-                <td>${escapeAttr(f.eventDate)}</td>
-                <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(f.title, 36))}</td>
-              </tr>`;
-            })
-            .join("");
-          listEl.innerHTML = adminListTableWrap(
-            `<thead><tr>
-              <th scope="col">Club</th>
-              <th scope="col">Event date</th>
-              <th scope="col">Title</th>
-            </tr></thead><tbody>${rows}</tbody>`,
-          );
-          bindAdminListRows(listEl, "tr[data-i]", (row) => {
-            selectedFlyer = Number(row.dataset.i ?? "0");
-            renderDashboard();
+          listEl.innerHTML = "";
+          mountDataTable(listHost, {
+            id: "admin-flyers-list",
+            rows: filteredFlyers,
+            rowId: (r) => String(r.idx),
+            activeRowId: String(selectedFlyer),
+            columns: [
+              {
+                key: "thumb",
+                label: "",
+                width: "64px",
+                render: ({ flyer }) =>
+                  flyer.imageUrl
+                    ? `<img src="${escapeAttr(flyer.imageUrl)}" alt="" style="width:44px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--portal-border)" />`
+                    : `<span class="pp-avatar pp-avatar--sm">•</span>`,
+              },
+              {
+                key: "club",
+                label: "Club",
+                sortable: true,
+                accessor: ({ flyer }) => flyer.clubSlug,
+                render: ({ flyer }) => `<code class="admin-list-code">${escapeAttr(flyer.clubSlug)}</code>`,
+              },
+              {
+                key: "eventDate",
+                label: "Event date",
+                sortable: true,
+                accessor: ({ flyer }) => flyer.eventDate,
+              },
+              {
+                key: "title",
+                label: "Title",
+                sortable: true,
+                accessor: ({ flyer }) => flyer.title,
+                render: ({ flyer }) => escapeAttr(adminDisplayTruncate(flyer.title, 40)),
+              },
+              {
+                key: "active",
+                label: "Active",
+                sortable: true,
+                accessor: ({ flyer }) => (flyer.isActive ? "active" : "inactive"),
+                render: ({ flyer }) => renderStatusBadge(flyer.isActive ? "active" : "inactive"),
+              },
+              {
+                key: "actions",
+                label: "Actions",
+                align: "right",
+                render: ({ idx }) =>
+                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-edit="${idx}">Edit</button>
+                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-delete="${idx}">Delete</button>`,
+              },
+            ],
+            onRowClick: (row) => {
+              selectedFlyer = row.idx;
+              renderDashboard();
+            },
+            paginated: false,
+          });
+          listEl.querySelectorAll<HTMLElement>("[data-item-edit]").forEach((btn) => {
+            btn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const i = Number((btn as HTMLElement).getAttribute("data-item-edit") || "0");
+              selectedFlyer = i;
+              flyerFormOpen = true;
+              renderDashboard();
+            });
+          });
+          listEl.querySelectorAll<HTMLElement>("[data-item-delete]").forEach((btn) => {
+            btn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const i = Number((btn as HTMLElement).getAttribute("data-item-delete") || "0");
+              selectedFlyer = i;
+              (adminRoot.querySelector("#admin-delete") as HTMLButtonElement | null)?.click();
+            });
           });
         }
       } else if (view === "admin_profile") {
@@ -5164,6 +5918,7 @@ export async function initAdminPortal(): Promise<void> {
               {
                 key: "actions",
                 label: "Actions",
+                align: "right",
                 render: ({ idx }) =>
                   `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-edit="${idx}">Edit</button>
                    <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-item-delete="${idx}">Delete</button>`,
@@ -5619,11 +6374,13 @@ export async function initAdminPortal(): Promise<void> {
         const current = flyers[selectedFlyer];
         if (!current) {
           flash("No flyer selected.", "error");
+          pendingDashboardModalClose = null;
           return;
         }
         const ve = validateFlyerShape(current, clubEntries);
         if (ve.length) {
           flash(ve.join(" "), "error");
+          pendingDashboardModalClose = null;
           return;
         }
         void (async () => {
@@ -5644,6 +6401,7 @@ export async function initAdminPortal(): Promise<void> {
           const { data, error } = await q;
           if (error) {
             flash(`Save failed: ${error.message}`, "error");
+            pendingDashboardModalClose = null;
             return;
           }
           if (!current.id && Array.isArray(data) && data[0]?.id) {
@@ -5654,7 +6412,11 @@ export async function initAdminPortal(): Promise<void> {
           }
           await reloadFlyers();
           flash("Flyer saved.");
-          renderDashboard();
+          if (pendingDashboardModalClose) {
+            flushPendingDashboardModalClose();
+          } else {
+            renderDashboard();
+          }
         })();
       });
     }
@@ -5724,12 +6486,17 @@ export async function initAdminPortal(): Promise<void> {
         if (!res.ok) {
           if (output) output.textContent = `Create invite failed: ${res.message}`;
           flash(`Create invite failed: ${res.message}`, "error");
+          pendingDashboardModalClose = null;
           return;
         }
         if (output) output.textContent = `Invite code generated: ${res.row.inviteCode}`;
         await reloadClubAccounts();
         flash("Club invite generated.");
-        renderDashboard();
+        if (pendingDashboardModalClose) {
+          flushPendingDashboardModalClose();
+        } else {
+          renderDashboard();
+        }
       })();
     });
 
@@ -5825,6 +6592,7 @@ export async function initAdminPortal(): Promise<void> {
         }
         await reloadPromoterSignupRequests();
         await reloadPromoters();
+        await reloadFinancialReport();
         flash(
           "Promoter approved. Auth account created; applicant should receive email with password (configure Resend + Edge Function).",
         );
@@ -6257,17 +7025,23 @@ export async function initAdminPortal(): Promise<void> {
       const to = String(fd.get("to") || "").trim();
       if (!promoterId || !from || !to) {
         flash("Promoter and date range are required.", "error");
+        pendingDashboardModalClose = null;
         return;
       }
       void (async () => {
         const res = await generateInvoiceForPromoter(supabase, promoterId, from, to);
         if (!res.ok) {
           flash(`Invoice failed: ${res.message}`, "error");
+          pendingDashboardModalClose = null;
           return;
         }
         await reloadPromoters();
         flash(`Invoice generated: ${res.invoiceId.slice(0, 8)}…`);
-        renderDashboard();
+        if (pendingDashboardModalClose) {
+          flushPendingDashboardModalClose();
+        } else {
+          renderDashboard();
+        }
       })();
     });
 
@@ -6449,6 +7223,47 @@ export async function initAdminPortal(): Promise<void> {
         if (row) row.status = t.value;
       }
     });
+
+    if (view === "admin_profile" && adminProfileFormOpen) {
+      mountDashboardFormModal("admin-profile-form", "Admin profile", () => {
+        adminProfileFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "clubs" && clubFormOpen) {
+      const clubRow = clubEntries[selectedClub]?.club ?? cloneClub();
+      const clubModalTitle = clubRow.slug.trim()
+        ? `Edit club — ${clubRow.name.trim() || clubRow.slug.trim()}`
+        : "New club";
+      mountDashboardFormModal("club-form", clubModalTitle, () => {
+        clubFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "cars" && carFormOpen) {
+      mountDashboardFormModal("car-form", "Car editor", () => {
+        carFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "flyers" && flyerFormOpen) {
+      mountDashboardFormModal("flyer-form", "Flyer editor", () => {
+        flyerFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "invoices" && invoiceFormOpen) {
+      mountDashboardFormModal("promoter-invoice-form", "Invoice actions", () => {
+        invoiceFormOpen = false;
+        renderDashboard();
+      });
+    }
+    if (view === "club_accounts" && clubAccountsFormOpen) {
+      mountDashboardFormModal("club-accounts-form", "Club account tools", () => {
+        clubAccountsFormOpen = false;
+        renderDashboard();
+      });
+    }
 
     if (view === "jobs" && editingJobId) {
       const dlg = adminRoot.querySelector(

@@ -37,6 +37,7 @@ import { notifyPromoterRequestSubmitted } from "../lib/promoter-request-edge";
 import { renderStatusBadge } from "../portal/badge";
 import { mountDataTable } from "../portal/data-table";
 import { getSupabaseClient } from "../lib/supabase";
+import { applyCollapsibleFormSections } from "../lib/collapsible-form-sections";
 import type {
   Club,
   FinancialBooking,
@@ -1044,47 +1045,6 @@ export async function initPromoterPortal(): Promise<void> {
         <p class="promoter-main__subtitle" style="margin-top:0">PDF uses the same Cooper invoice function as admin (deploy the <code>promoter-invoice</code> Edge Function).</p>
         <div id="promoter-invoices-table"></div>
       </div>`;
-  }
-
-  function applyCollapsibleFormSections(scope: ParentNode): void {
-    const blocks = Array.from(
-      scope.querySelectorAll<HTMLElement>(".admin-form[data-collapsible='true']"),
-    );
-    for (const block of blocks) {
-      if (block.dataset.collapsibleReady === "1") continue;
-      const headings = Array.from(
-        block.querySelectorAll<HTMLElement>(":scope > h4.full"),
-      );
-      if (!headings.length) {
-        block.dataset.collapsibleReady = "1";
-        continue;
-      }
-      for (let i = 0; i < headings.length; i += 1) {
-        const heading = headings[i];
-        const nextHeading = headings[i + 1] ?? null;
-        const details = document.createElement("details");
-        details.className = "pp-form-section full";
-        details.open = i === 0;
-
-        const summary = document.createElement("summary");
-        summary.className = "pp-form-section__summary";
-        summary.textContent = heading.textContent?.trim() || `Section ${i + 1}`;
-        details.append(summary);
-
-        const body = document.createElement("div");
-        body.className = "pp-form-section__body";
-        details.append(body);
-
-        let node = heading.nextElementSibling as HTMLElement | null;
-        while (node && node !== nextHeading) {
-          const nextNode = node.nextElementSibling as HTMLElement | null;
-          body.append(node);
-          node = nextNode;
-        }
-        heading.replaceWith(details);
-      }
-      block.dataset.collapsibleReady = "1";
-    }
   }
 
   function renderDashboard(): void {

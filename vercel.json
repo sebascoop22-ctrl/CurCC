@@ -40,6 +40,7 @@
     { "source": "/go/tiktok", "destination": "/go/tiktok.html" },
     { "source": "/go/facebook", "destination": "/go/facebook.html" },
     { "source": "/go/youtube", "destination": "/go/youtube.html" },
-    { "source": "/go/linkedin", "destination": "/go/linkedin.html" }
+    { "source": "/go/linkedin", "destination": "/go/linkedin.html" },
+    { "source": "/services/:slug", "destination": "/service-category.html" }
   ]
 }

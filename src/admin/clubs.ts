@@ -132,7 +132,9 @@ export async function loadClubJobs(
 ): Promise<Ok<PromoterJob>> {
   const { data, error } = await supabase
     .from("promoter_jobs")
-    .select("id,promoter_id,club_slug,service,job_date,status,guests_count,shift_fee,guestlist_fee,client_name,client_contact,notes")
+    .select(
+      "id,promoter_id,club_slug,service,job_date,status,guests_count,shift_fee,guestlist_fee,client_name,client_contact,notes,club_payment_rate_id,financial_booking_id",
+    )
     .eq("club_slug", clubSlug)
     .order("job_date", { ascending: false });
   if (error) return { ok: false, message: error.message };
@@ -149,6 +151,14 @@ export async function loadClubJobs(
     clientName: String((r as { client_name?: string }).client_name ?? ""),
     clientContact: String((r as { client_contact?: string }).client_contact ?? ""),
     notes: String((r as { notes?: string }).notes ?? ""),
+    clubPaymentRateId:
+      (r as { club_payment_rate_id?: string | null }).club_payment_rate_id != null
+        ? String((r as { club_payment_rate_id?: string | null }).club_payment_rate_id)
+        : null,
+    financialBookingId:
+      (r as { financial_booking_id?: string | null }).financial_booking_id != null
+        ? String((r as { financial_booking_id?: string | null }).financial_booking_id)
+        : null,
   }));
   return { ok: true, rows };
 }

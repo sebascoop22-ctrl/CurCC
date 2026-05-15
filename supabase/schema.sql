@@ -2639,11 +2639,11 @@ with check (
   )
 );
 
--- Native financial tracking domain (rules, promoters, bookings, aggregates).
-create table if not exists public.financial_rules (
+-- Native financial tracking domain (club payment rate sheet, promoters, bookings, aggregates).
+create table if not exists public.financial_club_payment_rates (
   id uuid primary key default gen_random_uuid(),
-  department text not null check (department in ('nightlife', 'transport', 'protection', 'other')),
   club_slug text references public.clubs(slug) on delete set null,
+  department text not null check (department in ('nightlife', 'transport', 'protection', 'other')),
   venue_or_service_name text not null default '',
   male_rate numeric(12,2) not null default 0,
   female_rate numeric(12,2) not null default 0,
@@ -2656,6 +2656,7 @@ create table if not exists public.financial_rules (
   effective_from date not null default current_date,
   effective_to date,
   archived_at timestamptz,
+  sheet_extension jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -2674,6 +2675,9 @@ create table if not exists public.financial_promoters (
 create unique index if not exists financial_promoters_user_id_uidx
 on public.financial_promoters(user_id)
 where user_id is not null;
+
+alter table public.financial_promoters
+  add column if not exists sheet_extension jsonb not null default '{}'::jsonb;
 
 create table if not exists public.financial_config_change_requests (
   id uuid primary key default gen_random_uuid(),
@@ -2696,7 +2700,7 @@ create table if not exists public.financial_bookings (
   club_slug text references public.clubs(slug) on delete set null,
   promoter_id uuid references public.financial_promoters(id) on delete set null,
   client_id uuid references public.clients(id) on delete set null,
-  rule_id uuid references public.financial_rules(id) on delete set null,
+  club_payment_rate_id uuid references public.financial_club_payment_rates(id) on delete set null,
   rule_snapshot_json jsonb not null default '{}'::jsonb,
   venue_or_service_name text not null default '',
   payment_status text not null default 'expected' check (payment_status in ('expected', 'attended', 'paid_final')),
@@ -2710,7 +2714,6 @@ create table if not exists public.financial_bookings (
 create unique index if not exists financial_bookings_reference_idx
 on public.financial_bookings (booking_reference);
 
-alter table public.financial_rules add column if not exists club_slug text references public.clubs(slug) on delete set null;
 alter table public.financial_bookings add column if not exists club_slug text references public.clubs(slug) on delete set null;
 
 create table if not exists public.financial_booking_nightlife (
@@ -2730,7 +2733,20 @@ create table if not exists public.financial_booking_service (
   updated_at timestamptz not null default now()
 );
 
-alter table public.financial_rules enable row level security;
+alter table public.promoter_jobs
+  add column if not exists club_payment_rate_id uuid references public.financial_club_payment_rates(id) on delete set null;
+alter table public.promoter_jobs
+  add column if not exists financial_booking_id uuid references public.financial_bookings(id) on delete set null;
+
+create index if not exists promoter_jobs_club_payment_rate_idx
+on public.promoter_jobs (club_payment_rate_id)
+where club_payment_rate_id is not null;
+
+create index if not exists promoter_jobs_financial_booking_idx
+on public.promoter_jobs (financial_booking_id)
+where financial_booking_id is not null;
+
+alter table public.financial_club_payment_rates enable row level security;
 alter table public.financial_promoters enable row level security;
 alter table public.financial_config_change_requests enable row level security;
 alter table public.financial_bookings enable row level security;
@@ -2800,25 +2816,25 @@ as $$
     public.is_financial_editor()
     or exists (
       select 1
-      from public.financial_rules fr
-      join public.club_accounts ca on ca.club_slug = fr.club_slug
-      where fr.id = p_target_id
+      from public.financial_club_payment_rates r
+      join public.club_accounts ca on ca.club_slug = r.club_slug
+      where r.id = p_target_id
         and ca.user_id = auth.uid()
         and ca.status = 'active'
         and ca.role in ('owner', 'manager')
     );
 $$;
 
-drop policy if exists financial_rules_read on public.financial_rules;
-create policy financial_rules_read
-on public.financial_rules
+drop policy if exists financial_club_payment_rates_read on public.financial_club_payment_rates;
+create policy financial_club_payment_rates_read
+on public.financial_club_payment_rates
 for select
 to authenticated
 using (public.is_financial_reader());
 
-drop policy if exists financial_rules_write on public.financial_rules;
-create policy financial_rules_write
-on public.financial_rules
+drop policy if exists financial_club_payment_rates_write on public.financial_club_payment_rates;
+create policy financial_club_payment_rates_write
+on public.financial_club_payment_rates
 for all
 to authenticated
 using (public.is_financial_editor())
