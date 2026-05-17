@@ -556,7 +556,7 @@ function buildAdminJobsCalendarHtml(
 
 function validateClubShape(club: Club): string[] {
   const err: string[] = [];
-  const slug = club.slug.trim();
+  const slug = club.slug.trim().toLowerCase();
   if (!slug) err.push("Club slug is required.");
   else if (!SLUG_PATTERN.test(slug))
     err.push("Club slug: use lowercase letters, numbers, and hyphens only.");

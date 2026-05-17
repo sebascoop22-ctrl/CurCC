@@ -23,6 +23,11 @@ export const CLUB_DETAIL_TABS: Array<{ id: ClubDetailTab; label: string }> = [
   { id: "accounts", label: "Accounts" },
 ];
 
+/** Canonical URL slug: lowercase letters, numbers, and hyphens. */
+export function normalizeCatalogSlug(slug: string): string {
+  return slug.trim().toLowerCase();
+}
+
 export function parseClubDetailTab(raw: string): ClubDetailTab {
   const t = raw.trim().toLowerCase();
   if (CLUB_DETAIL_TABS.some((x) => x.id === t)) return t as ClubDetailTab;
@@ -170,10 +175,11 @@ export function applyClubFinancialFromFormData(club: Club, fd: FormData): Club {
 
 /** General-tab fields only (profile, location, hours, venue). */
 export function applyClubFullFromFormData(club: Club, fd: FormData): Club {
-  const slug = String(fd.get("slug") || "").trim();
+  const slugRaw = String(fd.get("slug") || "").trim();
+  const slug = slugRaw ? normalizeCatalogSlug(slugRaw) : normalizeCatalogSlug(club.slug);
   return {
     ...applyClubPublicFromFormData(club, fd),
-    slug: slug || club.slug,
+    slug,
     featured: fd.has("featured")
       ? String(fd.get("featured") || "")
           .toLowerCase()

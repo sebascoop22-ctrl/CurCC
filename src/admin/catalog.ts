@@ -96,20 +96,27 @@ export async function loadCarsForAdmin(
 export async function upsertClubToDb(
   supabase: SupabaseClient,
   club: Club,
-  opts: { sortOrder: number; isActive: boolean },
+  opts: { sortOrder: number; isActive: boolean; previousSlug?: string },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const slug = club.slug.trim();
+  const slug = club.slug.trim().toLowerCase();
   if (!slug) return { ok: false, message: "Club slug is required." };
+  const payload: Club = { ...club, slug };
   const row = {
     slug,
-    name: club.name.trim() || slug,
+    name: payload.name.trim() || slug,
     sort_order: opts.sortOrder,
     is_active: opts.isActive,
-    payment_details: club.paymentDetails ?? {},
-    tax_details: club.taxDetails ?? {},
-    payload: club,
+    payment_details: payload.paymentDetails ?? {},
+    tax_details: payload.taxDetails ?? {},
+    payload,
     updated_at: new Date().toISOString(),
   };
+  const prev = opts.previousSlug?.trim();
+  if (prev && prev.toLowerCase() === slug && prev !== slug) {
+    const { error } = await supabase.from("clubs").update(row).eq("slug", prev);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true };
+  }
   const { error } = await supabase.from("clubs").upsert(row, {
     onConflict: "slug",
   });

@@ -16,6 +16,7 @@ import {
   applyClubMediaFromFormData,
   applyClubPublicFromFormData,
   findClubEntryIndex,
+  normalizeCatalogSlug,
   parseClubDetailTab,
   resolveClubCatalogSlug,
 } from "./club-catalog-shared";
@@ -188,7 +189,7 @@ export type ClubCatalogBindCtx = {
   validateClub: (club: Club) => string[];
   upsertClub: (
     club: Club,
-    meta: { sortOrder: number; isActive: boolean },
+    meta: { sortOrder: number; isActive: boolean; previousSlug?: string },
   ) => Promise<{ ok: true } | { ok: false; message: string }>;
   reloadRates: () => Promise<void>;
   reloadAccounts: () => Promise<void>;
@@ -468,19 +469,27 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       const form = adminRoot.querySelector("#club-quick-edit-form") as HTMLFormElement | null;
       const entry = entries[i];
       if (!form || !entry) return;
-      const club = applyClubPublicFromFormData(entry.club, new FormData(form));
+      const previousSlug = entry.club.slug.trim();
+      const club = {
+        ...applyClubPublicFromFormData(entry.club, new FormData(form)),
+        slug: normalizeCatalogSlug(previousSlug),
+      };
       const errs = ctx.validateClub(club);
       if (errs.length) {
         ctx.flash(errs.join(" "), "error");
         return;
       }
       void (async () => {
-        const res = await ctx.upsertClub(club, { sortOrder: i + 1, isActive: true });
+        const res = await ctx.upsertClub(club, {
+          sortOrder: i + 1,
+          isActive: true,
+          previousSlug,
+        });
         if (!res.ok) {
           ctx.flash(res.message, "error");
           return;
         }
-        updateEntryClub(ctx, entry.club.slug, club);
+        updateEntryClub(ctx, previousSlug, club);
         ctx.onStateChange({ quickEditIndex: null });
         adminRoot.querySelector("#club-quick-edit-host")?.remove();
         ctx.flash("Club updated.");
@@ -632,19 +641,24 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
     ctx.flash("Club not found.", "error");
     return;
   }
-  const club = { ...entry.club };
+  const previousSlug = entry.club.slug.trim();
+  const club = { ...entry.club, slug: normalizeCatalogSlug(entry.club.slug) };
   const idx = findClubEntryIndex(ctx.getEntries(), slug);
   const errs = ctx.validateClub(club);
   if (errs.length) {
     ctx.flash(errs.join(" "), "error");
     return;
   }
-  const res = await ctx.upsertClub(club, { sortOrder: Math.max(1, idx + 1), isActive: true });
+  const res = await ctx.upsertClub(club, {
+    sortOrder: Math.max(1, idx + 1),
+    isActive: true,
+    previousSlug,
+  });
   if (!res.ok) {
     ctx.flash(res.message, "error");
     return;
   }
-  const savedSlug = club.slug.trim() || slug;
+  const savedSlug = club.slug;
   updateEntryClub(ctx, slug, club);
   const state = ctx.getState();
   const tab = state.detailTab;
