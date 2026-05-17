@@ -1,4 +1,5 @@
 import { applyCollapsibleFormSections } from "../lib/collapsible-form-sections";
+import { CLUB_SLUG_PATTERN, normalizeCatalogSlug } from "../lib/catalog-slug";
 import {
   fetchCars,
   fetchClubFlyersAdmin,
@@ -556,10 +557,10 @@ function buildAdminJobsCalendarHtml(
 
 function validateClubShape(club: Club): string[] {
   const err: string[] = [];
-  const slug = club.slug.trim().toLowerCase();
+  const slug = normalizeCatalogSlug(club.slug);
   if (!slug) err.push("Club slug is required.");
-  else if (!SLUG_PATTERN.test(slug))
-    err.push("Club slug: use lowercase letters, numbers, and hyphens only.");
+  else if (!CLUB_SLUG_PATTERN.test(slug))
+    err.push("Club slug: use capitalised words with hyphens, e.g. Gallery-Club.");
   if (!club.name.trim()) err.push("Club name is required.");
   const lat = club.lat;
   const lng = club.lng;
@@ -6065,9 +6066,9 @@ export async function initAdminPortal(): Promise<void> {
     }
 
     adminRoot.querySelector("#club-image-upload")?.addEventListener("click", () => {
-      const slug = clubEntries[selectedClub]?.club.slug.trim() ?? "";
-      if (!slug || !SLUG_PATTERN.test(slug)) {
-        flash("Set a valid lowercase slug (letters, numbers, hyphens) before uploading.", "error");
+      const slug = normalizeCatalogSlug(clubEntries[selectedClub]?.club.slug ?? "");
+      if (!slug || !CLUB_SLUG_PATTERN.test(slug)) {
+        flash("Set a valid club slug (e.g. Gallery-Club) before uploading.", "error");
         return;
       }
       const input = adminRoot.querySelector("#club-image-file") as HTMLInputElement | null;

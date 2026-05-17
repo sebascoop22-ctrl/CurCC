@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeCatalogSlug } from "../lib/catalog-slug";
 import type { Car, Club } from "../types";
 
 export type ClubRow = {
@@ -98,7 +99,7 @@ export async function upsertClubToDb(
   club: Club,
   opts: { sortOrder: number; isActive: boolean; previousSlug?: string },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const slug = club.slug.trim().toLowerCase();
+  const slug = normalizeCatalogSlug(club.slug);
   if (!slug) return { ok: false, message: "Club slug is required." };
   const payload: Club = { ...club, slug };
   const row = {
@@ -112,7 +113,7 @@ export async function upsertClubToDb(
     updated_at: new Date().toISOString(),
   };
   const prev = opts.previousSlug?.trim();
-  if (prev && prev.toLowerCase() === slug && prev !== slug) {
+  if (prev) {
     const { error } = await supabase.from("clubs").update(row).eq("slug", prev);
     if (error) return { ok: false, message: error.message };
     return { ok: true };

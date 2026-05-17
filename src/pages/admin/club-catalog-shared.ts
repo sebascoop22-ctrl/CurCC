@@ -1,4 +1,7 @@
+import { normalizeCatalogSlug } from "../../lib/catalog-slug";
 import type { Club, GuestlistRecurrence, VenueType } from "../../types";
+
+export { normalizeCatalogSlug } from "../../lib/catalog-slug";
 
 export type ClubEntry = { dbId: string | null; club: Club };
 
@@ -22,11 +25,6 @@ export const CLUB_DETAIL_TABS: Array<{ id: ClubDetailTab; label: string }> = [
   { id: "promoters", label: "Promoters" },
   { id: "accounts", label: "Accounts" },
 ];
-
-/** Canonical URL slug: lowercase letters, numbers, and hyphens. */
-export function normalizeCatalogSlug(slug: string): string {
-  return slug.trim().toLowerCase();
-}
 
 export function parseClubDetailTab(raw: string): ClubDetailTab {
   const t = raw.trim().toLowerCase();

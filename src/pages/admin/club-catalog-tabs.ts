@@ -41,7 +41,7 @@ export function renderClubTabGeneralHtml(club: Club): string {
   const profile = adminSettingsSection(
     "Profile",
     "Public listing",
-    `${adminFieldText({ name: "slug", label: "URL slug", value: club.slug, required: true, col: "pp-col-4", hint: "Letters, numbers, hyphens — saved lowercase" })}
+    `${adminFieldText({ name: "slug", label: "URL slug", value: club.slug, required: true, col: "pp-col-4", hint: "e.g. Gallery-Club" })}
      ${adminFieldText({ name: "name", label: "Venue name", value: club.name, required: true, col: "pp-col-8", autocomplete: "organization" })}
      ${adminFieldTextarea({ name: "shortDescription", label: "Short description", value: club.shortDescription, col: "full", rows: 2, maxlength: 280 })}
      ${adminFieldTextarea({ name: "longDescription", label: "Long description", value: club.longDescription, col: "full", rows: 5 })}`,

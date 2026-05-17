@@ -630,20 +630,19 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
 }
 
 async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
-  const slug = resolveClubSlugFromCtx(ctx);
-  if (!slug) {
+  const previousSlug = resolveClubSlugFromCtx(ctx);
+  if (!previousSlug) {
     ctx.flash("Club not found.", "error");
     return;
   }
   persistClubDetailDomToEntries(ctx);
-  const entry = getEntry(ctx, slug);
+  const entry = getEntry(ctx, previousSlug);
   if (!entry) {
     ctx.flash("Club not found.", "error");
     return;
   }
-  const previousSlug = entry.club.slug.trim();
   const club = { ...entry.club, slug: normalizeCatalogSlug(entry.club.slug) };
-  const idx = findClubEntryIndex(ctx.getEntries(), slug);
+  const idx = findClubEntryIndex(ctx.getEntries(), previousSlug);
   const errs = ctx.validateClub(club);
   if (errs.length) {
     ctx.flash(errs.join(" "), "error");
@@ -659,7 +658,7 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
     return;
   }
   const savedSlug = club.slug;
-  updateEntryClub(ctx, slug, club);
+  updateEntryClub(ctx, previousSlug, club);
   const state = ctx.getState();
   const tab = state.detailTab;
   ctx.onStateChange({
