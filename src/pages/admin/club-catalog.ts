@@ -11,7 +11,9 @@ import {
   CLUB_DETAIL_TABS,
   type ClubDetailTab,
   type ClubEntry,
+  applyClubFinancialFromFormData,
   applyClubFullFromFormData,
+  applyClubMediaFromFormData,
   applyClubPublicFromFormData,
   findClubEntryIndex,
   parseClubDetailTab,
@@ -108,7 +110,7 @@ function truncate(s: string, max: number): string {
 export function renderClubQuickEditModalHtml(club: Club): string {
   return `
     <div class="pp-modal-host finx-modal-host" id="club-quick-edit-host">
-      <div class="pp-modal__overlay" data-club-quick-close>
+      <div class="pp-modal__overlay" data-club-quick-edit-overlay>
         <div class="pp-modal finx-modal admin-quick-edit-modal" role="dialog" aria-modal="true" aria-label="Quick edit club">
           <div class="pp-modal__header">
             <h4 class="pp-modal__title">Quick edit — ${escHtml(club.name || club.slug || "Club")}</h4>
@@ -215,6 +217,36 @@ function updateEntryClub(ctx: ClubCatalogBindCtx, slug: string, club: Club): voi
   const next = [...entries];
   next[i] = { ...next[i]!, club };
   ctx.onEntriesChange(next);
+}
+
+/** Merge the visible tab form into in-memory catalog entries (only one tab is mounted at a time). */
+function persistClubDetailDomToEntries(ctx: ClubCatalogBindCtx): void {
+  const slug = resolveClubSlugFromCtx(ctx);
+  if (!slug) return;
+  const entry = getEntry(ctx, slug);
+  if (!entry) return;
+
+  let club = { ...entry.club };
+  const publicForm = ctx.adminRoot.querySelector("#club-detail-public-form") as HTMLFormElement | null;
+  const finForm = ctx.adminRoot.querySelector("#club-tab-financial-form") as HTMLFormElement | null;
+  const mediaForm = ctx.adminRoot.querySelector("#club-tab-media-form") as HTMLFormElement | null;
+
+  if (publicForm) {
+    club = applyClubFullFromFormData(club, new FormData(publicForm));
+  }
+  if (finForm) {
+    club = applyClubFinancialFromFormData(club, new FormData(finForm));
+  }
+  if (mediaForm) {
+    club = applyClubMediaFromFormData(club, new FormData(mediaForm));
+    const heroRaw = new FormData(mediaForm).get("heroImageIndex");
+    const heroIndex = Number(heroRaw ?? 0);
+    if (Number.isFinite(heroIndex) && heroIndex >= 0) {
+      ctx.onStateChange({ heroImageIndex: heroIndex });
+    }
+  }
+
+  updateEntryClub(ctx, slug, club);
 }
 
 let clubDetailMountSeq = 0;
@@ -329,6 +361,12 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
   adminRoot.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement;
     const entries = ctx.getEntries();
+
+    // Clicks inside the quick-edit dialog must not bubble to other admin handlers (e.g. list row actions).
+    if (t.closest("#club-quick-edit-host .pp-modal")) {
+      ev.stopPropagation();
+    }
+
     const quickBtn = t.closest("[data-club-quick-edit]") as HTMLElement | null;
     const quickIdx = quickBtn?.getAttribute("data-club-quick-edit");
     if (quickIdx != null) {
@@ -389,6 +427,7 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       if (state.mode === "detail" && state.detailTab === tab && state.detailSlug.trim() === slug) {
         return;
       }
+      persistClubDetailDomToEntries(ctx);
       writeClubCatalogUrl(slug, tab);
       ctx.onStateChange({
         mode: "detail",
@@ -398,6 +437,12 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
         editingRateId: null,
       });
       ctx.renderDashboard();
+      return;
+    }
+    const quickOverlay = t.closest("[data-club-quick-edit-overlay]");
+    if (quickOverlay && ev.target === quickOverlay) {
+      ctx.onStateChange({ quickEditIndex: null });
+      adminRoot.querySelector("#club-quick-edit-host")?.remove();
       return;
     }
     if (t.closest("[data-club-quick-close]")) {
@@ -444,6 +489,8 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       return;
     }
     if (t.closest("[data-club-detail-save]")) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
       void saveClubDetail(ctx);
       return;
     }
@@ -456,14 +503,20 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
     if (t.closest("[data-club-rate-cancel]")) {
       ctx.onStateChange({ editingRateId: null });
       ctx.renderDashboard();
+      return;
     }
   });
 
   adminRoot.addEventListener("submit", (ev) => {
     const form = (ev.target as HTMLElement).closest("form");
     if (!form) return;
-    const slug = ctx.getState().detailSlug.trim();
+    const slug = resolveClubSlugFromCtx(ctx);
     if (!slug) return;
+    if (form.id === "club-detail-public-form") {
+      ev.preventDefault();
+      void saveClubDetail(ctx);
+      return;
+    }
     if (form.id === "club-tab-rates-form") {
       ev.preventDefault();
       void (async () => {
@@ -568,55 +621,43 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
 }
 
 async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
-  const slug = ctx.getState().detailSlug.trim();
+  const slug = resolveClubSlugFromCtx(ctx);
+  if (!slug) {
+    ctx.flash("Club not found.", "error");
+    return;
+  }
+  persistClubDetailDomToEntries(ctx);
   const entry = getEntry(ctx, slug);
   if (!entry) {
     ctx.flash("Club not found.", "error");
     return;
   }
-  const publicForm = ctx.adminRoot.querySelector("#club-detail-public-form") as HTMLFormElement | null;
-  const finForm = ctx.adminRoot.querySelector("#club-tab-financial-form") as HTMLFormElement | null;
-  const mediaForm = ctx.adminRoot.querySelector("#club-tab-media-form") as HTMLFormElement | null;
-  let club = { ...entry.club };
-  if (publicForm) club = applyClubFullFromFormData(club, new FormData(publicForm));
-  if (finForm) {
-    const fd = new FormData(finForm);
-    club = {
-      ...club,
-      paymentDetails: {
-        method: String(fd.get("paymentMethod") || "").trim(),
-        beneficiaryName: String(fd.get("beneficiaryName") || "").trim(),
-        accountNumber: String(fd.get("accountNumber") || "").trim(),
-        sortCode: String(fd.get("sortCode") || "").trim(),
-        iban: String(fd.get("iban") || "").trim(),
-        swiftBic: String(fd.get("swiftBic") || "").trim(),
-        reference: String(fd.get("paymentReference") || "").trim(),
-        payoutEmail: String(fd.get("payoutEmail") || "").trim(),
-      },
-      taxDetails: {
-        registeredName: String(fd.get("taxRegisteredName") || "").trim(),
-        taxId: String(fd.get("taxId") || "").trim(),
-        vatNumber: String(fd.get("vatNumber") || "").trim(),
-        countryCode: String(fd.get("taxCountryCode") || "").trim().toUpperCase(),
-        isVatRegistered: String(fd.get("isVatRegistered") || "false").trim() === "true",
-        notes: String(fd.get("taxNotes") || "").trim(),
-      },
-    };
-  }
-  if (mediaForm) club = applyClubFullFromFormData(club, new FormData(mediaForm));
+  const club = { ...entry.club };
   const idx = findClubEntryIndex(ctx.getEntries(), slug);
   const errs = ctx.validateClub(club);
   if (errs.length) {
     ctx.flash(errs.join(" "), "error");
     return;
   }
-  const res = await ctx.upsertClub(club, { sortOrder: idx + 1, isActive: true });
+  const res = await ctx.upsertClub(club, { sortOrder: Math.max(1, idx + 1), isActive: true });
   if (!res.ok) {
     ctx.flash(res.message, "error");
     return;
   }
+  const savedSlug = club.slug.trim() || slug;
   updateEntryClub(ctx, slug, club);
+  const state = ctx.getState();
+  const tab = state.detailTab;
+  ctx.onStateChange({
+    mode: "detail",
+    detailSlug: savedSlug,
+    detailTab: tab,
+    tabCache: null,
+    editingRateId: null,
+  });
+  writeClubCatalogUrl(savedSlug, tab);
   ctx.flash("Club saved.");
+  ctx.renderDashboard();
 }
 
 export async function buildClubDetailTabHtml(

@@ -135,28 +135,18 @@ export function applyClubPublicFromFormData(club: Club, fd: FormData): Club {
   };
 }
 
-export function applyClubFullFromFormData(club: Club, fd: FormData): Club {
+/** Media tab only — does not clear profile fields missing from that form. */
+export function applyClubMediaFromFormData(club: Club, fd: FormData): Club {
   return {
-    ...applyClubPublicFromFormData(club, fd),
-    slug: String(fd.get("slug") || "").trim(),
-    featured: String(fd.get("featured") || "")
-      .toLowerCase()
-      .includes("true"),
-    featuredDay: String(fd.get("featuredDay") || "").trim(),
-    venueType: parseVenueType(String(fd.get("venueType") || "")),
-    lat: Number(fd.get("lat") || 0) || 0,
-    lng: Number(fd.get("lng") || 0) || 0,
-    minSpend: String(fd.get("minSpend") || "").trim(),
-    website: String(fd.get("website") || "").trim(),
-    entryPricingWomen: String(fd.get("entryPricingWomen") || "").trim(),
-    entryPricingMen: String(fd.get("entryPricingMen") || "").trim(),
-    tablesStandard: String(fd.get("tablesStandard") || "").trim(),
-    tablesLuxury: String(fd.get("tablesLuxury") || "").trim(),
-    tablesVip: String(fd.get("tablesVip") || "").trim(),
-    knownFor: parseLines(String(fd.get("knownFor") || "")),
-    amenities: parseLines(String(fd.get("amenities") || "")),
+    ...club,
     images: parseLines(String(fd.get("images") || "")),
     guestlists: parseGuestlists(String(fd.get("guestlists") || "")),
+  };
+}
+
+export function applyClubFinancialFromFormData(club: Club, fd: FormData): Club {
+  return {
+    ...club,
     paymentDetails: {
       method: String(fd.get("paymentMethod") || "").trim(),
       beneficiaryName: String(fd.get("beneficiaryName") || "").trim(),
@@ -175,6 +165,45 @@ export function applyClubFullFromFormData(club: Club, fd: FormData): Club {
       isVatRegistered: String(fd.get("isVatRegistered") || "false").trim() === "true",
       notes: String(fd.get("taxNotes") || "").trim(),
     },
+  };
+}
+
+/** General-tab fields only (profile, location, hours, venue). */
+export function applyClubFullFromFormData(club: Club, fd: FormData): Club {
+  const slug = String(fd.get("slug") || "").trim();
+  return {
+    ...applyClubPublicFromFormData(club, fd),
+    slug: slug || club.slug,
+    featured: fd.has("featured")
+      ? String(fd.get("featured") || "")
+          .toLowerCase()
+          .includes("true")
+      : club.featured,
+    featuredDay: fd.has("featuredDay")
+      ? String(fd.get("featuredDay") || "").trim()
+      : club.featuredDay,
+    venueType: fd.has("venueType")
+      ? parseVenueType(String(fd.get("venueType") || ""))
+      : club.venueType,
+    lat: fd.has("lat") ? Number(fd.get("lat") || 0) || 0 : club.lat,
+    lng: fd.has("lng") ? Number(fd.get("lng") || 0) || 0 : club.lng,
+    minSpend: fd.has("minSpend") ? String(fd.get("minSpend") || "").trim() : club.minSpend,
+    website: fd.has("website") ? String(fd.get("website") || "").trim() : club.website,
+    entryPricingWomen: fd.has("entryPricingWomen")
+      ? String(fd.get("entryPricingWomen") || "").trim()
+      : club.entryPricingWomen,
+    entryPricingMen: fd.has("entryPricingMen")
+      ? String(fd.get("entryPricingMen") || "").trim()
+      : club.entryPricingMen,
+    tablesStandard: fd.has("tablesStandard")
+      ? String(fd.get("tablesStandard") || "").trim()
+      : club.tablesStandard,
+    tablesLuxury: fd.has("tablesLuxury")
+      ? String(fd.get("tablesLuxury") || "").trim()
+      : club.tablesLuxury,
+    tablesVip: fd.has("tablesVip") ? String(fd.get("tablesVip") || "").trim() : club.tablesVip,
+    knownFor: fd.has("knownFor") ? parseLines(String(fd.get("knownFor") || "")) : club.knownFor,
+    amenities: fd.has("amenities") ? parseLines(String(fd.get("amenities") || "")) : club.amenities,
   };
 }
 
