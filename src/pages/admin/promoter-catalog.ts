@@ -8,6 +8,11 @@ import {
   loadPromoterRevisionsForAdmin,
   type PromoterRevisionRow,
 } from "../../admin/promoters";
+import {
+  mergeSheetExtensions,
+  normalizePromoterFinancialSheetExtension,
+  type PaymentSchedule,
+} from "../../lib/financial/club-financial-sheet-template";
 import type {
   FinancialPromoterProfile,
   PromoterInvoice,
@@ -15,6 +20,7 @@ import type {
   PromoterProfile,
   PromoterSignupRequest,
 } from "../../types";
+import { renderInvoiceVerificationBadge } from "./invoices-shared";
 import { renderEntityDetailChrome } from "./admin-entity-chrome";
 import { readEntityUrlParams, writeEntityUrlParams } from "./entity-url";
 
@@ -174,12 +180,37 @@ function renderPromoterTabFinancial(
   p: PromoterProfile,
   fin: FinancialPromoterProfile | null,
 ): string {
+  const sheet = normalizePromoterFinancialSheetExtension(fin?.sheetExtension ?? {});
+  const bank = (sheet.bank ?? {}) as Record<string, string>;
+  const tax = (sheet.tax ?? {}) as Record<string, unknown>;
+  const schedule = String(sheet.paymentSchedule ?? "");
+  const schedOpts = (["after_job", "weekly", "monthly"] as PaymentSchedule[]).map(
+    (s) =>
+      `<option value="${escAttr(s)}"${schedule === s ? " selected" : ""}>${escHtml(s.replace(/_/g, " "))}</option>`,
+  );
+  const vatReg = tax.isVatRegistered === true ? "true" : tax.isVatRegistered === false ? "false" : "";
   return `
     <form id="promoter-tab-financial-form" class="admin-form">
-      <p class="admin-note full">Portal profile is separate from the ledger promoter row used in bookings.</p>
+      <p class="admin-note full">Ledger row used on financial bookings and invoice verification. Banking is stored on <code>financial_promoters.sheet_extension</code>.</p>
       <div class="cc-field"><label>Ledger name</label><input name="finName" value="${escAttr(fin?.name ?? p.displayName)}" /></div>
       <div class="cc-field"><label>Commission %</label><input name="commissionPercentage" type="number" step="0.01" value="${fin?.commissionPercentage ?? 0}" /></div>
       <div class="cc-field"><label>Contact</label><input name="contact" value="${escAttr(fin?.contact ?? "")}" /></div>
+      <div class="cc-field"><label>Payout schedule</label><select name="paymentSchedule"><option value="">(default)</option>${schedOpts.join("")}</select></div>
+      <h4 class="full">Bank</h4>
+      <div class="cc-field"><label>Account name</label><input name="bankName" value="${escAttr(bank.name ?? "")}" /></div>
+      <div class="cc-field"><label>Alias</label><input name="bankAlias" value="${escAttr(bank.alias ?? "")}" /></div>
+      <div class="cc-field"><label>Sort code</label><input name="bankSortCode" value="${escAttr(bank.sortCode ?? "")}" /></div>
+      <div class="cc-field"><label>Account number</label><input name="bankAccountNumber" value="${escAttr(bank.accountNumber ?? "")}" /></div>
+      <div class="cc-field"><label>IBAN</label><input name="bankIban" value="${escAttr(bank.iban ?? "")}" /></div>
+      <div class="cc-field"><label>BIC / SWIFT</label><input name="bankBic" value="${escAttr(bank.bic ?? "")}" /></div>
+      <div class="cc-field full"><label>Bank address</label><input name="bankAddress" value="${escAttr(bank.address ?? "")}" /></div>
+      <h4 class="full">Tax</h4>
+      <div class="cc-field"><label>Registered name</label><input name="taxRegisteredName" value="${escAttr(String(tax.registeredName ?? ""))}" /></div>
+      <div class="cc-field"><label>Tax ID</label><input name="taxId" value="${escAttr(String(tax.taxId ?? ""))}" /></div>
+      <div class="cc-field"><label>VAT number</label><input name="taxVatNumber" value="${escAttr(String(tax.vatNumber ?? ""))}" /></div>
+      <div class="cc-field"><label>Country</label><input name="taxCountryCode" maxlength="2" value="${escAttr(String(tax.countryCode ?? ""))}" /></div>
+      <div class="cc-field"><label>VAT registered</label><select name="taxIsVatRegistered"><option value=""${vatReg === "" ? " selected" : ""}>—</option><option value="true"${vatReg === "true" ? " selected" : ""}>Yes</option><option value="false"${vatReg === "false" ? " selected" : ""}>No</option></select></div>
+      <div class="cc-field full"><label>Tax notes</label><textarea name="taxNotes" rows="2">${escHtml(String(tax.notes ?? ""))}</textarea></div>
       <div class="cc-field full"><label>Notes</label><textarea name="finNotes" rows="2">${escHtml(fin?.notes ?? "")}</textarea></div>
       <input type="hidden" name="finId" value="${escAttr(fin?.id ?? "")}" />
     </form>`;
@@ -201,14 +232,14 @@ function renderPromoterTabJobs(jobs: PromoterJob[]): string {
 function renderPromoterTabInvoices(invoices: PromoterInvoice[]): string {
   const rows =
     invoices.length === 0
-      ? `<tr><td colspan="4" class="admin-note">No invoices.</td></tr>`
+      ? `<tr><td colspan="5" class="admin-note">No invoices.</td></tr>`
       : invoices
           .map(
             (inv) =>
-              `<tr><td>${escHtml(`${inv.periodStart.slice(0, 10)} – ${inv.periodEnd.slice(0, 10)}`)}</td><td>${escHtml(inv.status)}</td><td>${escHtml(`£${inv.total.toFixed(2)}`)}</td><td>${escHtml(inv.sentAt?.slice(0, 10) ?? "—")}</td></tr>`,
+              `<tr><td>${escHtml(`${inv.periodStart.slice(0, 10)} – ${inv.periodEnd.slice(0, 10)}`)}</td><td>${escHtml(inv.status)}</td><td>${escHtml(`£${inv.total.toFixed(2)}`)}</td><td>${renderInvoiceVerificationBadge(inv.verificationStatus)}</td><td>${escHtml(inv.sentAt?.slice(0, 10) ?? "—")}</td></tr>`,
           )
           .join("");
-  return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Verification</th><th>Sent</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderPromoterTabClubs(
@@ -324,6 +355,7 @@ export type PromoterCatalogBindCtx = {
     commissionPercentage: number;
     contact: string;
     notes: string;
+    sheetExtension?: Record<string, unknown>;
   }) => Promise<{ ok: true } | { ok: false; message: string }>;
   approveRevision: (id: string, approve: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
   flash: (msg: string, kind?: "error") => void;
@@ -587,6 +619,32 @@ async function savePromoterDetail(ctx: PromoterCatalogBindCtx): Promise<void> {
     const form = ctx.adminRoot.querySelector("#promoter-tab-financial-form") as HTMLFormElement | null;
     if (!form) return;
     const fd = new FormData(form);
+    const existingFin = ctx.financialPromoters.find((x) => x.userId === p.userId) ?? null;
+    const baseSheet = normalizePromoterFinancialSheetExtension(existingFin?.sheetExtension ?? {});
+    const vatRaw = String(fd.get("taxIsVatRegistered") ?? "").trim();
+    const sheetExtension = normalizePromoterFinancialSheetExtension(
+      mergeSheetExtensions(baseSheet, {
+        paymentSchedule: String(fd.get("paymentSchedule") || "").trim() || null,
+        bank: {
+          name: String(fd.get("bankName") || "").trim(),
+          alias: String(fd.get("bankAlias") || "").trim(),
+          sortCode: String(fd.get("bankSortCode") || "").trim(),
+          accountNumber: String(fd.get("bankAccountNumber") || "").trim(),
+          iban: String(fd.get("bankIban") || "").trim(),
+          bic: String(fd.get("bankBic") || "").trim(),
+          address: String(fd.get("bankAddress") || "").trim(),
+        },
+        tax: {
+          registeredName: String(fd.get("taxRegisteredName") || "").trim(),
+          taxId: String(fd.get("taxId") || "").trim(),
+          vatNumber: String(fd.get("taxVatNumber") || "").trim(),
+          countryCode: String(fd.get("taxCountryCode") || "").trim(),
+          isVatRegistered:
+            vatRaw === "true" ? true : vatRaw === "false" ? false : null,
+          notes: String(fd.get("taxNotes") || "").trim(),
+        },
+      }),
+    );
     const res = await ctx.saveFinancialPromoter({
       id: String(fd.get("finId") || "").trim() || undefined,
       userId: p.userId,
@@ -594,6 +652,7 @@ async function savePromoterDetail(ctx: PromoterCatalogBindCtx): Promise<void> {
       commissionPercentage: Number(fd.get("commissionPercentage") || 0) || 0,
       contact: String(fd.get("contact") || "").trim(),
       notes: String(fd.get("finNotes") || "").trim(),
+      sheetExtension,
     });
     if (!res.ok) {
       ctx.flash(res.message, "error");

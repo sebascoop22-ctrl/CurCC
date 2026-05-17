@@ -1,5 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Club, ClubFlyer, PromoterJob } from "../types";
+import type { Club, ClubFlyer, ClubMasterVenueType, PromoterJob } from "../types";
+import { mapPromoterJobRow, PROMOTER_JOB_SELECT } from "../lib/financial/promoter-job-row";
+
+function parseClubMasterVenueType(v: unknown): ClubMasterVenueType | null {
+  const x = String(v ?? "").trim().toLowerCase();
+  if (x === "high_end" || x === "regional_ticket") return x;
+  return null;
+}
+
+function applyClubMasterColumns(payload: Club, raw: Record<string, unknown>): Club {
+  const regionCol = raw.region != null ? String(raw.region).trim() : "";
+  const venueTypeCol = parseClubMasterVenueType(raw.venue_type);
+  return {
+    ...payload,
+    region: regionCol || payload.region || payload.locationTag?.trim() || null,
+    masterVenueType: venueTypeCol ?? payload.masterVenueType ?? null,
+  };
+}
+
+export type ClubPortalJobRow = PromoterJob & {
+  promoterDisplayName: string;
+};
 
 type Ok<T> = { ok: true; rows: T[] } | { ok: false; message: string };
 type OkOne<T> = { ok: true; row: T } | { ok: false; message: string };
@@ -94,11 +115,14 @@ export async function loadClubBySlug(
 ): Promise<OkOne<Club>> {
   const { data, error } = await supabase
     .from("clubs")
-    .select("payload")
+    .select("payload, region, venue_type")
     .eq("slug", clubSlug)
     .maybeSingle();
   if (error || !data) return { ok: false, message: error?.message ?? "Club not found." };
-  return { ok: true, row: (data as { payload: Club }).payload };
+  const raw = data as Record<string, unknown>;
+  const base = raw.payload && typeof raw.payload === "object" ? (raw.payload as Club) : null;
+  if (!base) return { ok: false, message: "Club not found." };
+  return { ok: true, row: applyClubMasterColumns(base, raw) };
 }
 
 export async function loadClubFlyers(
@@ -129,36 +153,63 @@ export async function loadClubFlyers(
 export async function loadClubJobs(
   supabase: SupabaseClient,
   clubSlug: string,
-): Promise<Ok<PromoterJob>> {
+): Promise<Ok<ClubPortalJobRow>> {
+  const slug = clubSlug.trim();
   const { data, error } = await supabase
     .from("promoter_jobs")
-    .select(
-      "id,promoter_id,club_slug,service,job_date,status,guests_count,shift_fee,guestlist_fee,client_name,client_contact,notes,club_payment_rate_id,financial_booking_id",
-    )
-    .eq("club_slug", clubSlug)
+    .select(PROMOTER_JOB_SELECT)
+    .eq("club_slug", slug)
     .order("job_date", { ascending: false });
   if (error) return { ok: false, message: error.message };
-  const rows: PromoterJob[] = (data ?? []).map((r) => ({
+  const rows: PromoterJob[] = (data ?? []).map((r) =>
+    mapPromoterJobRow(r as Record<string, unknown>),
+  );
+  const promoterIds = [...new Set(rows.map((j) => j.promoterId).filter(Boolean))];
+  const nameById = new Map<string, string>();
+  if (promoterIds.length) {
+    const { data: promoters, error: pErr } = await supabase
+      .from("promoters")
+      .select("id,display_name")
+      .in("id", promoterIds);
+    if (!pErr) {
+      for (const p of promoters ?? []) {
+        const pr = p as { id?: string; display_name?: string };
+        const id = String(pr.id ?? "");
+        if (id) nameById.set(id, String(pr.display_name ?? "").trim() || "Promoter");
+      }
+    }
+  }
+  const enriched: ClubPortalJobRow[] = rows.map((j) => ({
+    ...j,
+    promoterDisplayName: nameById.get(j.promoterId) ?? `Promoter ${j.promoterId.slice(0, 8)}`,
+  }));
+  return { ok: true, rows: enriched };
+}
+
+export async function loadClubJobDisputes(
+  supabase: SupabaseClient,
+  clubSlug: string,
+): Promise<Ok<JobDisputeRow>> {
+  const { data, error } = await supabase
+    .from("job_disputes")
+    .select(
+      "id,club_slug,promoter_job_id,raised_by_user_id,raised_by_role,reason_code,description,status,resolution_notes,created_at,resolved_at",
+    )
+    .eq("club_slug", clubSlug.trim())
+    .order("created_at", { ascending: false });
+  if (error) return { ok: false, message: error.message };
+  const rows: JobDisputeRow[] = (data ?? []).map((r) => ({
     id: String((r as { id?: string }).id ?? ""),
-    promoterId: String((r as { promoter_id?: string }).promoter_id ?? ""),
-    clubSlug: String((r as { club_slug?: string }).club_slug ?? ""),
-    service: String((r as { service?: string }).service ?? "guestlist") as PromoterJob["service"],
-    jobDate: String((r as { job_date?: string }).job_date ?? ""),
-    status: String((r as { status?: string }).status ?? "assigned") as PromoterJob["status"],
-    guestsCount: Number((r as { guests_count?: number }).guests_count ?? 0) || 0,
-    shiftFee: Number((r as { shift_fee?: number }).shift_fee ?? 0) || 0,
-    guestlistFee: Number((r as { guestlist_fee?: number }).guestlist_fee ?? 0) || 0,
-    clientName: String((r as { client_name?: string }).client_name ?? ""),
-    clientContact: String((r as { client_contact?: string }).client_contact ?? ""),
-    notes: String((r as { notes?: string }).notes ?? ""),
-    clubPaymentRateId:
-      (r as { club_payment_rate_id?: string | null }).club_payment_rate_id != null
-        ? String((r as { club_payment_rate_id?: string | null }).club_payment_rate_id)
-        : null,
-    financialBookingId:
-      (r as { financial_booking_id?: string | null }).financial_booking_id != null
-        ? String((r as { financial_booking_id?: string | null }).financial_booking_id)
-        : null,
+    club_slug: String((r as { club_slug?: string }).club_slug ?? ""),
+    promoter_job_id: (r as { promoter_job_id?: string | null }).promoter_job_id ?? null,
+    raised_by_user_id: String((r as { raised_by_user_id?: string }).raised_by_user_id ?? ""),
+    raised_by_role: String((r as { raised_by_role?: string }).raised_by_role ?? "club") as JobDisputeRow["raised_by_role"],
+    reason_code: String((r as { reason_code?: string }).reason_code ?? ""),
+    description: String((r as { description?: string }).description ?? ""),
+    status: String((r as { status?: string }).status ?? "open") as JobDisputeRow["status"],
+    resolution_notes: String((r as { resolution_notes?: string }).resolution_notes ?? ""),
+    created_at: String((r as { created_at?: string }).created_at ?? ""),
+    resolved_at: (r as { resolved_at?: string | null }).resolved_at ?? null,
   }));
   return { ok: true, rows };
 }

@@ -22,8 +22,13 @@ import type {
   PromoterTableSale,
   PromoterTableSaleQueueRow,
   PromoterTableSaleReportRow,
-  PromoterJobService,
 } from "../types";
+import { jobTypeToService, serviceToJobType } from "../lib/financial/job-type";
+import {
+  mapPromoterJobRow,
+  PROMOTER_JOB_SELECT,
+} from "../lib/financial/promoter-job-row";
+import { loadPromoterInvoicesDetailed } from "./invoices";
 
 type Raw = Record<string, unknown>;
 
@@ -111,12 +116,6 @@ function parsePgTextArray(raw: unknown): string[] {
     }
   }
   return [];
-}
-
-function parsePromoterJobService(raw: unknown): PromoterJobService {
-  const v = String(raw ?? "").trim().toLowerCase();
-  if (v === "guestlist" || v === "table_sale" || v === "tickets" || v === "other") return v;
-  return "other";
 }
 
 function mapPromoterRowToProfile(r: Raw): PromoterProfile {
@@ -440,6 +439,20 @@ export async function savePromoterPreference(
   return { ok: true };
 }
 
+function mapPromoterClientRow(raw: Raw): PromoterClient {
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? "").trim(),
+    email: String(raw.email ?? "").trim(),
+    phone: String(raw.phone ?? "").trim(),
+    instagram: String(raw.instagram ?? "").trim(),
+    notes: String(raw.notes ?? "").trim(),
+    preferredPromoterId:
+      raw.preferred_promoter_id != null ? String(raw.preferred_promoter_id) : null,
+    createdAt: String(raw.created_at ?? ""),
+  };
+}
+
 export async function loadPromoterClients(
   supabase: SupabaseClient,
   promoterId: string,
@@ -451,21 +464,65 @@ export async function loadPromoterClients(
     .order("created_at", { ascending: false })
     .limit(400);
   if (error) return { ok: false, message: error.message };
-  const rows: PromoterClient[] = (data ?? []).map((raw) => {
-    const r = raw as Raw;
-    return {
-      id: String(r.id ?? ""),
-      name: String(r.name ?? "").trim(),
-      email: String(r.email ?? "").trim(),
-      phone: String(r.phone ?? "").trim(),
-      instagram: String(r.instagram ?? "").trim(),
-      notes: String(r.notes ?? "").trim(),
-      preferredPromoterId:
-        r.preferred_promoter_id != null ? String(r.preferred_promoter_id) : null,
-      createdAt: String(r.created_at ?? ""),
-    };
-  });
+  return { ok: true, rows: (data ?? []).map((raw) => mapPromoterClientRow(raw as Raw)) };
+}
+
+/** Preferred clients plus any linked on the promoter's jobs (RLS via jobs policy). */
+export async function loadPromoterClientsWorkedWith(
+  supabase: SupabaseClient,
+  promoterId: string,
+): Promise<{ ok: true; rows: PromoterClient[] } | { ok: false; message: string }> {
+  const pid = promoterId.trim();
+  if (!pid) return { ok: true, rows: [] };
+  const preferred = await loadPromoterClients(supabase, pid);
+  if (!preferred.ok) return preferred;
+  const byId = new Map(preferred.rows.map((c) => [c.id, c]));
+  const { data: jobRows, error: jErr } = await supabase
+    .from("promoter_jobs")
+    .select("client_id")
+    .eq("promoter_id", pid)
+    .not("client_id", "is", null);
+  if (jErr) return { ok: false, message: jErr.message };
+  const extraIds = [
+    ...new Set(
+      (jobRows ?? [])
+        .map((r) => String((r as Raw).client_id ?? "").trim())
+        .filter((id) => id && !byId.has(id)),
+    ),
+  ];
+  if (extraIds.length) {
+    const { data, error } = await supabase
+      .from("clients")
+      .select("id,name,email,phone,instagram,notes,preferred_promoter_id,created_at")
+      .in("id", extraIds);
+    if (error) return { ok: false, message: error.message };
+    for (const raw of data ?? []) {
+      const row = mapPromoterClientRow(raw as Raw);
+      byId.set(row.id, row);
+    }
+  }
+  const rows = [...byId.values()].sort((a, b) =>
+    (b.createdAt || "").localeCompare(a.createdAt || ""),
+  );
   return { ok: true, rows };
+}
+
+export async function loadPromoterClientGuestlistViaJobs(
+  supabase: SupabaseClient,
+  promoterId: string,
+  clientId: string,
+): Promise<{ ok: true; rows: PromoterGuestlistEntry[] } | { ok: false; message: string }> {
+  const pid = promoterId.trim();
+  const cid = clientId.trim();
+  if (!pid || !cid) return { ok: true, rows: [] };
+  const { data, error } = await supabase
+    .from("promoter_jobs")
+    .select("id")
+    .eq("promoter_id", pid)
+    .eq("client_id", cid);
+  if (error) return { ok: false, message: error.message };
+  const jobIds = (data ?? []).map((r) => String((r as Raw).id ?? "")).filter(Boolean);
+  return loadPromoterGuestlistEntriesForJobs(supabase, jobIds);
 }
 
 export async function savePromoterClient(
@@ -650,27 +707,11 @@ export async function loadPromoterJobs(
 ): Promise<{ ok: true; rows: PromoterJob[] } | { ok: false; message: string }> {
   const { data, error } = await supabase
     .from("promoter_jobs")
-    .select("id,promoter_id,club_slug,service,job_date,status,client_name,client_contact,guests_count,shift_fee,guestlist_fee,notes")
+    .select(PROMOTER_JOB_SELECT)
     .eq("promoter_id", promoterId)
     .order("job_date", { ascending: false });
   if (error) return { ok: false, message: error.message };
-  const rows: PromoterJob[] = (data ?? []).map((raw) => {
-    const r = raw as Raw;
-    return {
-      id: String(r.id ?? ""),
-      promoterId: String(r.promoter_id ?? ""),
-      clubSlug: r.club_slug != null ? String(r.club_slug) : null,
-      service: parsePromoterJobService(r.service),
-      jobDate: String(r.job_date ?? ""),
-      status: String(r.status ?? "assigned") as PromoterJob["status"],
-      clientName: String(r.client_name ?? "").trim() || undefined,
-      clientContact: String(r.client_contact ?? "").trim() || undefined,
-      guestsCount: asNumber(r.guests_count),
-      shiftFee: asNumber(r.shift_fee),
-      guestlistFee: asNumber(r.guestlist_fee),
-      notes: String(r.notes ?? ""),
-    };
-  });
+  const rows: PromoterJob[] = (data ?? []).map((raw) => mapPromoterJobRow(raw as Raw));
   return { ok: true, rows };
 }
 
@@ -682,38 +723,33 @@ export async function loadPromoterJobsCalendar(
     to: string;
     promoterId?: string;
     clubSlug?: string;
+    jobType?: string;
+    status?: string;
+    adminConfirmed?: boolean;
+    paid?: boolean;
+    bonusValid?: boolean;
   },
 ): Promise<{ ok: true; rows: PromoterJobAdminRow[] } | { ok: false; message: string }> {
   let q = supabase
     .from("promoter_jobs")
-    .select(
-      "id,promoter_id,club_slug,service,job_date,status,client_name,client_contact,guests_count,shift_fee,guestlist_fee,notes",
-    )
+    .select(PROMOTER_JOB_SELECT)
     .gte("job_date", opts.from)
     .lte("job_date", opts.to)
     .order("job_date", { ascending: true })
     .order("id", { ascending: true });
   if (opts.promoterId?.trim()) q = q.eq("promoter_id", opts.promoterId.trim());
   if (opts.clubSlug?.trim()) q = q.eq("club_slug", opts.clubSlug.trim());
+  if (opts.jobType?.trim()) q = q.eq("job_type", opts.jobType.trim());
+  if (opts.status?.trim()) q = q.eq("status", opts.status.trim());
+  if (opts.adminConfirmed === true) q = q.eq("admin_confirmed", true);
+  if (opts.adminConfirmed === false) q = q.eq("admin_confirmed", false);
+  if (opts.paid === true) q = q.eq("paid", true);
+  if (opts.paid === false) q = q.eq("paid", false);
+  if (opts.bonusValid === true) q = q.eq("bonus_valid", true);
+  if (opts.bonusValid === false) q = q.eq("bonus_valid", false);
   const { data, error } = await q;
   if (error) return { ok: false, message: error.message };
-  const rawJobs: PromoterJob[] = (data ?? []).map((raw) => {
-    const r = raw as Raw;
-    return {
-      id: String(r.id ?? ""),
-      promoterId: String(r.promoter_id ?? ""),
-      clubSlug: r.club_slug != null ? String(r.club_slug) : null,
-      service: parsePromoterJobService(r.service),
-      jobDate: String(r.job_date ?? "").slice(0, 10),
-      status: String(r.status ?? "assigned") as PromoterJob["status"],
-      clientName: String(r.client_name ?? "").trim() || undefined,
-      clientContact: String(r.client_contact ?? "").trim() || undefined,
-      guestsCount: asNumber(r.guests_count),
-      shiftFee: asNumber(r.shift_fee),
-      guestlistFee: asNumber(r.guestlist_fee),
-      notes: String(r.notes ?? ""),
-    };
-  });
+  const rawJobs: PromoterJob[] = (data ?? []).map((raw) => mapPromoterJobRow(raw as Raw));
   const promoterIds = [...new Set(rawJobs.map((j) => j.promoterId))];
   const nameById = new Map<string, string>();
   if (promoterIds.length) {
@@ -744,6 +780,7 @@ export async function updatePromoterJob(
   patch: Partial<{
     club_slug: string | null;
     service: string;
+    job_type: PromoterJob["jobType"];
     job_date: string;
     status: PromoterJob["status"];
     guests_count: number;
@@ -751,6 +788,22 @@ export async function updatePromoterJob(
     guestlist_fee: number;
     client_name: string;
     client_contact: string;
+    client_id: string | null;
+    admin_confirmed: boolean;
+    paid: boolean;
+    male_count: number;
+    female_count: number;
+    guests_joined: number;
+    guests_entered: number;
+    tickets_sold: number;
+    gross_spend_gbp: number;
+    net_spend_gbp: number;
+    concierge_cut_gbp: number;
+    promoter_cut_gbp: number;
+    bonus_valid: boolean;
+    rate_override: Record<string, unknown>;
+    club_payment_rate_id: string | null;
+    financial_booking_id: string | null;
     notes: string;
   }>,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -759,6 +812,12 @@ export async function updatePromoterJob(
   };
   for (const [k, v] of Object.entries(patch)) {
     if (v !== undefined) payload[k] = v;
+  }
+  if (patch.service !== undefined && patch.job_type === undefined) {
+    payload.job_type = serviceToJobType(patch.service);
+  }
+  if (patch.job_type !== undefined && patch.service === undefined) {
+    payload.service = jobTypeToService(patch.job_type);
   }
   if (Object.keys(payload).length <= 1) {
     return { ok: false, message: "Nothing to update." };
@@ -810,31 +869,7 @@ export async function loadPromoterInvoices(
   supabase: SupabaseClient,
   promoterId: string,
 ): Promise<{ ok: true; rows: PromoterInvoice[] } | { ok: false; message: string }> {
-  const { data, error } = await supabase
-    .from("promoter_invoices")
-    .select(
-      "id,promoter_id,period_start,period_end,status,subtotal,adjustments,total,sent_at,sent_to_email,emailed_via",
-    )
-    .eq("promoter_id", promoterId)
-    .order("period_end", { ascending: false });
-  if (error) return { ok: false, message: error.message };
-  const rows: PromoterInvoice[] = (data ?? []).map((raw) => {
-    const r = raw as Raw;
-    return {
-      id: String(r.id ?? ""),
-      promoterId: String(r.promoter_id ?? ""),
-      periodStart: String(r.period_start ?? ""),
-      periodEnd: String(r.period_end ?? ""),
-      status: String(r.status ?? "draft") as PromoterInvoice["status"],
-      subtotal: asNumber(r.subtotal),
-      adjustments: asNumber(r.adjustments),
-      total: asNumber(r.total),
-      sentAt: r.sent_at != null ? String(r.sent_at) : null,
-      sentToEmail: String(r.sent_to_email ?? ""),
-      emailedVia: String(r.emailed_via ?? ""),
-    };
-  });
-  return { ok: true, rows };
+  return loadPromoterInvoicesDetailed(supabase, promoterId);
 }
 
 export async function createPromoterJob(
@@ -842,22 +877,82 @@ export async function createPromoterJob(
   input: {
     promoter_id: string;
     club_slug: string | null;
-    service: string;
+    /** Prefer `job_type`; `service` kept for legacy callers. */
+    service?: string;
+    job_type?: PromoterJob["jobType"];
     job_date: string;
     status: PromoterJob["status"];
     client_name: string;
     client_contact: string;
+    client_id?: string | null;
     shift_fee: number;
     guestlist_fee: number;
     guests_count: number;
+    gross_spend_gbp?: number;
+    tickets_sold?: number;
+    club_payment_rate_id?: string | null;
     notes: string;
   },
-): Promise<{ ok: true } | { ok: false; message: string }> {
-  const { error } = await supabase.from("promoter_jobs").insert({
-    ...input,
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const jobType =
+    input.job_type ?? serviceToJobType(input.service ?? "guestlist");
+  const service = jobTypeToService(jobType);
+  const guests = Math.max(0, Math.round(Number(input.guests_count) || 0));
+  const { data, error } = await supabase
+    .from("promoter_jobs")
+    .insert({
+      promoter_id: input.promoter_id,
+      club_slug: input.club_slug,
+      service,
+      job_type: jobType,
+      job_date: input.job_date,
+      status: input.status,
+      client_name: input.client_name,
+      client_contact: input.client_contact,
+      client_id: input.client_id?.trim() || null,
+      shift_fee: input.shift_fee,
+      guestlist_fee: input.guestlist_fee,
+      guests_count: guests,
+      guests_joined: guests,
+      guests_entered: input.status === "completed" ? guests : 0,
+      gross_spend_gbp: Math.max(0, Number(input.gross_spend_gbp) || 0),
+      tickets_sold: Math.max(0, Math.round(Number(input.tickets_sold) || 0)),
+      club_payment_rate_id: input.club_payment_rate_id?.trim() || null,
+      notes: input.notes,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: String((data as { id?: string })?.id ?? "") };
+}
+
+export async function refreshPromoterJobHeadcountFromGuestlist(
+  supabase: SupabaseClient,
+  jobId: string,
+): Promise<
+  | { ok: true; guestsJoined: number; guestsEntered: number; maleCount: number; femaleCount: number }
+  | { ok: false; message: string }
+> {
+  const id = jobId.trim();
+  if (!id) return { ok: false, message: "Missing job id." };
+  const { data, error } = await supabase.rpc("refresh_job_headcount_from_guestlist", {
+    p_job_id: id,
   });
   if (error) return { ok: false, message: error.message };
-  return { ok: true };
+  const raw = data as Raw | null;
+  if (!raw || raw.ok !== true) {
+    return {
+      ok: false,
+      message: typeof raw?.error === "string" ? raw.error : "Headcount refresh failed.",
+    };
+  }
+  return {
+    ok: true,
+    guestsJoined: Math.max(0, Math.round(asNumber(raw.guests_joined))),
+    guestsEntered: Math.max(0, Math.round(asNumber(raw.guests_entered))),
+    maleCount: Math.max(0, Math.round(asNumber(raw.male_count))),
+    femaleCount: Math.max(0, Math.round(asNumber(raw.female_count))),
+  };
 }
 
 export async function insertPromoterJobSelf(
@@ -865,10 +960,13 @@ export async function insertPromoterJobSelf(
   input: {
     clubSlug: string;
     jobDate: string;
-    service: string;
+    /** V4 job type or legacy service string. */
+    service?: string;
+    jobType?: PromoterJob["jobType"];
     status?: PromoterJob["status"];
     clientName?: string;
     clientContact?: string;
+    clientId?: string | null;
     shiftFee: number;
     guestlistFee: number;
     guestsCount: number;
@@ -877,13 +975,17 @@ export async function insertPromoterJobSelf(
 ): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const jobDate = input.jobDate.trim().slice(0, 10);
   if (!jobDate) return { ok: false, message: "Pick a job date." };
+  const service =
+    input.service?.trim() ||
+    (input.jobType ? jobTypeToService(input.jobType) : "guestlist");
   const { data, error } = await supabase.rpc("insert_promoter_job_self", {
     p_club_slug: input.clubSlug.trim(),
     p_job_date: jobDate,
-    p_service: input.service.trim() || "guestlist",
+    p_service: service,
     p_status: String(input.status || "assigned").trim(),
     p_client_name: String(input.clientName || "").trim(),
     p_client_contact: String(input.clientContact || "").trim(),
+    p_client_id: input.clientId?.trim() || null,
     p_shift_fee: Number(input.shiftFee) || 0,
     p_guestlist_fee: Number(input.guestlistFee) || 0,
     p_guests_count: Math.max(0, Math.round(Number(input.guestsCount) || 0)),
@@ -891,6 +993,42 @@ export async function insertPromoterJobSelf(
   });
   if (error) return { ok: false, message: error.message };
   return { ok: true, id: String(data ?? "") };
+}
+
+export async function updatePromoterJobSelfCounts(
+  supabase: SupabaseClient,
+  jobId: string,
+  patch: {
+    maleCount?: number;
+    femaleCount?: number;
+    guestsJoined?: number;
+    guestsEntered?: number;
+    ticketsSold?: number;
+    grossSpendGbp?: number;
+    guestsCount?: number;
+  },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = jobId.trim();
+  if (!id) return { ok: false, message: "Missing job id." };
+  const { data, error } = await supabase.rpc("update_promoter_job_self_counts", {
+    p_job_id: id,
+    p_male_count: patch.maleCount,
+    p_female_count: patch.femaleCount,
+    p_guests_joined: patch.guestsJoined,
+    p_guests_entered: patch.guestsEntered,
+    p_tickets_sold: patch.ticketsSold,
+    p_gross_spend_gbp: patch.grossSpendGbp,
+    p_guests_count: patch.guestsCount,
+  });
+  if (error) return { ok: false, message: error.message };
+  const raw = data as Raw | null;
+  if (raw && raw.ok === false) {
+    return {
+      ok: false,
+      message: typeof raw.error === "string" ? raw.error : "Update failed.",
+    };
+  }
+  return { ok: true };
 }
 
 function parseGuestlistEntryRow(raw: Raw): PromoterGuestlistEntry {
@@ -1048,6 +1186,7 @@ export async function completePromoterJob(
     .update({
       status: "completed",
       guests_count: billingGuests,
+      guests_entered: billingGuests,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);

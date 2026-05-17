@@ -1,15 +1,14 @@
 import { gateAdminUser, gateClubUser } from "../admin/auth";
 import {
-  decideClubJob,
   issueClubInvite,
   loadClubBySlug,
   loadClubFlyers,
+  loadClubJobDisputes,
   loadClubJobs,
   loadClubPromoters,
   saveClubFlyer,
   setClubPromoterAccess,
   submitClubEditRevision,
-  submitJobDispute,
 } from "../admin/clubs";
 import {
   listFinancialBookings,
@@ -20,7 +19,9 @@ import { renderStatusBadge } from "../portal/badge";
 import { mountDataTable } from "../portal/data-table";
 import { applyCollapsibleFormSections } from "../lib/collapsible-form-sections";
 import { getSupabaseClient } from "../lib/supabase";
-import type { Club } from "../types";
+import type { Club, FinancialClubPaymentRate } from "../types";
+import { bindClubJobsEvents } from "./club/jobs-bind";
+import { renderClubJobsWorkspaceHtml, venueTypeLabel } from "./club/jobs-view";
 import "../styles/pages/club.css";
 
 function esc(v: string): string {
@@ -61,6 +62,7 @@ export async function initClubPortal(): Promise<void> {
   let clubFlyerFormOpen = false;
   let clubView: "overview" | "profile" | "flyers" | "promoters" | "jobs" | "admin_tools" =
     "overview";
+  let selectedClubJobId: string | null = null;
 
   if (actingAsAdmin) {
     const { data } = await supabase
@@ -175,17 +177,19 @@ export async function initClubPortal(): Promise<void> {
     }
 
     const activeClubSlug = clubSlug;
-    const [clubRes, flyerRes, promoterRes, jobsRes, disputeRes] = await Promise.all([
-      loadClubBySlug(supabase, activeClubSlug),
-      loadClubFlyers(supabase, activeClubSlug),
-      loadClubPromoters(supabase, activeClubSlug),
-      loadClubJobs(supabase, activeClubSlug),
-      supabase
-        .from("job_disputes")
-        .select("id,status", { count: "exact", head: true })
-        .eq("club_slug", activeClubSlug)
-        .in("status", ["open", "under_review"]),
-    ]);
+    const [clubRes, flyerRes, promoterRes, jobsRes, disputeRes, jobDisputesRes] =
+      await Promise.all([
+        loadClubBySlug(supabase, activeClubSlug),
+        loadClubFlyers(supabase, activeClubSlug),
+        loadClubPromoters(supabase, activeClubSlug),
+        loadClubJobs(supabase, activeClubSlug),
+        supabase
+          .from("job_disputes")
+          .select("id,status", { count: "exact", head: true })
+          .eq("club_slug", activeClubSlug)
+          .in("status", ["open", "under_review"]),
+        loadClubJobDisputes(supabase, activeClubSlug),
+      ]);
     const ruleRes = await listFinancialClubPaymentRates(supabase);
     const year = new Date().getFullYear();
     const bookingRes = await listFinancialBookings(supabase, {
@@ -200,17 +204,22 @@ export async function initClubPortal(): Promise<void> {
     const flyers = flyerRes.ok ? flyerRes.rows : [];
     const promoterRows = promoterRes.ok ? promoterRes.rows : [];
     const jobRows = jobsRes.ok ? jobsRes.rows : [];
+    const jobDisputes = jobDisputesRes.ok ? jobDisputesRes.rows : [];
+    if (selectedClubJobId && !jobRows.some((j) => j.id === selectedClubJobId)) {
+      selectedClubJobId = null;
+    }
     const pendingDisputes = disputeRes.count ?? 0;
-    const clubFinancialPaymentRate = ruleRes.ok
-      ? ruleRes.data.find(
+    const clubRates: FinancialClubPaymentRate[] = ruleRes.ok
+      ? ruleRes.data.filter(
           (r) =>
-            r.department === "nightlife" &&
             r.isActive &&
             (r.clubSlug?.toLowerCase() === activeClubSlug.toLowerCase() ||
               r.venueOrServiceName.toLowerCase() === activeClubSlug.toLowerCase() ||
               r.venueOrServiceName.toLowerCase() === String(club.name || "").toLowerCase()),
-        ) ?? null
-      : null;
+        )
+      : [];
+    const clubFinancialPaymentRate =
+      clubRates.find((r) => r.department === "nightlife") ?? clubRates[0] ?? null;
     const clubFinancialBookings = bookingRes.ok
       ? bookingRes.data.filter(
           (row) => String(row.clubSlug || "").toLowerCase() === activeClubSlug.toLowerCase(),
@@ -255,6 +264,8 @@ export async function initClubPortal(): Promise<void> {
         <h4 class="full">Core Details</h4>
         <div class="cc-field pp-col-8"><label>Name</label><input name="name" value="${esc(club.name || "")}" /></div>
         <div class="cc-field pp-col-4"><label>Location Tag</label><input name="locationTag" value="${esc(club.locationTag || "")}" /></div>
+        <div class="cc-field pp-col-4"><label>Region</label><input value="${esc(club.region || club.locationTag || "")}" readonly /></div>
+        <div class="cc-field pp-col-4"><label>Venue type</label><input value="${esc(venueTypeLabel(club.masterVenueType))}" readonly /></div>
         <div class="cc-field full"><label>Short description</label><textarea name="shortDescription">${esc(club.shortDescription || "")}</textarea></div>
         <div class="cc-field full"><label>Long description</label><textarea name="longDescription">${esc(club.longDescription || "")}</textarea></div>
         <div class="cc-field pp-col-8"><label>Website URL</label><input name="website" value="${esc(club.website || "")}" /></div>
@@ -263,14 +274,17 @@ export async function initClubPortal(): Promise<void> {
         <h4 class="full">Payment & Tax (Review Required)</h4>
         <div class="cc-field pp-col-4"><label>Payment method</label><input name="paymentMethod" value="${esc(club.paymentDetails?.method || "")}" /></div>
         <div class="cc-field pp-col-8"><label>Tax registered name</label><input name="taxRegisteredName" value="${esc(club.taxDetails?.registeredName || "")}" /></div>
-        <h4 class="full">Financial Rates (Club Tracking)</h4>
+        <h4 class="full">Venue rates (read-only)</h4>
         ${
           clubFinancialPaymentRate
-            ? `<div class="cc-field pp-col-4"><label>Male ratio</label><input name="clubMaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.maleRate}" /></div>
-        <div class="cc-field pp-col-4"><label>Female ratio</label><input name="clubFemaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.femaleRate}" /></div>
-        <div class="cc-field pp-col-4"><label>Base rate (£)</label><input name="clubBaseRate" type="number" step="0.01" value="${clubFinancialPaymentRate.baseRate}" /></div>
-        <p class="admin-note full">Current club payment rate: ${esc(clubFinancialPaymentRate.venueOrServiceName)} (${esc(clubFinancialPaymentRate.logicType)}). Base rate is charged per guest; ratio values are for planning/tracking and changes are sent to admin approvals.</p>`
-            : `<p class="admin-note full">No active nightlife club payment rate is linked to this club yet. Ask admin to add a rate row on the club sheet first.</p>`
+            ? `<p class="admin-note full">Active rate: <strong>${esc(clubFinancialPaymentRate.venueOrServiceName)}</strong> · base ${esc(String(clubFinancialPaymentRate.baseRate))} GBP/guest · M/F ${esc(String(clubFinancialPaymentRate.maleRate))}/${esc(String(clubFinancialPaymentRate.femaleRate))}. Cooper admin maintains the rate master; use “Request rate change” to propose edits.</p>
+        <details class="full club-rate-request">
+          <summary class="admin-note">Request rate change (admin approval)</summary>
+          <div class="cc-field pp-col-4"><label>Proposed male rate</label><input name="clubMaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.maleRate}" /></div>
+          <div class="cc-field pp-col-4"><label>Proposed female rate</label><input name="clubFemaleRate" type="number" step="0.01" value="${clubFinancialPaymentRate.femaleRate}" /></div>
+          <div class="cc-field pp-col-4"><label>Proposed base (£)</label><input name="clubBaseRate" type="number" step="0.01" value="${clubFinancialPaymentRate.baseRate}" /></div>
+        </details>`
+            : `<p class="admin-note full">No active payment rate is linked to this club yet. Ask Cooper admin to configure venue master rates.</p>`
         }
         <div class="admin-actions full">
           <button type="button" class="cc-btn cc-btn--gold" data-club-save="autopublish">Save Changes</button>
@@ -310,9 +324,13 @@ export async function initClubPortal(): Promise<void> {
       <div id="club-promoters-table"></div>
       <div class="cc-field" style="margin-top:0.8rem"><label>Access note</label><textarea id="club-promoter-note" rows="3" placeholder="Optional note when removing/restoring access"></textarea></div>
     `;
-    const jobsSection = `
-      <div id="club-jobs-table"></div>
-      <div class="cc-field" style="margin-top:0.8rem"><label>Decision/dispute note</label><textarea id="club-job-note" rows="3" placeholder="Optional note for approve/deny/dispute"></textarea></div>
+    const jobsSection = `${renderClubJobsWorkspaceHtml({
+      jobs: jobRows,
+      selectedJobId: selectedClubJobId,
+      rates: clubRates,
+      disputes: jobDisputes,
+    })}
+      <div class="cc-field" style="margin-top:0.8rem"><label>Decision note (approve/deny)</label><textarea id="club-job-note" rows="2" placeholder="Optional note for approve/deny"></textarea></div>
     `;
     const adminToolsSection = actingAsAdmin
       ? `
@@ -377,6 +395,19 @@ export async function initClubPortal(): Promise<void> {
       </section>
     `;
     applyCollapsibleFormSections(root);
+    if (clubView === "jobs") {
+      bindClubJobsEvents({
+        root,
+        supabase,
+        getJobs: () => jobRows,
+        getSelectedJobId: () => selectedClubJobId,
+        setSelectedJobId: (id) => {
+          selectedClubJobId = id;
+        },
+        reload: render,
+        flash,
+      });
+    }
     const mountFormModal = (
       formSelector: string,
       title: string,
@@ -501,47 +532,6 @@ export async function initClubPortal(): Promise<void> {
       });
     }
 
-    const jobsTableHost = root.querySelector("#club-jobs-table") as HTMLElement | null;
-    if (jobsTableHost) {
-      mountDataTable(jobsTableHost, {
-        id: "club-jobs",
-        rows: jobRows,
-        columns: [
-          { key: "date", label: "Date", sortable: true, accessor: (j) => j.jobDate },
-          { key: "service", label: "Service", sortable: true, accessor: (j) => j.service },
-          {
-            key: "status",
-            label: "Status",
-            sortable: true,
-            accessor: (j) => j.status,
-            render: (j) => renderStatusBadge(j.status),
-          },
-          { key: "guests", label: "Guests", sortable: true, accessor: (j) => j.guestsCount },
-          { key: "client", label: "Client", accessor: (j) => j.clientName || "—", render: (j) => esc(j.clientName || "—") },
-          {
-            key: "finance",
-            label: "Finance link",
-            accessor: (j) =>
-              j.financialBookingId || j.clubPaymentRateId ? "Linked" : "—",
-            render: (j) =>
-              j.financialBookingId || j.clubPaymentRateId
-                ? `<span class="admin-note" title="booking ${esc(j.financialBookingId || "—")} · rate ${esc(j.clubPaymentRateId || "—")}">Linked</span>`
-                : "—",
-          },
-          {
-            key: "decision",
-            label: "Decision",
-            render: (j) =>
-              `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="approve">Approve</button>
-               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-action="${esc(j.id)}" data-decision="deny">Deny</button>
-               <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-dispute="${esc(j.id)}">Dispute</button>`,
-          },
-        ],
-        empty: { title: "No jobs mapped to this club." },
-        paginated: false,
-      });
-    }
-
     root.querySelectorAll("[data-club-view]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const next = String((btn as HTMLElement).getAttribute("data-club-view") || "").trim();
@@ -572,8 +562,6 @@ export async function initClubPortal(): Promise<void> {
       void render();
     });
 
-    const getNote = (): string =>
-      String((root.querySelector("#club-job-note") as HTMLTextAreaElement | null)?.value || "").trim();
     const getPromoterNote = (): string =>
       String((root.querySelector("#club-promoter-note") as HTMLTextAreaElement | null)?.value || "").trim();
 
@@ -585,35 +573,6 @@ export async function initClubPortal(): Promise<void> {
         void (async () => {
           const res = await setClubPromoterAccess(supabase, id, allow, getPromoterNote());
           flash(res.ok ? `Promoter access ${allow ? "restored" : "removed"}.` : res.message, !res.ok);
-          await render();
-        })();
-      });
-    });
-
-    root.querySelectorAll("[data-job-action]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const jobId = String((btn as HTMLElement).getAttribute("data-job-action") || "").trim();
-        const decision = String((btn as HTMLElement).getAttribute("data-decision") || "").trim() as "approve" | "deny";
-        if (!jobId || (decision !== "approve" && decision !== "deny")) return;
-        void (async () => {
-          const res = await decideClubJob(supabase, jobId, decision, getNote());
-          flash(res.ok ? `Job ${decision}d.` : res.message, !res.ok);
-          await render();
-        })();
-      });
-    });
-
-    root.querySelectorAll("[data-job-dispute]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const jobId = String((btn as HTMLElement).getAttribute("data-job-dispute") || "").trim();
-        if (!jobId) return;
-        void (async () => {
-          const res = await submitJobDispute(supabase, {
-            promoterJobId: jobId,
-            reasonCode: "club_dispute",
-            description: getNote() || "Club requested dispute review.",
-          });
-          flash(res.ok ? "Dispute raised." : res.message, !res.ok);
           await render();
         })();
       });

@@ -1,5 +1,8 @@
 export type VenueType = "club" | "dining" | "lounge";
 
+/** V4 operational venue type (`public.clubs.venue_type`). Not the marketing lounge/club/dining label. */
+export type ClubMasterVenueType = "high_end" | "regional_ticket";
+
 /** From `public/clubs/guestlists.csv` — merged at build time */
 export type GuestlistRecurrence = "one_off" | "weekly";
 
@@ -9,6 +12,10 @@ export interface GuestlistOffer {
   notes: string;
 }
 
+/**
+ * V4 club external banking (`clubs.payment_details` JSONB).
+ * UK: sortCode + accountNumber; international: iban + swiftBic (BIC).
+ */
 export interface PaymentDetails {
   method: string;
   beneficiaryName: string;
@@ -20,6 +27,7 @@ export interface PaymentDetails {
   payoutEmail: string;
 }
 
+/** V4 club tax profile (`clubs.tax_details` JSONB). */
 export interface TaxDetails {
   registeredName: string;
   taxId: string;
@@ -78,6 +86,10 @@ export interface Club {
   guestlists: GuestlistOffer[];
   paymentDetails?: PaymentDetails;
   taxDetails?: TaxDetails;
+  /** V4 region (`public.clubs.region`); often mirrors `locationTag`. */
+  region?: string | null;
+  /** V4 ops venue type (`public.clubs.venue_type`). */
+  masterVenueType?: ClubMasterVenueType | null;
 }
 
 export interface ClubFlyer {
@@ -177,11 +189,17 @@ export interface PromoterClubPreference {
   status: "pending" | "approved" | "rejected";
 }
 
+import type { PromoterJobService, PromoterJobType } from "./lib/financial/job-type";
+
+export type { PromoterJobService, PromoterJobType };
+
 export interface PromoterJob {
   id: string;
   promoterId: string;
   clubSlug: string | null;
+  /** Legacy column; kept in sync with `jobType` via DB trigger. */
   service: PromoterJobService;
+  jobType: PromoterJobType;
   jobDate: string;
   status: "assigned" | "completed" | "cancelled";
   guestsCount: number;
@@ -189,6 +207,20 @@ export interface PromoterJob {
   guestlistFee: number;
   clientName?: string;
   clientContact?: string;
+  clientId?: string | null;
+  adminConfirmed: boolean;
+  paid: boolean;
+  maleCount: number;
+  femaleCount: number;
+  guestsJoined: number;
+  guestsEntered: number;
+  ticketsSold: number;
+  grossSpendGbp: number;
+  netSpendGbp: number;
+  conciergeCutGbp: number;
+  promoterCutGbp: number;
+  bonusValid: boolean;
+  rateOverride: Record<string, unknown>;
   notes: string;
   /** Optional link to the club payment rate row used for this shift. */
   clubPaymentRateId?: string | null;
@@ -196,12 +228,29 @@ export interface PromoterJob {
   financialBookingId?: string | null;
 }
 
-export type PromoterJobService = "guestlist" | "table_sale" | "tickets" | "other";
-
 /** Job row with promoter display name for admin calendar / list views. */
 export type PromoterJobAdminRow = PromoterJob & {
   promoterDisplayName: string;
 };
+
+export type InvoiceVerificationStatus = "pending" | "matched" | "mismatch" | "manual_ok";
+
+export interface InvoiceVerificationLineDiff {
+  promoterJobId: string | null;
+  jobDate: string | null;
+  field: string;
+  expected: number | null;
+  actual: number | null;
+  status: "matched" | "mismatch" | "warning";
+}
+
+export interface InvoiceVerificationResult {
+  invoiceId: string;
+  status: InvoiceVerificationStatus;
+  ledgerTotalGbp: number;
+  submittedTotalGbp: number;
+  lines: InvoiceVerificationLineDiff[];
+}
 
 export interface PromoterInvoice {
   id: string;
@@ -217,6 +266,10 @@ export interface PromoterInvoice {
   sentToEmail: string;
   /** e.g. `resend` when sent through the invoice Edge Function. */
   emailedVia: string;
+  verificationStatus: InvoiceVerificationStatus;
+  verificationDetails: Record<string, unknown>;
+  ledgerTotalGbp: number;
+  submittedTotalGbp: number;
 }
 
 /** Row in `public.promoter_guestlist_entries` (promoter-submitted guests; admin approves for billing). */
@@ -379,6 +432,26 @@ export interface FinancialClubPaymentRate {
   sheetExtension: Record<string, unknown>;
 }
 
+/** Parsed keys on `FinancialClubPaymentRate.sheetExtension` (V4 venue master). */
+export type ClubFinancialSheetExtension = {
+  venueType?: ClubMasterVenueType | null;
+  bonusEligibility?: "mixed_group" | "girls_only" | null;
+  guestlist?: {
+    paymentModel?: "per_guest" | "sex_ratio" | "flat_rate" | null;
+    maleFemaleRequiredRatio?: string;
+    standardRatePerGuest?: number | null;
+    [key: string]: unknown;
+  };
+  regionalTickets?: {
+    ticketPrice?: number | null;
+    fixedCommissionPerTicket?: number | null;
+    volumeBonusThreshold?: number | null;
+    volumeBonusAmount?: number | null;
+  };
+  eventsOverrides?: { byDate?: Record<string, Record<string, unknown>> };
+  [key: string]: unknown;
+};
+
 export interface FinancialPromoterProfile {
   id: string;
   userId: string | null;
@@ -397,6 +470,8 @@ export interface FinancialBooking {
   bookingDate: string;
   department: FinancialDepartment;
   clubSlug: string | null;
+  /** When set, booking was created from or linked to this job row. */
+  sourceJobId: string | null;
   promoterId: string | null;
   promoterName: string | null;
   clientId: string | null;

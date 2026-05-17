@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mapPromoterJobRow, PROMOTER_JOB_SELECT } from "../lib/financial/promoter-job-row";
+import type { PromoterJob } from "../types";
 
 export type ClientRow = {
   id: string;
@@ -249,4 +251,77 @@ export async function deleteClientById(
   const { error } = await supabase.from("clients").delete().eq("id", id);
   if (error) return { ok: false, message: error.message };
   return { ok: true };
+}
+
+export async function loadClientJobsForAdmin(
+  supabase: SupabaseClient,
+  clientId: string,
+): Promise<{ ok: true; rows: PromoterJob[] } | { ok: false; message: string }> {
+  const id = clientId.trim();
+  if (!id) return { ok: true, rows: [] };
+  const { data, error } = await supabase
+    .from("promoter_jobs")
+    .select(PROMOTER_JOB_SELECT)
+    .eq("client_id", id)
+    .order("job_date", { ascending: false });
+  if (error) return { ok: false, message: error.message };
+  return {
+    ok: true,
+    rows: (data ?? []).map((r) => mapPromoterJobRow(r as Record<string, unknown>)),
+  };
+}
+
+export type ClientTimelineRow = {
+  id: string;
+  kind: "guestlist" | "attendance" | "job";
+  date: string;
+  title: string;
+  detail: string;
+  sortAt: string;
+};
+
+export function buildClientTimelineRows(input: {
+  guestlist: ClientGuestlistActivityRow[];
+  attendances: ClientAttendanceRow[];
+  jobs: PromoterJob[];
+  clubNames: Map<string, string>;
+  promoterNames: Map<string, string>;
+}): ClientTimelineRow[] {
+  const rows: ClientTimelineRow[] = [];
+  for (const a of input.guestlist) {
+    const club = input.clubNames.get(a.club_slug) ?? a.club_slug;
+    const promo = a.promoter_id
+      ? input.promoterNames.get(a.promoter_id) ?? a.promoter_id.slice(0, 8)
+      : "—";
+    rows.push({
+      id: `gl-${a.id}`,
+      kind: "guestlist",
+      date: a.event_date,
+      title: `Guestlist · ${club}`,
+      detail: `Promoter ${promo}${a.enquiry_id ? ` · enquiry ${a.enquiry_id.slice(0, 8)}` : ""}`,
+      sortAt: `${a.event_date}T12:00:00`,
+    });
+  }
+  for (const a of input.attendances) {
+    const club = input.clubNames.get(a.club_slug) ?? a.club_slug;
+    rows.push({
+      id: `att-${a.id}`,
+      kind: "attendance",
+      date: a.event_date,
+      title: `Visit · ${club}`,
+      detail: `£${a.spend_gbp.toFixed(2)} · ${a.source || "manual"}`,
+      sortAt: `${a.event_date}T18:00:00`,
+    });
+  }
+  for (const j of input.jobs) {
+    rows.push({
+      id: `job-${j.id}`,
+      kind: "job",
+      date: j.jobDate,
+      title: `${j.jobType} · ${j.clubSlug ?? "—"}`,
+      detail: `${j.status} · entered ${j.guestsEntered} · concierge £${j.conciergeCutGbp.toFixed(2)}`,
+      sortAt: `${j.jobDate}T20:00:00`,
+    });
+  }
+  return rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }

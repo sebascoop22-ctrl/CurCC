@@ -107,9 +107,15 @@ create table if not exists public.clubs (
   payment_details jsonb not null default '{}'::jsonb,
   tax_details jsonb not null default '{}'::jsonb,
   payload jsonb not null default '{}'::jsonb,
+  region text,
+  venue_type text check (venue_type is null or venue_type in ('high_end', 'regional_ticket')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create index if not exists clubs_venue_type_region_idx
+  on public.clubs (venue_type, region)
+  where venue_type is not null;
 
 create table if not exists public.cars (
   id uuid primary key default gen_random_uuid(),
@@ -286,13 +292,28 @@ create table if not exists public.promoter_jobs (
   promoter_id uuid not null references public.promoters (id) on delete cascade,
   club_slug text references public.clubs (slug) on delete set null,
   service text not null default 'guestlist',
+  job_type text not null default 'guestlist' check (job_type in ('guestlist', 'table', 'ticket', 'venue_hire')),
   job_date date not null,
   status text not null default 'assigned' check (status in ('assigned', 'completed', 'cancelled')),
   client_name text not null default '',
   client_contact text not null default '',
+  client_id uuid references public.clients (id) on delete set null,
   guests_count integer not null default 0,
+  guests_joined integer not null default 0,
+  guests_entered integer not null default 0,
+  male_count integer not null default 0 check (male_count >= 0),
+  female_count integer not null default 0 check (female_count >= 0),
+  tickets_sold integer not null default 0 check (tickets_sold >= 0),
   shift_fee numeric(12,2) not null default 0,
   guestlist_fee numeric(12,2) not null default 0,
+  gross_spend_gbp numeric(12,2) not null default 0,
+  net_spend_gbp numeric(12,2) not null default 0,
+  concierge_cut_gbp numeric(12,2) not null default 0,
+  promoter_cut_gbp numeric(12,2) not null default 0,
+  admin_confirmed boolean not null default false,
+  paid boolean not null default false,
+  bonus_valid boolean not null default true,
+  rate_override jsonb not null default '{}'::jsonb,
   notes text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -391,6 +412,16 @@ create table if not exists public.promoter_invoice_lines (
 alter table public.promoter_invoices add column if not exists sent_at timestamptz;
 alter table public.promoter_invoices add column if not exists sent_to_email text not null default '';
 alter table public.promoter_invoices add column if not exists emailed_via text not null default '';
+
+alter table public.promoter_invoices add column if not exists verification_status text not null default 'pending';
+alter table public.promoter_invoices add column if not exists verification_details jsonb not null default '{}'::jsonb;
+alter table public.promoter_invoices add column if not exists ledger_total_gbp numeric(12,2) not null default 0;
+alter table public.promoter_invoices add column if not exists submitted_total_gbp numeric(12,2) not null default 0;
+
+alter table public.promoter_invoices drop constraint if exists promoter_invoices_verification_status_check;
+alter table public.promoter_invoices
+  add constraint promoter_invoices_verification_status_check
+  check (verification_status in ('pending', 'matched', 'mismatch', 'manual_ok'));
 
 create table if not exists public.financial_transactions (
   id uuid primary key default gen_random_uuid(),
@@ -1195,6 +1226,38 @@ $$;
 
 grant execute on function public.create_clients_from_enquiry(uuid) to authenticated;
 
+create or replace function public.map_service_to_job_type(p_service text)
+returns text
+language sql
+immutable
+as $$
+  select case lower(trim(coalesce(p_service, '')))
+    when 'guestlist' then 'guestlist'
+    when 'table_sale' then 'table'
+    when 'private_table' then 'table'
+    when 'table' then 'table'
+    when 'tickets' then 'ticket'
+    when 'ticket' then 'ticket'
+    when 'venue_access' then 'venue_hire'
+    when 'venue_hire' then 'venue_hire'
+    when 'other' then 'venue_hire'
+    else 'guestlist'
+  end;
+$$;
+
+create or replace function public.map_job_type_to_service(p_job_type text)
+returns text
+language sql
+immutable
+as $$
+  select case lower(trim(coalesce(p_job_type, '')))
+    when 'table' then 'table_sale'
+    when 'ticket' then 'tickets'
+    when 'venue_hire' then 'other'
+    else 'guestlist'
+  end;
+$$;
+
 drop function if exists public.insert_promoter_job_self(text, date, text, numeric, numeric, integer, text);
 drop function if exists public.insert_promoter_job_self(text, date, text, numeric, numeric, integer, text, text, text, text);
 create or replace function public.insert_promoter_job_self(
@@ -1217,7 +1280,8 @@ as $$
 declare
   v_promoter_id uuid;
   v_id uuid;
-  v_service text := lower(trim(coalesce(p_service, 'guestlist')));
+  v_service text := public.map_job_type_to_service(public.map_service_to_job_type(p_service));
+  v_job_type text := public.map_service_to_job_type(p_service);
   v_status text := lower(trim(coalesce(p_status, 'assigned')));
 begin
   select pr.id
@@ -1230,24 +1294,35 @@ begin
     raise exception 'promoter profile not found for current user';
   end if;
 
-  if v_service not in ('guestlist', 'table_sale', 'tickets', 'other') then
-    v_service := 'other';
-  end if;
   if v_status not in ('assigned', 'completed', 'cancelled') then
     v_status := 'assigned';
   end if;
 
   insert into public.promoter_jobs (
-    promoter_id, club_slug, service, job_date, status, client_name, client_contact, guests_count, shift_fee, guestlist_fee, notes
+    promoter_id,
+    club_slug,
+    service,
+    job_type,
+    job_date,
+    status,
+    client_name,
+    client_contact,
+    guests_count,
+    guests_joined,
+    shift_fee,
+    guestlist_fee,
+    notes
   )
   values (
     v_promoter_id,
     nullif(trim(p_club_slug), ''),
     v_service,
+    v_job_type,
     p_job_date,
     v_status,
     coalesce(p_client_name, ''),
     coalesce(p_client_contact, ''),
+    greatest(0, coalesce(p_guests_count, 0)),
     greatest(0, coalesce(p_guests_count, 0)),
     greatest(0, coalesce(p_shift_fee, 0)),
     greatest(0, coalesce(p_guestlist_fee, 0)),
@@ -1295,6 +1370,22 @@ on public.promoters
 for select
 to authenticated
 using (user_id = auth.uid());
+
+drop policy if exists promoters_club_select_via_jobs on public.promoters;
+create policy promoters_club_select_via_jobs
+on public.promoters
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.promoter_jobs j
+    join public.club_accounts ca on ca.club_slug = j.club_slug
+    where j.promoter_id = promoters.id
+      and ca.user_id = auth.uid()
+      and ca.status = 'active'
+  )
+);
 
 drop policy if exists promoters_self_update on public.promoters;
 create policy promoters_self_update
@@ -1464,6 +1555,22 @@ to authenticated
 using (
   exists (
     select 1 from public.promoters pr where pr.id = promoter_id and pr.user_id = auth.uid()
+  )
+);
+
+drop policy if exists promoter_jobs_club_select on public.promoter_jobs;
+create policy promoter_jobs_club_select
+on public.promoter_jobs
+for select
+to authenticated
+using (
+  club_slug is not null
+  and exists (
+    select 1
+    from public.club_accounts ca
+    where ca.user_id = auth.uid()
+      and ca.club_slug = promoter_jobs.club_slug
+      and ca.status = 'active'
   )
 );
 
@@ -2698,6 +2805,7 @@ create table if not exists public.financial_bookings (
   booking_date date not null,
   department text not null check (department in ('nightlife', 'transport', 'protection', 'other')),
   club_slug text references public.clubs(slug) on delete set null,
+  source_job_id uuid references public.promoter_jobs(id) on delete set null,
   promoter_id uuid references public.financial_promoters(id) on delete set null,
   client_id uuid references public.clients(id) on delete set null,
   club_payment_rate_id uuid references public.financial_club_payment_rates(id) on delete set null,
@@ -2745,6 +2853,49 @@ where club_payment_rate_id is not null;
 create index if not exists promoter_jobs_financial_booking_idx
 on public.promoter_jobs (financial_booking_id)
 where financial_booking_id is not null;
+
+-- Phase 2: V4 job ledger columns (idempotent for existing DBs)
+alter table public.promoter_jobs add column if not exists job_type text;
+alter table public.promoter_jobs add column if not exists admin_confirmed boolean not null default false;
+alter table public.promoter_jobs add column if not exists paid boolean not null default false;
+alter table public.promoter_jobs add column if not exists male_count integer not null default 0;
+alter table public.promoter_jobs add column if not exists female_count integer not null default 0;
+alter table public.promoter_jobs add column if not exists guests_joined integer not null default 0;
+alter table public.promoter_jobs add column if not exists guests_entered integer not null default 0;
+alter table public.promoter_jobs add column if not exists tickets_sold integer not null default 0;
+alter table public.promoter_jobs add column if not exists gross_spend_gbp numeric(12,2) not null default 0;
+alter table public.promoter_jobs add column if not exists net_spend_gbp numeric(12,2) not null default 0;
+alter table public.promoter_jobs add column if not exists concierge_cut_gbp numeric(12,2) not null default 0;
+alter table public.promoter_jobs add column if not exists promoter_cut_gbp numeric(12,2) not null default 0;
+alter table public.promoter_jobs add column if not exists bonus_valid boolean not null default true;
+alter table public.promoter_jobs add column if not exists rate_override jsonb not null default '{}'::jsonb;
+alter table public.promoter_jobs add column if not exists client_id uuid references public.clients(id) on delete set null;
+
+alter table public.promoter_jobs drop constraint if exists promoter_jobs_job_type_check;
+alter table public.promoter_jobs
+  add constraint promoter_jobs_job_type_check
+  check (job_type is null or job_type in ('guestlist', 'table', 'ticket', 'venue_hire'));
+
+create index if not exists promoter_jobs_club_date_type_idx
+  on public.promoter_jobs (club_slug, job_date desc, job_type);
+
+create index if not exists promoter_jobs_client_id_idx
+  on public.promoter_jobs (client_id)
+  where client_id is not null;
+
+-- Phase 3: financial_bookings ↔ promoter_jobs
+alter table public.financial_bookings add column if not exists source_job_id uuid references public.promoter_jobs(id) on delete set null;
+
+create index if not exists financial_bookings_source_job_idx
+  on public.financial_bookings (source_job_id)
+  where source_job_id is not null;
+
+comment on column public.clubs.payment_details is
+  'V4 club external banking JSON: method, beneficiaryName, accountNumber, sortCode, iban, swiftBic (BIC), reference, payoutEmail.';
+comment on column public.clubs.tax_details is
+  'V4 club tax JSON: registeredName, taxId, vatNumber, countryCode (e.g. GB), isVatRegistered, notes.';
+comment on column public.financial_bookings.source_job_id is
+  'Optional link to promoter_jobs when booking is created from or tied to a job row.';
 
 alter table public.financial_club_payment_rates enable row level security;
 alter table public.financial_promoters enable row level security;
@@ -4329,3 +4480,759 @@ with check (
     )
   )
 );
+
+-- Phase 2: job_type <-> service sync + guestlist headcount helpers
+create or replace function public.sync_promoter_job_type_service()
+returns trigger
+language plpgsql
+as $$
+begin
+  if TG_OP = 'UPDATE' then
+    if NEW.job_type is distinct from OLD.job_type then
+      NEW.service := public.map_job_type_to_service(NEW.job_type);
+    elsif NEW.service is distinct from OLD.service then
+      NEW.job_type := public.map_service_to_job_type(NEW.service);
+    end if;
+  else
+    if NEW.job_type is null or trim(NEW.job_type) = '' then
+      NEW.job_type := public.map_service_to_job_type(NEW.service);
+    end if;
+    NEW.service := public.map_job_type_to_service(NEW.job_type);
+  end if;
+
+  if coalesce(NEW.male_count, 0) + coalesce(NEW.female_count, 0) > 0 then
+    NEW.guests_count := greatest(
+      coalesce(NEW.guests_count, 0),
+      coalesce(NEW.male_count, 0) + coalesce(NEW.female_count, 0)
+    );
+  elsif coalesce(NEW.guests_entered, 0) > 0 then
+    NEW.guests_count := greatest(coalesce(NEW.guests_count, 0), NEW.guests_entered);
+  elsif coalesce(NEW.guests_joined, 0) > 0 then
+    NEW.guests_count := greatest(coalesce(NEW.guests_count, 0), NEW.guests_joined);
+  end if;
+
+  return NEW;
+end;
+$$;
+
+drop trigger if exists promoter_jobs_sync_type_service on public.promoter_jobs;
+
+create trigger promoter_jobs_sync_type_service
+before insert or update on public.promoter_jobs
+for each row
+execute function public.sync_promoter_job_type_service();
+
+create or replace view public.v_promoter_job_guestlist_headcount as
+select
+  e.club_slug,
+  e.event_date,
+  e.promoter_id,
+  count(s.id)::integer as guests_joined,
+  count(s.id) filter (
+    where s.status = 'attended'
+      or exists (
+        select 1
+        from public.guestlist_checkins c
+        where c.guestlist_signup_id = s.id
+      )
+  )::integer as guests_entered,
+  count(s.id) filter (
+    where lower(trim(coalesce(gp.gender, ''))) in ('f', 'female', 'woman', 'w')
+  )::integer as female_count,
+  count(s.id) filter (
+    where lower(trim(coalesce(gp.gender, ''))) in ('m', 'male', 'man')
+  )::integer as male_count
+from public.guestlist_events e
+inner join public.guestlist_signups s on s.guestlist_event_id = e.id
+left join public.guest_profiles gp on gp.id = s.guest_profile_id
+where s.status <> 'cancelled'
+group by e.club_slug, e.event_date, e.promoter_id;
+
+create or replace function public.sync_promoter_job_headcount(p_job_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_job public.promoter_jobs%rowtype;
+  v_h public.v_promoter_job_guestlist_headcount%rowtype;
+  v_approved int;
+  v_joined int;
+  v_entered int;
+  v_male int;
+  v_female int;
+begin
+  if p_job_id is null then
+    raise exception 'job id required';
+  end if;
+
+  select * into v_job from public.promoter_jobs where id = p_job_id;
+  if not found then
+    raise exception 'job not found';
+  end if;
+
+  if not (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or exists (
+      select 1 from public.promoters pr
+      where pr.id = v_job.promoter_id and pr.user_id = auth.uid()
+    )
+  ) then
+    raise exception 'forbidden';
+  end if;
+
+  if v_job.club_slug is null then
+    return jsonb_build_object('ok', false, 'error', 'job has no club');
+  end if;
+
+  select count(*)::int
+  into v_approved
+  from public.promoter_guestlist_entries e
+  where e.promoter_job_id = p_job_id
+    and e.approval_status = 'approved';
+
+  select *
+  into v_h
+  from public.v_promoter_job_guestlist_headcount h
+  where h.club_slug = v_job.club_slug
+    and h.event_date = v_job.job_date
+    and h.promoter_id is not distinct from v_job.promoter_id
+  limit 1;
+
+  v_joined := greatest(coalesce(v_h.guests_joined, 0), v_approved);
+  v_entered := greatest(coalesce(v_h.guests_entered, 0), v_approved);
+  v_male := coalesce(v_h.male_count, 0);
+  v_female := coalesce(v_h.female_count, 0);
+
+  update public.promoter_jobs j
+  set
+    guests_joined = v_joined,
+    guests_entered = v_entered,
+    male_count = v_male,
+    female_count = v_female,
+    guests_count = greatest(v_entered, v_male + v_female, v_joined, j.guests_count),
+    updated_at = now()
+  where j.id = p_job_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'guests_joined', v_joined,
+    'guests_entered', v_entered,
+    'male_count', v_male,
+    'female_count', v_female,
+    'approved_entries', v_approved
+  );
+end;
+$$;
+
+grant execute on function public.sync_promoter_job_headcount(uuid) to authenticated;
+
+create or replace function public.refresh_job_headcount_from_guestlist(p_job_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return public.sync_promoter_job_headcount(p_job_id);
+end;
+$$;
+
+grant execute on function public.refresh_job_headcount_from_guestlist(uuid) to authenticated;
+
+-- After website check-in, refresh matching promoter jobs for that event night
+create or replace function public.sync_jobs_headcount_for_signup(p_signup_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_club text;
+  v_date date;
+  v_promoter uuid;
+  v_job_id uuid;
+begin
+  select e.club_slug, e.event_date, e.promoter_id
+  into v_club, v_date, v_promoter
+  from public.guestlist_signups s
+  join public.guestlist_events e on e.id = s.guestlist_event_id
+  where s.id = p_signup_id;
+
+  if v_club is null or v_date is null then
+    return;
+  end if;
+
+  for v_job_id in
+    select j.id
+    from public.promoter_jobs j
+    where j.club_slug = v_club
+      and j.job_date = v_date
+      and j.promoter_id is not distinct from v_promoter
+  loop
+    perform public.sync_promoter_job_headcount(v_job_id);
+  end loop;
+end;
+$$;
+
+create or replace function public.trg_guestlist_checkin_sync_jobs()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.sync_jobs_headcount_for_signup(new.guestlist_signup_id);
+  return new;
+end;
+$$;
+
+drop trigger if exists guestlist_checkin_sync_jobs on public.guestlist_checkins;
+create trigger guestlist_checkin_sync_jobs
+after insert on public.guestlist_checkins
+for each row
+execute function public.trg_guestlist_checkin_sync_jobs();
+
+-- Admin guestlist approval: full headcount sync (not guests_count only)
+create or replace function public.admin_review_guestlist_entry(
+  p_entry_id uuid,
+  p_approve boolean,
+  p_review_notes text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_job_id uuid;
+  v_status text;
+  v_sync jsonb;
+begin
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Admin only.');
+  end if;
+
+  select e.promoter_job_id, e.approval_status
+  into v_job_id, v_status
+  from public.promoter_guestlist_entries e
+  where e.id = p_entry_id;
+
+  if v_job_id is null then
+    return jsonb_build_object('ok', false, 'error', 'Entry not found.');
+  end if;
+
+  if v_status is distinct from 'pending' then
+    return jsonb_build_object('ok', false, 'error', 'Entry already reviewed.');
+  end if;
+
+  update public.promoter_guestlist_entries
+  set
+    approval_status = case when p_approve then 'approved' else 'rejected' end,
+    reviewed_at = now(),
+    reviewed_by = auth.uid(),
+    review_notes = trim(coalesce(p_review_notes, ''))
+  where id = p_entry_id;
+
+  v_sync := public.sync_promoter_job_headcount(v_job_id);
+
+  return jsonb_build_object('ok', true, 'promoterJobId', v_job_id, 'headcount', v_sync);
+end;
+$$;
+
+-- Link enquiry to client when a single primary guest maps to one client
+create or replace function public.create_clients_from_enquiry(p_enquiry_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n int := 0;
+  v_name text;
+  v_contact text;
+  v_email text;
+  v_phone text;
+  v_ig text;
+  v_digits text;
+  r record;
+  en_name text;
+  en_email text;
+  en_phone text;
+  en_digits text;
+  v_client_id uuid;
+  v_guest_count int;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if not exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+
+  for r in
+    select guest_name, guest_contact
+    from public.enquiry_guests
+    where enquiry_id = p_enquiry_id
+    order by created_at asc
+  loop
+    v_name := trim(coalesce(r.guest_name, ''));
+    v_contact := trim(coalesce(r.guest_contact, ''));
+    if v_name = '' or v_contact = '' then
+      continue;
+    end if;
+
+    v_email := null;
+    v_phone := null;
+    v_ig := null;
+    v_digits := regexp_replace(v_contact, '\D', '', 'g');
+
+    if v_contact ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
+      v_email := lower(v_contact);
+    elsif length(v_digits) >= 8 then
+      v_phone := v_digits;
+    else
+      v_ig := lower(regexp_replace(trim(v_contact), '^@+', ''));
+    end if;
+
+    if exists (
+      select 1
+      from public.clients c
+      where (v_email is not null and lower(trim(coalesce(c.email, ''))) = v_email)
+         or (
+           v_phone is not null
+           and length(v_phone) >= 8
+           and regexp_replace(coalesce(c.phone, ''), '\D', '', 'g') = v_phone
+         )
+         or (
+           v_ig is not null
+           and length(trim(v_ig)) > 0
+           and lower(trim(regexp_replace(coalesce(c.instagram, ''), '^@+', ''))) = trim(v_ig)
+         )
+    ) then
+      continue;
+    end if;
+
+    insert into public.clients (name, email, phone, instagram)
+    values (v_name, v_email, v_phone, nullif(trim(v_ig), ''));
+    n := n + 1;
+  end loop;
+
+  if not exists (
+    select 1
+    from public.enquiry_guests
+    where enquiry_id = p_enquiry_id
+    limit 1
+  ) then
+    select trim(coalesce(e.name, '')),
+           nullif(lower(trim(coalesce(e.email, ''))), ''),
+           trim(coalesce(e.phone, ''))
+    into en_name, en_email, en_phone
+    from public.enquiries e
+    where e.id = p_enquiry_id;
+
+    if en_name <> '' then
+      v_email := en_email;
+      en_digits := regexp_replace(coalesce(en_phone, ''), '\D', '', 'g');
+      v_phone := case when length(en_digits) >= 8 then en_digits else null end;
+      v_ig := null;
+
+      if v_email is null and v_phone is null then
+        null;
+      elsif not exists (
+        select 1
+        from public.clients c
+        where (v_email is not null and lower(trim(coalesce(c.email, ''))) = v_email)
+           or (
+             v_phone is not null
+             and regexp_replace(coalesce(c.phone, ''), '\D', '', 'g') = v_phone
+           )
+      ) then
+        insert into public.clients (name, email, phone, instagram)
+        values (en_name, v_email, v_phone, null);
+        n := n + 1;
+      end if;
+    end if;
+  end if;
+
+  select count(*)::int into v_guest_count
+  from public.enquiry_guests
+  where enquiry_id = p_enquiry_id;
+
+  if v_guest_count = 1 then
+    select c.id into v_client_id
+    from public.enquiry_guests g
+    join public.clients c on (
+      (g.guest_contact ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+        and lower(trim(coalesce(c.email, ''))) = lower(trim(g.guest_contact)))
+      or (
+        length(regexp_replace(g.guest_contact, '\D', '', 'g')) >= 8
+        and regexp_replace(coalesce(c.phone, ''), '\D', '', 'g')
+          = regexp_replace(g.guest_contact, '\D', '', 'g')
+      )
+      or (
+        length(trim(regexp_replace(g.guest_contact, '^@+', ''))) > 0
+        and lower(trim(regexp_replace(coalesce(c.instagram, ''), '^@+', '')))
+          = lower(trim(regexp_replace(g.guest_contact, '^@+', '')))
+      )
+    )
+    where g.enquiry_id = p_enquiry_id
+    limit 1;
+
+    if v_client_id is not null then
+      update public.enquiries
+      set client_id = v_client_id, updated_at = now()
+      where id = p_enquiry_id
+        and client_id is null;
+    end if;
+  end if;
+
+  return n;
+end;
+$$;
+
+-- Marketplace ticket sales stub (V4 §4.3)
+create table if not exists public.external_ticket_sales (
+  id uuid primary key default gen_random_uuid(),
+  promoter_id uuid references public.promoters (id) on delete set null,
+  club_slug text references public.clubs (slug) on delete set null,
+  job_id uuid references public.promoter_jobs (id) on delete set null,
+  sold_at timestamptz not null default now(),
+  quantity integer not null default 1 check (quantity > 0),
+  external_ref text,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists external_ticket_sales_club_sold_idx
+  on public.external_ticket_sales (club_slug, sold_at desc);
+
+create index if not exists external_ticket_sales_job_idx
+  on public.external_ticket_sales (job_id)
+  where job_id is not null;
+
+alter table public.external_ticket_sales enable row level security;
+
+drop policy if exists external_ticket_sales_admin_all on public.external_ticket_sales;
+create policy external_ticket_sales_admin_all
+on public.external_ticket_sales
+for all
+to authenticated
+using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+)
+with check (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+);
+
+create or replace function public.sync_job_tickets_from_external_sales(p_job_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_total int;
+begin
+  if p_job_id is null then
+    return;
+  end if;
+  select coalesce(sum(quantity), 0)::int into v_total
+  from public.external_ticket_sales
+  where job_id = p_job_id;
+
+  update public.promoter_jobs
+  set tickets_sold = greatest(v_total, tickets_sold),
+      updated_at = now()
+  where id = p_job_id;
+end;
+$$;
+
+create or replace function public.trg_external_ticket_sale_sync_job()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.job_id is not null then
+    perform public.sync_job_tickets_from_external_sales(new.job_id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists external_ticket_sale_sync_job on public.external_ticket_sales;
+create trigger external_ticket_sale_sync_job
+after insert or update of job_id, quantity on public.external_ticket_sales
+for each row
+execute function public.trg_external_ticket_sale_sync_job();
+
+comment on table public.external_ticket_sales is
+  'Phase 10 stub: external marketplace ticket rows; aggregates to promoter_jobs.tickets_sold when job_id is set.';
+
+create or replace function public.update_promoter_job_self_counts(
+  p_job_id uuid,
+  p_male_count integer default null,
+  p_female_count integer default null,
+  p_guests_joined integer default null,
+  p_guests_entered integer default null,
+  p_tickets_sold integer default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_promoter_id uuid;
+begin
+  select pr.id into v_promoter_id
+  from public.promoters pr
+  where pr.user_id = auth.uid()
+  limit 1;
+
+  if v_promoter_id is null then
+    raise exception 'promoter profile not found';
+  end if;
+
+  update public.promoter_jobs j
+  set
+    male_count = coalesce(greatest(0, p_male_count), j.male_count),
+    female_count = coalesce(greatest(0, p_female_count), j.female_count),
+    guests_joined = coalesce(greatest(0, p_guests_joined), j.guests_joined),
+    guests_entered = coalesce(greatest(0, p_guests_entered), j.guests_entered),
+    tickets_sold = coalesce(greatest(0, p_tickets_sold), j.tickets_sold),
+    updated_at = now()
+  where j.id = p_job_id
+    and j.promoter_id = v_promoter_id
+    and j.status = 'assigned';
+
+  if not found then
+    raise exception 'job not found or not editable';
+  end if;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.update_promoter_job_self_counts(uuid, integer, integer, integer, integer, integer) to authenticated;
+
+-- Phase 3: invoice verification vs job ledger
+create or replace function public.job_ledger_amount_gbp(j public.promoter_jobs)
+returns numeric
+language sql
+immutable
+as $$
+  select round(
+    coalesce(j.shift_fee, 0)
+    + coalesce(j.guestlist_fee, 0)
+      * greatest(
+        coalesce(j.guests_entered, 0),
+        coalesce(j.guests_count, 0),
+        coalesce(j.male_count, 0) + coalesce(j.female_count, 0),
+        0
+      )::numeric,
+    2
+  );
+$$;
+
+create or replace function public.verify_invoice_against_jobs(p_invoice_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_inv public.promoter_invoices%rowtype;
+  v_ledger numeric(12, 2) := 0;
+  v_submitted numeric(12, 2) := 0;
+  v_status text := 'pending';
+  v_lines jsonb := '[]'::jsonb;
+  r record;
+  v_line record;
+  r_line record;
+  v_expected numeric(12, 2);
+  v_billing_guests integer;
+  v_has_diff boolean := false;
+begin
+  if p_invoice_id is null then
+    return jsonb_build_object('ok', false, 'error', 'invoice id required');
+  end if;
+
+  if not exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+
+  select * into v_inv from public.promoter_invoices where id = p_invoice_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'invoice not found');
+  end if;
+
+  v_submitted := round(coalesce(v_inv.subtotal, 0), 2);
+
+  select coalesce(sum(public.job_ledger_amount_gbp(j)), 0)
+  into v_ledger
+  from public.promoter_jobs j
+  where j.promoter_id = v_inv.promoter_id
+    and j.job_date between v_inv.period_start and v_inv.period_end
+    and j.status = 'completed';
+
+  for r in
+    select
+      j.id,
+      j.job_date,
+      j.job_type,
+      j.service,
+      j.club_slug,
+      j.shift_fee,
+      j.guestlist_fee,
+      j.guests_count,
+      j.guests_entered,
+      j.male_count,
+      j.female_count,
+      j.bonus_valid,
+      public.job_ledger_amount_gbp(j) as ledger_amount
+    from public.promoter_jobs j
+    where j.promoter_id = v_inv.promoter_id
+      and j.job_date between v_inv.period_start and v_inv.period_end
+      and j.status = 'completed'
+    order by j.job_date, j.id
+  loop
+    v_expected := r.ledger_amount;
+    v_billing_guests := greatest(
+      coalesce(r.guests_entered, 0),
+      coalesce(r.guests_count, 0),
+      coalesce(r.male_count, 0) + coalesce(r.female_count, 0)
+    );
+
+    select l.*
+    into v_line
+    from public.promoter_invoice_lines l
+    where l.invoice_id = p_invoice_id
+      and l.promoter_job_id = r.id
+    limit 1;
+
+    if not found then
+      v_has_diff := true;
+      v_lines := v_lines || jsonb_build_array(
+        jsonb_build_object(
+          'promoter_job_id', r.id,
+          'job_date', r.job_date,
+          'field', 'missing_invoice_line',
+          'expected', v_expected,
+          'actual', null,
+          'status', 'mismatch'
+        )
+      );
+      continue;
+    end if;
+
+    if abs(coalesce(v_line.line_total, 0) - v_expected) > 0.01 then
+      v_has_diff := true;
+      v_lines := v_lines || jsonb_build_array(
+        jsonb_build_object(
+          'promoter_job_id', r.id,
+          'job_date', r.job_date,
+          'field', 'line_total',
+          'expected', v_expected,
+          'actual', round(coalesce(v_line.line_total, 0), 2),
+          'status', 'mismatch'
+        )
+      );
+    end if;
+
+    if abs(coalesce(v_line.quantity, 0) - v_billing_guests) > 0.01 then
+      v_has_diff := true;
+      v_lines := v_lines || jsonb_build_array(
+        jsonb_build_object(
+          'promoter_job_id', r.id,
+          'job_date', r.job_date,
+          'field', 'guest_count',
+          'expected', v_billing_guests,
+          'actual', coalesce(v_line.quantity, 0),
+          'status', 'mismatch'
+        )
+      );
+    end if;
+
+    if r.bonus_valid = false then
+      v_lines := v_lines || jsonb_build_array(
+        jsonb_build_object(
+          'promoter_job_id', r.id,
+          'job_date', r.job_date,
+          'field', 'bonus_valid',
+          'expected', true,
+          'actual', false,
+          'status', 'warning'
+        )
+      );
+    end if;
+  end loop;
+
+  for r_line in
+    select l.*
+    from public.promoter_invoice_lines l
+    where l.invoice_id = p_invoice_id
+      and l.promoter_job_id is not null
+      and not exists (
+        select 1
+        from public.promoter_jobs j
+        where j.id = l.promoter_job_id
+          and j.promoter_id = v_inv.promoter_id
+          and j.job_date between v_inv.period_start and v_inv.period_end
+          and j.status = 'completed'
+      )
+  loop
+    v_has_diff := true;
+    v_lines := v_lines || jsonb_build_array(
+      jsonb_build_object(
+        'promoter_job_id', r_line.promoter_job_id,
+        'field', 'orphan_invoice_line',
+        'expected', null,
+        'actual', round(coalesce(r_line.line_total, 0), 2),
+        'status', 'mismatch'
+      )
+    );
+  end loop;
+
+  if v_has_diff or abs(v_ledger - v_submitted) > 0.01 then
+    v_status := 'mismatch';
+  else
+    v_status := 'matched';
+  end if;
+
+  update public.promoter_invoices
+  set
+    verification_status = v_status,
+    verification_details = jsonb_build_object(
+      'checked_at', now(),
+      'period_start', v_inv.period_start,
+      'period_end', v_inv.period_end,
+      'lines', v_lines
+    ),
+    ledger_total_gbp = v_ledger,
+    submitted_total_gbp = v_submitted
+  where id = p_invoice_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'invoice_id', p_invoice_id,
+    'status', v_status,
+    'ledger_total_gbp', v_ledger,
+    'submitted_total_gbp', v_submitted,
+    'lines', v_lines
+  );
+end;
+$$;
+
+grant execute on function public.verify_invoice_against_jobs(uuid) to authenticated;

@@ -30,6 +30,7 @@ import {
   deleteClientById,
   loadClientAttendancesForAdmin,
   loadClientGuestlistActivityForAdmin,
+  loadClientJobsForAdmin,
   loadClientsForAdmin,
   saveClientAttendanceForAdmin,
   updateClientById,
@@ -37,6 +38,11 @@ import {
   type ClientGuestlistActivityRow,
   type ClientRow,
 } from "../admin/clients";
+import {
+  parseClientDetailTab,
+  renderAdminClientDetailPanel,
+  type ClientDetailTab,
+} from "./admin/clients-detail";
 import {
   issueClubInvite,
   loadClubAccounts,
@@ -61,9 +67,6 @@ import {
   upsertFinancialTransaction,
   adminInsertTableSale,
   approvePromoterRevision,
-  completePromoterJob,
-  createPromoterJob,
-  deletePromoterJob,
   generateInvoiceForPromoter,
   loadPendingGuestlistQueueForAdmin,
   loadPendingNightAdjustmentsForAdmin,
@@ -82,7 +85,6 @@ import {
   reviewNightAdjustmentAsAdmin,
   reviewTableSaleAsAdmin,
   setFinancialRecurringTemplateActive,
-  updatePromoterJob,
 } from "../admin/promoters";
 import {
   archiveFinancialBooking,
@@ -147,6 +149,37 @@ import {
   syncCatalogStateFromUrl,
   type AdminCatalogWireDeps,
 } from "./admin/admin-catalog-wire";
+import { bindJobsLedgerEvents, readJobsFiltersFromDom } from "./admin/jobs-bind";
+import {
+  computeJobLedgerKpis,
+  defaultJobsLedgerFilters,
+  filterJobsRows,
+  type JobsLedgerFilters,
+} from "./admin/jobs-shared";
+import {
+  isoLocalYmd,
+  jobsDataTableColumns,
+  renderJobsListFiltersHtml,
+  renderJobsViewHtml,
+  type CreateJobClientRow,
+} from "./admin/jobs-ledger";
+import { bindInvoicesLedgerEvents } from "./admin/invoices-bind";
+import {
+  defaultInvoicesLedgerFilters,
+  invoicesDataTableColumns,
+  renderInvoicesDetailPanelHtml,
+  renderInvoicesListFiltersHtml,
+  type InvoicesLedgerFilters,
+} from "./admin/invoices-ledger";
+import {
+  loadAllInvoicesForAdmin,
+  loadInvoicePeriodJobs,
+  loadPromoterInvoiceLines,
+  parseInvoiceVerificationLineDiffs,
+  type PromoterInvoiceAdminRow,
+  type PromoterInvoiceLine,
+} from "../admin/invoices";
+import type { InvoiceVerificationLineDiff } from "../types";
 import "../styles/pages/admin.css";
 
 /** Desk = CRM; catalog = clubs, cars, weekly flyers */
@@ -195,9 +228,9 @@ const ADMIN_VIEW_HEADINGS: Record<AdminView, { title: string; subtitle: string }
       "All promoter profiles in one table. Quick edit public fields or open the full tabbed editor for finance, jobs, invoices, and club access.",
   },
   jobs: {
-    title: "Promoter jobs",
+    title: "Job ledger",
     subtitle:
-      "Calendar and list for the visible month. Filter by promoter or club, create jobs, then edit, complete, or delete each row.",
+      "Operational ledger for all promoter jobs: filter by club, type, and payment flags; open a row for headcount, ratio check, and financial snapshot.",
   },
   guestlist_queue: {
     title: "Guestlist review",
@@ -479,80 +512,10 @@ function adminDisplayTruncate(s: string, max: number): string {
   return `${t.slice(0, Math.max(0, max - 1))}…`;
 }
 
-const ADMIN_JOB_SERVICES = [
-  "guestlist",
-  "private_table",
-  "venue_access",
-] as const;
-
-function jobServiceSelectHtml(value: string): string {
-  return ADMIN_JOB_SERVICES.map(
-    (s) =>
-      `<option value="${escapeAttr(s)}"${s === value ? " selected" : ""}>${escapeAttr(s)}</option>`,
-  ).join("");
-}
-
-function isoLocalYmd(y: number, m: number, d: number): string {
-  const p = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${y}-${p(m + 1)}-${p(d)}`;
-}
-
-function buildAdminJobsCalendarHtml(
-  year: number,
-  month: number,
-  rows: PromoterJobAdminRow[],
-): string {
-  const headers = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const byDay = new Map<number, PromoterJobAdminRow[]>();
-  for (const j of rows) {
-    const parts = j.jobDate.split("-");
-    if (parts.length < 3) continue;
-    const jy = Number(parts[0]);
-    const jm = Number(parts[1]);
-    const jd = Number(parts[2]);
-    if (jy === year && jm === month + 1) {
-      if (!byDay.has(jd)) byDay.set(jd, []);
-      byDay.get(jd)!.push(j);
-    }
-  }
-  const firstDow = new Date(year, month, 1).getDay();
-  const dim = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  const isThisMonth =
-    today.getFullYear() === year && today.getMonth() === month;
-  const todayDay = today.getDate();
-  const head = headers
-    .map((h) => `<div class="admin-jobs__cal-hd">${escapeAttr(h)}</div>`)
-    .join("");
-  let cells = "";
-  for (let i = 0; i < firstDow; i++) {
-    cells += `<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`;
-  }
-  for (let d = 1; d <= dim; d++) {
-    const jobs = byDay.get(d) ?? [];
-    const isToday = isThisMonth && d === todayDay;
-    const pills = jobs
-      .slice(0, 4)
-      .map(
-        (j) =>
-          `<button type="button" class="admin-jobs__cal-pill admin-jobs__cal-pill--${escapeAttr(j.status)}" data-open-job-edit="${escapeAttr(j.id)}" title="${escapeAttr(`${j.promoterDisplayName} · ${j.clubSlug ?? "—"} · ${j.service}`)}">${escapeAttr(adminDisplayTruncate(j.promoterDisplayName, 11))}</button>`,
-      )
-      .join("");
-    const more =
-      jobs.length > 4
-        ? `<span class="admin-jobs__cal-more">+${jobs.length - 4}</span>`
-        : "";
-    cells += `<div class="admin-jobs__cal-cell${isToday ? " admin-jobs__cal-cell--today" : ""}">
-      <div class="admin-jobs__cal-daynum">${d}</div>
-      <div class="admin-jobs__cal-pills">${pills}${more}</div>
-    </div>`;
-  }
-  const totalCells = firstDow + dim;
-  const tail = (7 - (totalCells % 7)) % 7;
-  for (let i = 0; i < tail; i++) {
-    cells += `<div class="admin-jobs__cal-cell admin-jobs__cal-cell--pad" aria-hidden="true"></div>`;
-  }
-  return `<div class="admin-jobs__cal-grid">${head}${cells}</div>`;
+function jobsTriFilterToBool(v: "" | "yes" | "no"): boolean | undefined {
+  if (v === "yes") return true;
+  if (v === "no") return false;
+  return undefined;
 }
 
 function validateClubShape(club: Club): string[] {
@@ -642,173 +605,6 @@ function flyerClubSelectOptions(
     .join("");
 }
 
-function renderClientDetail(
-  c: ClientRow,
-  activity: ClientGuestlistActivityRow[],
-  attendances: ClientAttendanceRow[],
-  clubs: ClubEntry[],
-  promoters: PromoterProfile[],
-  selectedAttendanceId: string | null,
-): string {
-  const spendVal =
-    c.typical_spend_gbp != null && Number.isFinite(c.typical_spend_gbp)
-      ? String(c.typical_spend_gbp)
-      : "";
-  const promoOpts = [
-    `<option value="">— None —</option>`,
-    ...promoters.map(
-      (p) =>
-        `<option value="${escapeAttr(p.id)}"${p.id === c.preferred_promoter_id ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
-    ),
-  ].join("");
-  const selectedAttendance =
-    (selectedAttendanceId &&
-      attendances.find((a) => a.id === selectedAttendanceId)) ||
-    null;
-  const clubOpts = clubs
-    .map(
-      (entry) =>
-        `<option value="${escapeAttr(entry.club.slug)}"${entry.club.slug === c.preferred_club_slug ? " selected" : ""}>${escapeAttr(entry.club.name)}</option>`,
-    )
-    .join("");
-  const attendanceClubOpts = clubs
-    .map(
-      (entry) =>
-        `<option value="${escapeAttr(entry.club.slug)}"${entry.club.slug === selectedAttendance?.club_slug ? " selected" : ""}>${escapeAttr(entry.club.name)}</option>`,
-    )
-    .join("");
-  const attendancePromoOpts = [
-    `<option value="">— None —</option>`,
-    ...promoters.map(
-      (p) =>
-        `<option value="${escapeAttr(p.id)}"${p.id === selectedAttendance?.promoter_id ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`,
-    ),
-  ].join("");
-  const activityRows =
-    activity.length === 0
-      ? "<tr><td colspan='5'>No guestlist visits linked yet (signups append automatically).</td></tr>"
-      : activity
-          .map((a) => {
-            const pr = a.promoter_id
-              ? promoters.find((p) => p.id === a.promoter_id)
-              : undefined;
-            const promo = a.promoter_id
-              ? escapeAttr(pr?.displayName || pr?.userId || `${a.promoter_id.slice(0, 8)}…`)
-              : "—";
-            return `<tr>
-            <td>${escapeAttr(a.event_date)}</td>
-            <td><code class="admin-list-code">${escapeAttr(a.club_slug)}</code></td>
-            <td>${promo}</td>
-            <td>${a.enquiry_id ? `<code class="admin-list-code">${escapeAttr(a.enquiry_id.slice(0, 8))}…</code>` : "—"}</td>
-            <td>${a.guest_profile_id ? `<code class="admin-list-code">${escapeAttr(a.guest_profile_id.slice(0, 8))}…</code>` : "—"}</td>
-          </tr>`;
-          })
-          .join("");
-  const attendanceRows =
-    attendances.length === 0
-      ? "<tr><td colspan='7'>No attendance history yet. Add past visits below.</td></tr>"
-      : attendances
-          .map((a) => {
-            const pr = a.promoter_id
-              ? promoters.find((p) => p.id === a.promoter_id)
-              : undefined;
-            const isActive = selectedAttendanceId === a.id ? " is-active" : "";
-            return `<tr class="admin-list-row${isActive}" data-client-attendance-id="${escapeAttr(a.id)}">
-            <td>${escapeAttr(a.event_date)}</td>
-            <td><code class="admin-list-code">${escapeAttr(a.club_slug)}</code></td>
-            <td>${escapeAttr(pr?.displayName || pr?.userId || "—")}</td>
-            <td>£${Number(a.spend_gbp || 0).toFixed(2)}</td>
-            <td>${escapeAttr(a.source || "manual")}</td>
-            <td>${escapeAttr(a.notes || "—")}</td>
-            <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-client-attendance-delete="${escapeAttr(a.id)}">Delete</button></td>
-          </tr>`;
-          })
-          .join("");
-  return `
-      <div class="admin-client-detail">
-        <h4 class="admin-subhead" style="margin-top: 0">Client record</h4>
-        <form class="admin-form" id="admin-client-form" data-collapsible="true">
-          <input type="hidden" name="client_id" value="${escapeAttr(c.id)}" />
-          <h4 class="full">Contact Details</h4>
-          <div class="cc-field"><label for="client-name">Name</label>
-            <input id="client-name" name="name" value="${escapeAttr(c.name ?? "")}" /></div>
-          <div class="cc-field"><label for="client-email">Email</label>
-            <input id="client-email" name="email" type="email" value="${escapeAttr(c.email ?? "")}" /></div>
-          <div class="cc-field"><label for="client-phone">Phone</label>
-            <input id="client-phone" name="phone" value="${escapeAttr(c.phone ?? "")}" /></div>
-          <div class="cc-field"><label for="client-ig">Instagram</label>
-            <input id="client-ig" name="instagram" value="${escapeAttr(c.instagram ?? "")}" placeholder="@handle" /></div>
-          <h4 class="full">Preferences</h4>
-          <div class="cc-field"><label for="client-spend">Typical spend (GBP / night)</label>
-            <input id="client-spend" name="typical_spend_gbp" type="number" min="0" step="0.01" placeholder="e.g. 500" value="${escapeAttr(spendVal)}" /></div>
-          <div class="cc-field full"><label for="client-nights">Preferred nights</label>
-            <input id="client-nights" name="preferred_nights" value="${escapeAttr(c.preferred_nights ?? "")}" placeholder="Fri, Sat" /></div>
-          <div class="cc-field full"><label for="client-promoter">Preferred promoter</label>
-            <select id="client-promoter" name="preferred_promoter_id">${promoOpts}</select></div>
-          <div class="cc-field full"><label for="client-club">Preferred club</label>
-            <select id="client-club" name="preferred_club_slug"><option value="">— None —</option>${clubOpts}</select></div>
-          <div class="cc-field full"><label for="client-notes">Notes (Internal)</label>
-            <textarea id="client-notes" name="notes" rows="4" placeholder="VIP preferences, relationships, spend patterns…">${escapeHtmlText(c.notes ?? "")}</textarea></div>
-          <h4 class="full">System Details</h4>
-          <div class="cc-field full"><label>Guest profile id</label>
-            <input value="${escapeAttr(c.guest_profile_id ?? "—")}" readonly /></div>
-          <div class="cc-field full"><label>Added</label>
-            <input value="${escapeAttr(c.created_at || "—")}" readonly /></div>
-          <div class="admin-actions full">
-            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-save">Save Changes</button>
-          </div>
-        </form>
-        <h4 class="admin-subhead">Attendance history (editable)</h4>
-        <p class="admin-hint">Client preferences are auto-calculated from this attendance history.</p>
-        <div class="full promoter-table-wrap">
-          <table class="admin-list-table">
-            <thead><tr>
-              <th scope="col">Date</th>
-              <th scope="col">Club</th>
-              <th scope="col">Promoter</th>
-              <th scope="col">Spend</th>
-              <th scope="col">Source</th>
-              <th scope="col">Notes</th>
-              <th scope="col">Action</th>
-            </tr></thead>
-            <tbody>${attendanceRows}</tbody>
-          </table>
-        </div>
-        <form class="admin-form" id="admin-client-attendance-form" data-collapsible="true">
-          <input type="hidden" name="attendance_id" value="${escapeAttr(selectedAttendance?.id || "")}" />
-          <h4 class="full">Visit Details</h4>
-          <div class="cc-field"><label>Date</label><input name="event_date" type="date" required value="${escapeAttr(selectedAttendance?.event_date || new Date().toISOString().slice(0, 10))}" /></div>
-          <div class="cc-field"><label>Club</label><select name="club_slug" required>${attendanceClubOpts}</select></div>
-          <div class="cc-field"><label>Promoter</label><select name="promoter_id">${attendancePromoOpts}</select></div>
-          <div class="cc-field"><label>Spend (GBP)</label><input name="spend_gbp" type="number" min="0" step="0.01" value="${escapeAttr(String(selectedAttendance?.spend_gbp ?? 0))}" /></div>
-          <div class="cc-field"><label>Source</label><input name="source" value="${escapeAttr(selectedAttendance?.source || "manual")}" /></div>
-          <div class="cc-field full"><label>Details</label><textarea name="attendance_notes" rows="2">${escapeHtmlText(selectedAttendance?.notes || "")}</textarea></div>
-          <div class="admin-actions full">
-            <button type="button" class="cc-btn cc-btn--gold" id="admin-client-attendance-save">${selectedAttendance ? "Save Changes" : "Create Visit"}</button>
-            ${
-              selectedAttendance
-                ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-client-attendance-new">Create New</button>`
-                : ""
-            }
-          </div>
-        </form>
-        <h4 class="admin-subhead">Guestlist history</h4>
-        <p class="admin-hint">Clubs and nights captured when this person (or party) signs up on the site; promoter comes from the guestlist event if set.</p>
-        <div class="full promoter-table-wrap">
-          <table class="admin-list-table">
-            <thead><tr>
-              <th scope="col">Night</th>
-              <th scope="col">Club</th>
-              <th scope="col">Promoter (event)</th>
-              <th scope="col">Enquiry</th>
-              <th scope="col">Guest profile</th>
-            </tr></thead>
-            <tbody>${activityRows}</tbody>
-          </table>
-        </div>
-      </div>`;
-}
-
 export async function initAdminPortal(): Promise<void> {
   const adminRootEl = document.getElementById("admin-root");
   if (!adminRootEl) return;
@@ -842,6 +638,8 @@ export async function initAdminPortal(): Promise<void> {
   let clients: ClientRow[] = [];
   let clientGuestlistActivity: ClientGuestlistActivityRow[] = [];
   let clientAttendances: ClientAttendanceRow[] = [];
+  let clientJobs: PromoterJob[] = [];
+  let clientDetailTab: ClientDetailTab = "profile";
   let selectedClientAttendanceId: string | null = null;
   let promoterSignupRequests: PromoterSignupRequest[] = [];
   let selectedPromoterRequestId: string | null = null;
@@ -853,8 +651,7 @@ export async function initAdminPortal(): Promise<void> {
   let jobsCalendarYear = new Date().getFullYear();
   let jobsCalendarMonth = new Date().getMonth();
   let jobsCalendarRows: PromoterJobAdminRow[] = [];
-  let jobsFilterPromoterId = "";
-  let jobsFilterClubSlug = "";
+  let jobsLedgerFilters: JobsLedgerFilters = defaultJobsLedgerFilters();
   let editingJobId: string | null = null;
   let jobsCreateOpen = false;
   let jobsCalendarOpen = false;
@@ -868,6 +665,12 @@ export async function initAdminPortal(): Promise<void> {
   /** When set, next successful save from the dashboard edit modal should close the modal and re-render. */
   let pendingDashboardModalClose: (() => void) | null = null;
   let promoterInvoices: PromoterInvoice[] = [];
+  let adminInvoices: PromoterInvoiceAdminRow[] = [];
+  let selectedInvoiceId: string | null = null;
+  let invoiceLines: PromoterInvoiceLine[] = [];
+  let invoicePeriodJobs: PromoterJob[] = [];
+  let invoiceVerificationDiffLines: InvoiceVerificationLineDiff[] = [];
+  let invoicesLedgerFilters: InvoicesLedgerFilters = defaultInvoicesLedgerFilters();
   let _financialRows: Array<{ period_label: string; income: number; expense: number; net: number }> = [];
   let financialPeriodFrom = "";
   let financialPeriodTo = "";
@@ -945,14 +748,7 @@ export async function initAdminPortal(): Promise<void> {
   let invoiceEdgeActionsBound = false;
   let nightAdjDelegationBound = false;
   let loginError = "";
-  let createJobClients: Array<{
-    mode: "existing" | "blank" | "new";
-    clientId?: string;
-    name: string;
-    contact: string;
-    newEmail?: string;
-    newPhone?: string;
-  }> = [];
+  let createJobClients: CreateJobClientRow[] = [];
   let adminProfile = {
     userId: "",
     email: "",
@@ -1033,14 +829,17 @@ export async function initAdminPortal(): Promise<void> {
     if (!selectedClientId && clients[0]) selectedClientId = clients[0].id;
     clientGuestlistActivity = [];
     clientAttendances = [];
+    clientJobs = [];
     selectedClientAttendanceId = null;
     if (selectedClientId) {
-      const [a, at] = await Promise.all([
+      const [a, at, jobs] = await Promise.all([
         loadClientGuestlistActivityForAdmin(supabase, selectedClientId),
         loadClientAttendancesForAdmin(supabase, selectedClientId),
+        loadClientJobsForAdmin(supabase, selectedClientId),
       ]);
       clientGuestlistActivity = a.ok ? a.rows : [];
       clientAttendances = at.ok ? at.rows : [];
+      clientJobs = jobs.ok ? jobs.rows : [];
     }
   }
 
@@ -1053,6 +852,42 @@ export async function initAdminPortal(): Promise<void> {
     ) {
       selectedPromoterRequestId = promoterSignupRequests[0]?.id ?? null;
     }
+  }
+
+  async function reloadInvoiceDetail(): Promise<void> {
+    const inv = selectedInvoiceId
+      ? adminInvoices.find((i) => i.id === selectedInvoiceId) ?? null
+      : null;
+    if (!inv) {
+      invoiceLines = [];
+      invoicePeriodJobs = [];
+      invoiceVerificationDiffLines = [];
+      return;
+    }
+    invoiceVerificationDiffLines = parseInvoiceVerificationLineDiffs(
+      inv.verificationDetails?.lines,
+    );
+    const [linesRes, jobsRes] = await Promise.all([
+      loadPromoterInvoiceLines(supabase, inv.id),
+      loadInvoicePeriodJobs(supabase, inv.promoterId, inv.periodStart, inv.periodEnd),
+    ]);
+    invoiceLines = linesRes.ok ? linesRes.rows : [];
+    invoicePeriodJobs = jobsRes.ok ? jobsRes.rows : [];
+  }
+
+  async function reloadAdminInvoices(): Promise<void> {
+    const r = await loadAllInvoicesForAdmin(supabase, {
+      promoterId: invoicesLedgerFilters.promoterId.trim() || undefined,
+      limit: 250,
+    });
+    adminInvoices = r.ok ? r.rows : [];
+    if (selectedInvoiceId && !adminInvoices.some((i) => i.id === selectedInvoiceId)) {
+      selectedInvoiceId = null;
+    }
+    if (!selectedInvoiceId && adminInvoices.length) {
+      selectedInvoiceId = adminInvoices[0]?.id ?? null;
+    }
+    await reloadInvoiceDetail();
   }
 
   async function reloadPromoters(): Promise<void> {
@@ -1090,14 +925,24 @@ export async function initAdminPortal(): Promise<void> {
   }
 
   async function reloadJobsCalendar(): Promise<void> {
+    if (!nativeFinancialClubPaymentRates.length) {
+      const rules = await listFinancialClubPaymentRates(supabase);
+      nativeFinancialClubPaymentRates = rules.ok ? rules.data : [];
+    }
     const from = isoLocalYmd(jobsCalendarYear, jobsCalendarMonth, 1);
     const lastD = new Date(jobsCalendarYear, jobsCalendarMonth + 1, 0).getDate();
     const to = isoLocalYmd(jobsCalendarYear, jobsCalendarMonth, lastD);
+    const f = jobsLedgerFilters;
     const r = await loadPromoterJobsCalendar(supabase, {
       from,
       to,
-      promoterId: jobsFilterPromoterId.trim() || undefined,
-      clubSlug: jobsFilterClubSlug.trim() || undefined,
+      promoterId: f.promoterId.trim() || undefined,
+      clubSlug: f.clubSlug.trim() || undefined,
+      jobType: f.jobType.trim() || undefined,
+      status: f.status.trim() || undefined,
+      adminConfirmed: jobsTriFilterToBool(f.adminConfirmed),
+      paid: jobsTriFilterToBool(f.paid),
+      bonusValid: jobsTriFilterToBool(f.bonusValid),
     });
     jobsCalendarRows = r.ok ? r.rows : [];
     if (editingJobId && !jobsCalendarRows.some((j) => j.id === editingJobId)) {
@@ -1317,6 +1162,7 @@ export async function initAdminPortal(): Promise<void> {
     await reloadPromoters();
     await reloadFinancialReport();
     if (view === "jobs") await reloadJobsCalendar();
+    if (view === "invoices") await reloadAdminInvoices();
     if (view === "guestlist_queue") await reloadGuestlistQueue();
     if (view === "night_adjustments") await reloadNightAdjQueue();
     if (view === "table_sales") {
@@ -1438,6 +1284,11 @@ export async function initAdminPortal(): Promise<void> {
           <div><dt>Name</dt><dd>${escapeAttr(e.name ?? "—")}</dd></div>
           <div><dt>Email</dt><dd>${escapeAttr(e.email ?? "—")}</dd></div>
           <div><dt>Phone</dt><dd>${escapeAttr(e.phone ?? "—")}</dd></div>
+          <div><dt>Linked client</dt><dd>${
+            e.client_id
+              ? `<code class="admin-list-code">${escapeAttr(e.client_id)}</code> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-open-client-id="${escapeAttr(e.client_id)}">Open in Clients</button>`
+              : "— (auto-linked when one guest maps to one client)"
+          }</dd></div>
         </dl>
         <h4 class="admin-subhead">Guest list (booker first, then party)</h4>
         ${guestsHtml}
@@ -1584,233 +1435,44 @@ export async function initAdminPortal(): Promise<void> {
       </div>`;
   }
 
-  function renderJobsViewHtml(): string {
-    const monthLabel = new Date(
-      jobsCalendarYear,
-      jobsCalendarMonth,
-      1,
-    ).toLocaleString("en-GB", { month: "long", year: "numeric" });
-    const sortedJobs = [...jobsCalendarRows].sort((a, b) => {
-      const d = a.jobDate.localeCompare(b.jobDate);
-      if (d !== 0) return d;
-      return a.promoterDisplayName.localeCompare(b.promoterDisplayName);
+  function renderFinSourceJobCell(b: FinancialBooking): string {
+    const jobId = b.sourceJobId?.trim();
+    if (!jobId) return "—";
+    return `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-open-source-job data-job-id="${escapeAttr(jobId)}">Job</button>`;
+  }
+
+  function renderInvoicesDetailPanel(): string {
+    const inv = selectedInvoiceId
+      ? (adminInvoices.find((i) => i.id === selectedInvoiceId) ?? null)
+      : null;
+    return renderInvoicesDetailPanelHtml({
+      selectedInvoice: inv,
+      promoters,
+      submittedLines: invoiceLines,
+      ledgerJobs: invoicePeriodJobs,
+      diffLines: invoiceVerificationDiffLines,
+      invoiceFormOpen,
+      defaultPromoterId: selectedPromoterId,
     });
-    const editJob = editingJobId
-      ? jobsCalendarRows.find((j) => j.id === editingJobId)
-      : undefined;
-    const calHtml = buildAdminJobsCalendarHtml(
+  }
+
+  function renderJobsDetailPanel(): string {
+    return renderJobsViewHtml({
       jobsCalendarYear,
       jobsCalendarMonth,
       jobsCalendarRows,
-    );
-    const tableRows =
-      sortedJobs.length === 0
-        ? `<tr><td colspan="10" class="admin-note">No jobs in this month for the current filters.</td></tr>`
-        : sortedJobs
-            .map((j) => {
-              const completeBtn =
-                j.status === "assigned"
-                  ? `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-complete="${escapeAttr(j.id)}">Complete</button>`
-                  : "";
-              const editingCls = editingJobId === j.id ? " is-editing" : "";
-              return `<tr class="cc-row-editing${editingCls}">
-              <td>${escapeAttr(j.jobDate)}</td>
-              <td>${escapeAttr(adminDisplayTruncate(j.promoterDisplayName, 22))}</td>
-              <td>${escapeAttr(j.clubSlug ?? "—")}</td>
-              <td>${escapeAttr(j.service)}</td>
-              <td><span class="admin-list-badge admin-list-badge--${escapeAttr(j.status)}">${escapeAttr(j.status)}</span></td>
-              <td>${j.guestsCount}</td>
-              <td>${escapeAttr(`£${j.shiftFee.toFixed(2)}`)}</td>
-              <td>${escapeAttr(`£${j.guestlistFee.toFixed(2)}`)}</td>
-              <td class="admin-list-col--wide">${escapeAttr(adminDisplayTruncate(j.notes, 36))}</td>
-              <td class="admin-jobs__row-actions">
-                <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-open-job-edit="${escapeAttr(j.id)}">Edit</button>
-                ${completeBtn}
-                <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-job-delete="${escapeAttr(j.id)}">Delete</button>
-              </td>
-            </tr>`;
-            })
-            .join("");
-
-    const clubOptsFor = (slug: string | null) =>
-      `<option value="">${escapeAttr("(none)")}</option>${clubEntries
-        .map(
-          (c) =>
-            `<option value="${escapeAttr(c.club.slug)}"${(slug ?? "") === c.club.slug ? " selected" : ""}>${escapeAttr(c.club.name)}</option>`,
-        )
-        .join("")}`;
-
-    let editDialogHtml = "";
-    if (editJob) {
-      const readOnly = editJob.status === "completed";
-      if (readOnly) {
-        editDialogHtml = `<dialog class="admin-job-dialog" id="admin-job-edit-dialog">
-          <div class="admin-job-dialog__inner">
-            <h3 class="admin-job-dialog__title">Completed job</h3>
-            <p class="admin-note">${escapeAttr(editJob.promoterDisplayName)} · ${escapeAttr(editJob.jobDate)} · ${escapeAttr(editJob.clubSlug ?? "—")}</p>
-            <p class="admin-note">Recorded when marked complete. Delete only if you must undo (may fail if earnings are linked).</p>
-            <input type="hidden" id="admin-job-edit-id" value="${escapeAttr(editJob.id)}" />
-            <div class="admin-actions">
-              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-delete">Delete job</button>
-              <button type="button" class="cc-btn cc-btn--gold" id="admin-job-edit-dismiss">Close</button>
-            </div>
-          </div>
-        </dialog>`;
-      } else {
-        editDialogHtml = `<dialog class="admin-job-dialog" id="admin-job-edit-dialog">
-          <form class="admin-job-dialog__inner" id="admin-job-edit-form">
-            <h3 class="admin-job-dialog__title">Edit job</h3>
-            <p class="admin-note">${escapeAttr(editJob.promoterDisplayName)}</p>
-            <input type="hidden" name="jobId" value="${escapeAttr(editJob.id)}" />
-            <div class="cc-field"><label>Club</label><select name="clubSlug">${clubOptsFor(editJob.clubSlug)}</select></div>
-            <div class="cc-field"><label>Service</label><select name="service">${jobServiceSelectHtml(editJob.service)}</select></div>
-            <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${escapeAttr(editJob.jobDate)}" required /></div>
-            <div class="cc-field"><label>Status</label>
-              <select name="status">
-                <option value="assigned"${editJob.status === "assigned" ? " selected" : ""}>assigned</option>
-                <option value="cancelled"${editJob.status === "cancelled" ? " selected" : ""}>cancelled</option>
-              </select>
-            </div>
-            <div class="cc-field"><label>Shift fee (£)</label><input name="shiftFee" type="number" step="0.01" value="${editJob.shiftFee}" /></div>
-            <div class="cc-field"><label>Guestlist fee / guest (£)</label><input name="guestFee" type="number" step="0.01" value="${editJob.guestlistFee}" /></div>
-            <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="${editJob.guestsCount}" /></div>
-            <p class="admin-note full">If this promoter added guestlist names in the portal, <strong>approved</strong> rows set this count automatically. Manual count still applies when there are no submitted names.</p>
-            <div class="cc-field full"><label>Notes</label><textarea name="notes">${escapeHtmlText(editJob.notes)}</textarea></div>
-            <div class="admin-actions">
-              <button type="button" class="cc-btn cc-btn--gold" id="admin-job-edit-save">Save changes</button>
-              ${
-                editJob.status === "assigned"
-                  ? `<button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-complete">Mark completed</button>`
-                  : ""
-              }
-              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-delete">Delete</button>
-              <button type="button" class="cc-btn cc-btn--ghost" id="admin-job-edit-dismiss">Close</button>
-            </div>
-          </form>
-        </dialog>`;
-      }
-    }
-
-    return `
-            <div class="admin-jobs">
-              <div class="admin-jobs__top">
-                ${
-                  jobsCalendarOpen
-                    ? `<section class="admin-jobs__calendar" aria-label="Job calendar">
-                  <div class="admin-jobs__cal-toolbar">
-                    <button type="button" class="cc-btn cc-btn--ghost" id="jobs-cal-prev" aria-label="Previous month">←</button>
-                    <h4 class="admin-jobs__cal-title">${escapeAttr(monthLabel)}</h4>
-                    <button type="button" class="cc-btn cc-btn--ghost" id="jobs-cal-next" aria-label="Next month">→</button>
-                  </div>
-                  ${calHtml}
-                  <form class="admin-jobs__filters admin-form" id="jobs-calendar-filters">
-                    <div class="cc-field"><label for="jobs-filter-promoter">Promoter</label>
-                      <select id="jobs-filter-promoter" name="jobsFilterPromoter">
-                        <option value="">${escapeAttr("All promoters")}</option>
-                        ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === jobsFilterPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
-                      </select>
-                    </div>
-                    <div class="cc-field"><label for="jobs-filter-club">Club</label>
-                      <select id="jobs-filter-club" name="jobsFilterClub">
-                        <option value="">${escapeAttr("All clubs")}</option>
-                        ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}"${c.club.slug === jobsFilterClubSlug ? " selected" : ""}>${escapeAttr(c.club.name)}</option>`).join("")}
-                      </select>
-                    </div>
-                    <div class="admin-actions admin-jobs__filter-actions">
-                      <button type="button" class="cc-btn cc-btn--gold" id="jobs-filter-apply">Apply filters</button>
-                      <button type="button" class="cc-btn cc-btn--ghost" id="jobs-filter-reset">Reset</button>
-                    </div>
-                  </form>
-                </section>`
-                    : ""
-                }
-                ${
-                  jobsCreateOpen
-                    ? `<section class="admin-jobs__create" aria-label="Create job">
-                  <h4 class="admin-jobs__create-title">Create job</h4>
-                  <form class="admin-form admin-jobs__create-form" id="promoter-job-form">
-                    <div class="cc-field"><label>Promoter</label>
-                      <select name="promoterId">
-                        ${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}
-                      </select>
-                    </div>
-                    <div class="cc-field"><label>Club</label>
-                      <select name="clubSlug">
-                        <option value="">(none)</option>
-                        ${clubEntries.map((c) => `<option value="${escapeAttr(c.club.slug)}">${escapeAttr(c.club.name)}</option>`).join("")}
-                      </select>
-                    </div>
-                    <div class="cc-field"><label>Date</label><input name="jobDate" type="date" value="${escapeAttr(new Date().toISOString().slice(0, 10))}" required /></div>
-                    <div class="cc-field"><label>Service</label>
-                      <select name="service">${jobServiceSelectHtml("guestlist")}</select>
-                    </div>
-                    <div class="cc-field"><label>Status</label>
-                      <select name="status">
-                        <option value="assigned">assigned (upcoming)</option>
-                        <option value="completed">completed (already happened)</option>
-                      </select>
-                    </div>
-                    <div class="cc-field"><label>Client mode</label>
-                      <select name="clientMode">
-                        <option value="existing">Find client</option>
-                        <option value="blank">Create blank client</option>
-                        <option value="new">Create new client profile</option>
-                      </select>
-                    </div>
-                    <div class="cc-field full" id="admin-job-find-client-block"><label>Find client</label>
-                      <input name="clientSearch" type="text" placeholder="Type client name/email/phone" />
-                      <select name="existingClientId" style="margin-top:0.4rem">
-                        <option value="">(none)</option>
-                        ${clients.map((c) => `<option value="${escapeAttr(c.id)}">${escapeAttr(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`).join("")}
-                      </select>
-                    </div>
-                    <div class="cc-field" id="admin-job-new-client-name" hidden><label>New client name</label><input name="newClientName" placeholder="Client full name" /></div>
-                    <div class="cc-field" id="admin-job-new-client-email" hidden><label>New client email</label><input name="newClientEmail" type="email" placeholder="client@example.com" /></div>
-                    <div class="cc-field" id="admin-job-new-client-phone" hidden><label>New client phone</label><input name="newClientPhone" placeholder="+44…" /></div>
-                    <div class="admin-actions full">
-                      <button class="cc-btn cc-btn--ghost" type="button" id="admin-job-add-client">+ Add client</button>
-                    </div>
-                    <div class="full promoter-table-wrap">
-                      <table>
-                        <thead><tr><th>Type</th><th>Name</th><th>Contact</th><th>Remove</th></tr></thead>
-                        <tbody id="admin-job-clients-body">${
-                          createJobClients.length
-                            ? createJobClients
-                                .map(
-                                  (c, idx) =>
-                                    `<tr><td>${escapeAttr(c.mode === "existing" ? "existing" : c.mode === "blank" ? "blank" : "new profile")}</td><td>${escapeAttr(c.name || "New client")}</td><td>${escapeAttr(c.contact || "—")}</td><td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-job-remove-client="${idx}">Remove</button></td></tr>`,
-                                )
-                                .join("")
-                            : "<tr><td colspan='4'>No clients added yet.</td></tr>"
-                        }</tbody>
-                      </table>
-                    </div>
-                    <div class="cc-field"><label>Shift fee (£)</label><input name="shiftFee" type="number" step="0.01" value="0" /></div>
-                    <div class="cc-field"><label>Guestlist fee / guest (£)</label><input name="guestFee" type="number" step="0.01" value="0" /></div>
-                    <div class="cc-field"><label>Guests count</label><input name="guestCount" type="number" step="1" value="0" /></div>
-                    <p class="admin-note full">Promoters can submit names in their portal; <strong>approved</strong> rows replace this count for billing when the job is completed. If they never use the portal, this number still applies.</p>
-                    <div class="cc-field full"><label>Notes</label><textarea name="notes" rows="3" placeholder="Optional internal notes"></textarea></div>
-                    <div class="admin-actions">
-                      <button class="cc-btn cc-btn--gold" type="button" id="promoter-job-create">Create job</button>
-                    </div>
-                  </form>
-                </section>`
-                    : ""
-                }
-              </div>
-              <section class="admin-jobs__table-block" aria-label="Jobs this month">
-                <h4 class="admin-jobs__table-title">Jobs this month</h4>
-                <div class="promoter-table-wrap">
-                  <table class="admin-table">
-                    <thead><tr>
-                      <th>Date</th><th>Promoter</th><th>Club</th><th>Service</th><th>Status</th><th>Guests</th><th>Shift</th><th>Per guest</th><th>Notes</th><th>Actions</th>
-                    </tr></thead>
-                    <tbody>${tableRows}</tbody>
-                  </table>
-                </div>
-              </section>
-              ${editDialogHtml}
-            </div>`;
+      jobsCalendarOpen,
+      jobsCreateOpen,
+      selectedJobId: editingJobId,
+      clubEntries,
+      clients,
+      promoters,
+      selectedPromoterId,
+      createJobClients,
+      rates: nativeFinancialClubPaymentRates,
+      filters: jobsLedgerFilters,
+      listSearch,
+    });
   }
 
   function renderFinancialsViewHtml(): string {
@@ -2142,6 +1804,7 @@ export async function initAdminPortal(): Promise<void> {
             <td>${escapeAttr(`£${b.projectedAgencyProfit.toFixed(2)}`)}</td>
             <td>${escapeAttr(`£${b.realizedAgencyProfit.toFixed(2)}`)}</td>
             <td>${renderStatusBadge(statusLabel)}</td>
+            <td>${renderFinSourceJobCell(b)}</td>
             <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-edit-booking="${escapeAttr(b.id)}">Edit</button> <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-fin-delete-booking="${escapeAttr(b.id)}">Delete</button></td>
           </tr>`;
         })
@@ -2165,8 +1828,8 @@ export async function initAdminPortal(): Promise<void> {
           </div>
           <div class="promoter-table-wrap full">
             <table>
-              <thead><tr><th>Ref</th><th>Date</th><th>Promoter</th><th>Venue</th><th>Male</th><th>Female</th><th>Guests</th><th>Revenue</th><th>Bonus</th><th>Projected</th><th>Realized</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>${nightlifeRowsScoped || "<tr><td colspan='13' class='admin-note'>No nightlife bookings in period.</td></tr>"}</tbody>
+              <thead><tr><th>Ref</th><th>Date</th><th>Promoter</th><th>Venue</th><th>Male</th><th>Female</th><th>Guests</th><th>Revenue</th><th>Bonus</th><th>Projected</th><th>Realized</th><th>Status</th><th>Job</th><th>Actions</th></tr></thead>
+              <tbody>${nightlifeRowsScoped || "<tr><td colspan='14' class='admin-note'>No nightlife bookings in period.</td></tr>"}</tbody>
             </table>
           </div>
         </div>
@@ -2646,7 +2309,7 @@ export async function initAdminPortal(): Promise<void> {
                         : view === "clubs"
                           ? "Full-width table. Quick edit public fields or open all details."
                           : view === "jobs"
-                            ? "Choose a promoter to attach jobs and history."
+                            ? "Jobs for the visible month. Filter, then open a row for headcount, ratio check, and financial snapshot."
                             : view === "guestlist_queue"
                               ? "Pending promoter-submitted names are listed in the detail panel."
                               : view === "night_adjustments"
@@ -2654,8 +2317,8 @@ export async function initAdminPortal(): Promise<void> {
                                 : view === "table_sales"
                                   ? "Pending table submissions count here; open Tables for the queue, office entry, and report."
                                   : view === "invoices"
-                                    ? "Choose a promoter for invoice tools."
-                                    : view === "financials"
+                                ? renderInvoicesDetailPanel()
+                          : view === "financials"
                                       ? "Reporting uses financial_transactions."
                                       : view === "club_accounts"
                                         ? "Invite-only club users mapped by club slug."
@@ -2891,7 +2554,7 @@ export async function initAdminPortal(): Promise<void> {
                                 </div>`;
                               })()
                             : view === "jobs"
-                        ? renderJobsViewHtml()
+                        ? renderJobsDetailPanel()
                         : view === "guestlist_queue"
                           ? renderGuestlistQueueDetailHtml()
                           : view === "night_adjustments"
@@ -2899,52 +2562,7 @@ export async function initAdminPortal(): Promise<void> {
                             : view === "table_sales"
                               ? renderTableSalesViewHtml()
                               : view === "invoices"
-                                ? `
-            ${
-              invoiceFormOpen
-                ? `<form class="admin-form" id="promoter-invoice-form" data-collapsible="true">
-              <h4 class="full">Generate invoice</h4>
-              <div class="cc-field"><label>Promoter</label>
-                <select name="promoterId">${promoters.map((p) => `<option value="${escapeAttr(p.id)}"${p.id === selectedPromoterId ? " selected" : ""}>${escapeAttr(p.displayName || p.userId)}</option>`).join("")}</select>
-              </div>
-              <div class="cc-field"><label>Period start</label><input name="from" type="date" value="${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)}" /></div>
-              <div class="cc-field"><label>Period end</label><input name="to" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
-              <div class="admin-actions full">
-                <button class="cc-btn cc-btn--gold" type="button" id="promoter-invoice-generate">Generate invoice</button>
-              </div>
-              <p class="admin-note full">PDF and email use the <code>promoter-invoice</code> Edge Function (deploy + set <code>RESEND_API_KEY</code>, <code>RESEND_FROM</code>, <code>INVOICE_EMAIL_PROVIDER</code>).</p>
-              <h4 class="full">Previous invoices</h4>
-              <div class="full promoter-table-wrap">
-                <table>
-                  <thead><tr><th>Period</th><th>Status</th><th>Total</th><th>Sent</th><th>PDF</th><th>Email</th></tr></thead>
-                  <tbody>
-                    ${
-                      promoterInvoices.length
-                        ? promoterInvoices
-                            .map((i) => {
-                              const sent =
-                                i.sentAt && i.sentToEmail
-                                  ? `${escapeAttr(i.sentAt.slice(0, 10))} → ${escapeAttr(i.sentToEmail)}`
-                                  : "—";
-                              return `<tr>
-                              <td>${escapeAttr(i.periodStart)} to ${escapeAttr(i.periodEnd)}</td>
-                              <td>${escapeAttr(i.status)}</td>
-                              <td>${escapeAttr(`£${i.total.toFixed(2)}`)}</td>
-                              <td class="admin-list-col--wide">${sent}</td>
-                              <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-invoice-pdf data-invoice-id="${escapeAttr(i.id)}">PDF</button></td>
-                              <td><button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-invoice-email data-invoice-id="${escapeAttr(i.id)}">Email</button></td>
-                            </tr>`;
-                            })
-                            .join("")
-                        : "<tr><td colspan='6'>No invoices for selected promoter.</td></tr>"
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </form>`
-                : `<p class="admin-note">Invoice actions hidden until Add new/Edit is clicked.</p><button class="pp-btn pp-btn--primary" type="button" id="open-invoice-form">Open Form</button>`
-            }
-            `
+                                ? renderInvoicesDetailPanel()
                           : view === "financials"
                             ? renderFinancialsViewHtml()
                     : view === "enquiries"
@@ -2952,14 +2570,19 @@ export async function initAdminPortal(): Promise<void> {
                         ? renderEnquiryDetail(enquiry)
                         : `<p class="admin-note">No enquiries yet.</p>`
                       : clientRow
-                        ? renderClientDetail(
-                            clientRow,
-                            clientGuestlistActivity,
-                            clientAttendances,
-                            clubEntries,
+                        ? renderAdminClientDetailPanel({
+                            client: clientRow,
+                            tab: clientDetailTab,
+                            activity: clientGuestlistActivity,
+                            attendances: clientAttendances,
+                            jobs: clientJobs,
+                            clubs: clubEntries.map((e) => ({
+                              slug: e.club.slug,
+                              name: e.club.name,
+                            })),
                             promoters,
-                            selectedClientAttendanceId,
-                          )
+                            selectedAttendanceId: selectedClientAttendanceId,
+                          })
                         : `<p class="admin-note">No clients yet. Add one with “Add client” or use “Create clients from names” on a guestlist enquiry.</p>`
             }
               </section>
@@ -3942,6 +3565,15 @@ export async function initAdminPortal(): Promise<void> {
           renderDashboard();
           return;
         }
+        const openSourceJobBtn = t.closest("[data-fin-open-source-job]") as HTMLButtonElement | null;
+        if (openSourceJobBtn) {
+          const jobId = openSourceJobBtn.dataset.jobId?.trim();
+          if (!jobId) return;
+          view = "jobs";
+          editingJobId = jobId;
+          void reloadJobsCalendar().then(() => renderDashboard());
+          return;
+        }
         const editBookingBtn = t.closest("[data-fin-edit-booking]") as HTMLButtonElement | null;
         if (editBookingBtn) {
           const id = editBookingBtn.dataset.finEditBooking?.trim() || "";
@@ -4601,6 +4233,7 @@ export async function initAdminPortal(): Promise<void> {
           void (async () => {
             await reloadPromoters();
             if (v === "jobs") await reloadJobsCalendar();
+            if (v === "invoices") await reloadAdminInvoices();
             renderDashboard();
           })();
         else if (v === "guestlist_queue")
@@ -5200,57 +4833,63 @@ export async function initAdminPortal(): Promise<void> {
             },
           });
         }
-      } else if (view === "jobs" || view === "invoices") {
-        listEl.className = "admin-list";
-        if (!promoters.length) {
-          listEl.innerHTML = `<p class="admin-note">No promoters loaded.</p>`;
-        } else {
-          listEl.innerHTML = "";
-          mountDataTable(listHost, {
-            id: "admin-promoters",
-            rows: promoters,
-            rowId: (p) => p.id,
-            activeRowId: selectedPromoterId,
-            columns: [
-              {
-                key: "photo",
-                label: "",
-                width: "56px",
-                render: (p) =>
-                  p.profileImageUrl
-                    ? `<img src="${escapeAttr(p.profileImageUrl)}" alt="" style="width:34px;height:34px;border-radius:999px;object-fit:cover;border:1px solid var(--portal-border)" />`
-                    : `<span class="pp-avatar pp-avatar--sm">${escapeAttr((p.displayName || p.userId || "?").charAt(0).toUpperCase())}</span>`,
-              },
-              {
-                key: "promoter",
-                label: "Promoter",
-                sortable: true,
-                accessor: (p) => p.displayName || p.userId,
-                render: (p) => escapeAttr(adminDisplayTruncate(p.displayName || p.userId, 32)),
-              },
-              {
-                key: "approval",
-                label: "Approval",
-                sortable: true,
-                accessor: (p) => p.approvalStatus,
-                render: (p) => renderStatusBadge(p.approvalStatus),
-              },
-              {
-                key: "actions",
-                label: "Actions",
-                align: "right",
-                render: (p) =>
-                  `<button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-edit="${escapeAttr(p.id)}">Edit</button>
-                   <button type="button" class="cc-btn cc-btn--ghost cc-btn--small" data-admin-row-delete="${escapeAttr(p.id)}">Delete</button>`,
-              },
-            ],
+      } else if (view === "jobs") {
+        listEl.className = "admin-list admin-list--jobs";
+        const monthLabel = new Date(jobsCalendarYear, jobsCalendarMonth, 1).toLocaleString(
+          "en-GB",
+          { month: "long", year: "numeric" },
+        );
+        const filtered = filterJobsRows(jobsCalendarRows, jobsLedgerFilters, listSearch);
+        const kpis = computeJobLedgerKpis(filtered);
+        listEl.innerHTML = `${renderJobsListFiltersHtml(
+          jobsLedgerFilters,
+          promoters,
+          clubEntries,
+          kpis,
+          monthLabel,
+        )}<div id="admin-jobs-list-host"></div>`;
+        const jobsHost = listEl.querySelector(
+          "#admin-jobs-list-host",
+        ) as HTMLElement | null;
+        if (!filtered.length) {
+          if (jobsHost) {
+            jobsHost.innerHTML =
+              '<p class="admin-note">No jobs in this month for the current filters.</p>';
+          }
+        } else if (jobsHost) {
+          mountDataTable(jobsHost, {
+            id: "admin-jobs-ledger",
+            rows: filtered,
+            rowId: (j) => j.id,
+            activeRowId: editingJobId,
+            columns: jobsDataTableColumns(nativeFinancialClubPaymentRates),
             onRowClick: (row) => {
-              selectedPromoterId = row.id ?? null;
-              void (async () => {
-                await reloadPromoters();
-                if (view === "jobs") await reloadJobsCalendar();
-                renderDashboard();
-              })();
+              editingJobId = row.id ?? null;
+              jobsCreateOpen = false;
+              renderDashboard();
+            },
+          });
+        }
+      } else if (view === "invoices") {
+        listEl.className = "admin-list admin-list--invoices";
+        listEl.innerHTML = `${renderInvoicesListFiltersHtml(invoicesLedgerFilters, promoters)}<div id="admin-invoices-list-host"></div>`;
+        const invoicesHost = listEl.querySelector(
+          "#admin-invoices-list-host",
+        ) as HTMLElement | null;
+        if (!adminInvoices.length) {
+          if (invoicesHost) {
+            invoicesHost.innerHTML = `<p class="admin-note">No invoices yet. Generate one from the detail panel.</p>`;
+          }
+        } else if (invoicesHost) {
+          mountDataTable(invoicesHost, {
+            id: "admin-invoices-ledger",
+            rows: adminInvoices,
+            rowId: (i) => i.id,
+            activeRowId: selectedInvoiceId,
+            columns: invoicesDataTableColumns(),
+            onRowClick: (row) => {
+              selectedInvoiceId = row.id ?? null;
+              void reloadInvoiceDetail().then(() => renderDashboard());
             },
           });
         }
@@ -5865,6 +5504,7 @@ export async function initAdminPortal(): Promise<void> {
     });
     adminRoot.querySelector("#jobs-create-toggle")?.addEventListener("click", () => {
       jobsCreateOpen = !jobsCreateOpen;
+      if (jobsCreateOpen) editingJobId = null;
       renderDashboard();
     });
     adminRoot.querySelector("#jobs-calendar-toggle")?.addEventListener("click", () => {
@@ -6477,374 +6117,50 @@ export async function initAdminPortal(): Promise<void> {
       window.location.href = `mailto:${req.email}?subject=${subj}&body=${body}`;
     });
 
-    adminRoot.querySelector("#promoter-job-create")?.addEventListener("click", () => {
-      const form = adminRoot.querySelector("#promoter-job-form") as HTMLFormElement | null;
-      if (!form) return;
-      const fd = new FormData(form);
-      const promoterId = String(fd.get("promoterId") || "").trim();
-      const clubSlug = String(fd.get("clubSlug") || "").trim();
-      const jobDate = String(fd.get("jobDate") || "").trim();
-      const status = String(fd.get("status") || "assigned").trim() as
-        | "assigned"
-        | "completed"
-        | "cancelled";
-      if (!promoterId || !jobDate) {
-        flash("Promoter and date are required.", "error");
-        return;
-      }
-      void (async () => {
-        const resolvedClients: Array<{ name: string; contact: string }> = [];
-        for (const item of createJobClients) {
-          if (item.mode === "existing") {
-            if (item.name.trim()) {
-              resolvedClients.push({ name: item.name.trim(), contact: item.contact.trim() });
-            }
-            continue;
+
+    if (view === "jobs") {
+      bindJobsLedgerEvents({
+        adminRoot,
+        supabase,
+        getSelectedJobId: () => editingJobId,
+        setSelectedJobId: (id) => { editingJobId = id; },
+        getJobsCalendarRows: () => jobsCalendarRows,
+        getRates: () => nativeFinancialClubPaymentRates,
+        getClients: () => clients,
+        getCreateJobClients: () => createJobClients,
+        setCreateJobClients: (rows) => { createJobClients = rows; },
+        getFilters: () => jobsLedgerFilters,
+        setFilters: (f) => { jobsLedgerFilters = f; },
+        readFiltersFromDom: () => readJobsFiltersFromDom(adminRoot),
+        reloadJobs: reloadJobsCalendar,
+        reloadPromoters,
+        reloadClients,
+        reloadFinancialReport,
+        flash,
+        flashAfterJobDelete,
+        renderDashboard,
+        getView: () => view,
+        onJobCreated: (jobDate) => {
+          const ymd = jobDate.split("-").map(Number);
+          if (ymd.length >= 2 && Number.isFinite(ymd[0]) && Number.isFinite(ymd[1])) {
+            jobsCalendarYear = ymd[0];
+            jobsCalendarMonth = Math.max(0, Math.min(11, ymd[1] - 1));
           }
-          if (item.mode === "blank") {
-            const blank = await createEmptyClient(supabase);
-            if (!blank.ok) {
-              flash(`Create client failed: ${blank.message}`, "error");
-              return;
-            }
-            await reloadClients();
-            const c = clients.find((x) => x.id === blank.id);
-            resolvedClients.push({ name: String(c?.name || "New client").trim(), contact: "" });
-            continue;
-          }
-          const created = await createEmptyClient(supabase);
-          if (!created.ok) {
-            flash(`Create client failed: ${created.message}`, "error");
-            return;
-          }
-          const newName = String(item.name || "").trim() || "New client";
-          const newEmail = String(item.newEmail || "").trim() || null;
-          const newPhone = String(item.newPhone || "").trim() || null;
-          const upd = await updateClientById(supabase, created.id, {
-            name: newName,
-            email: newEmail,
-            phone: newPhone,
-            instagram: null,
-            notes: null,
-            typical_spend_gbp: null,
-            preferred_nights: null,
-            preferred_promoter_id: promoterId || null,
-            preferred_club_slug: null,
-          });
-          if (!upd.ok) {
-            flash(`Update client failed: ${upd.message}`, "error");
-            return;
-          }
-          resolvedClients.push({ name: newName, contact: String(newPhone || newEmail || "").trim() });
-        }
-        const clientName = resolvedClients.map((c) => c.name).filter(Boolean).join("; ");
-        const clientContact = resolvedClients.map((c) => c.contact).filter(Boolean).join("; ");
-        const res = await createPromoterJob(supabase, {
-          promoter_id: promoterId,
-          club_slug: clubSlug || null,
-          service: String(fd.get("service") || "guestlist").trim() || "guestlist",
-          job_date: jobDate,
-          status,
-          client_name: clientName,
-          client_contact: clientContact,
-          shift_fee: Number(fd.get("shiftFee") || 0) || 0,
-          guestlist_fee: Number(fd.get("guestFee") || 0) || 0,
-          guests_count: Number(fd.get("guestCount") || 0) || 0,
-          notes: String(fd.get("notes") || "").trim(),
-        });
-        if (!res.ok) {
-          flash(`Create job failed: ${res.message}`, "error");
-          return;
-        }
-        const ymd = jobDate.split("-").map(Number);
-        if (ymd.length >= 2 && Number.isFinite(ymd[0]) && Number.isFinite(ymd[1])) {
-          jobsCalendarYear = ymd[0]!;
-          jobsCalendarMonth = Math.max(0, Math.min(11, ymd[1]! - 1));
-        }
-        await reloadPromoters();
-        if (view === "jobs") await reloadJobsCalendar();
-        createJobClients = [];
-        flash("Job created.");
-        renderDashboard();
-      })();
-    });
-    adminRoot.querySelector("#admin-job-add-client")?.addEventListener("click", () => {
-      const form = adminRoot.querySelector("#promoter-job-form") as HTMLFormElement | null;
-      if (!form) return;
-      const fd = new FormData(form);
-      const mode = String(fd.get("clientMode") || "existing").trim();
-      if (mode === "existing") {
-        const existingId = String(fd.get("existingClientId") || "").trim();
-        const existing = clients.find((c) => c.id === existingId);
-        if (!existing) {
-          flash("Select a client from the find results first.", "error");
-          return;
-        }
-        createJobClients.push({
-          mode: "existing",
-          clientId: existing.id,
-          name: String(existing.name || "").trim() || "Client",
-          contact: String(existing.phone || existing.email || existing.instagram || "").trim(),
-        });
-      } else if (mode === "blank") {
-        createJobClients.push({
-          mode: "blank",
-          name: "New client",
-          contact: "",
-        });
-      } else {
-        const newName = String(fd.get("newClientName") || "").trim();
-        const newEmail = String(fd.get("newClientEmail") || "").trim();
-        const newPhone = String(fd.get("newClientPhone") || "").trim();
-        if (!newName) {
-          flash("New client name is required.", "error");
-          return;
-        }
-        createJobClients.push({
-          mode: "new",
-          name: newName,
-          contact: String(newPhone || newEmail || "").trim(),
-          newEmail,
-          newPhone,
-        });
-      }
-      renderDashboard();
-    });
-    adminRoot.querySelectorAll("[data-admin-job-remove-client]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = Number((btn as HTMLElement).getAttribute("data-admin-job-remove-client") || "-1");
-        if (idx < 0 || idx >= createJobClients.length) return;
-        createJobClients.splice(idx, 1);
-        renderDashboard();
+        },
+        onCalPrev: () => {
+          jobsCalendarMonth -= 1;
+          if (jobsCalendarMonth < 0) { jobsCalendarMonth = 11; jobsCalendarYear -= 1; }
+          void reloadJobsCalendar().then(() => renderDashboard());
+        },
+        onCalNext: () => {
+          jobsCalendarMonth += 1;
+          if (jobsCalendarMonth > 11) { jobsCalendarMonth = 0; jobsCalendarYear += 1; }
+          void reloadJobsCalendar().then(() => renderDashboard());
+        },
       });
-    });
-    adminRoot.querySelector("[name=clientMode]")?.addEventListener("change", (ev) => {
-      const mode = String((ev.target as HTMLSelectElement).value || "existing").trim();
-      const findBlock = adminRoot.querySelector("#admin-job-find-client-block") as HTMLElement | null;
-      const newName = adminRoot.querySelector("#admin-job-new-client-name") as HTMLElement | null;
-      const newEmail = adminRoot.querySelector("#admin-job-new-client-email") as HTMLElement | null;
-      const newPhone = adminRoot.querySelector("#admin-job-new-client-phone") as HTMLElement | null;
-      const showNew = mode === "new";
-      if (findBlock) findBlock.hidden = mode !== "existing";
-      if (newName) newName.hidden = !showNew;
-      if (newEmail) newEmail.hidden = !showNew;
-      if (newPhone) newPhone.hidden = !showNew;
-    });
-    adminRoot.querySelector("[name=clientSearch]")?.addEventListener("input", (ev) => {
-      const q = String((ev.target as HTMLInputElement).value || "").trim().toLowerCase();
-      const sel = adminRoot.querySelector("[name=existingClientId]") as HTMLSelectElement | null;
-      if (!sel) return;
-      const filtered = clients.filter((c) => {
-        const hay = `${c.name || ""} ${c.email || ""} ${c.phone || ""}`.toLowerCase();
-        return !q || hay.includes(q);
-      });
-      sel.innerHTML = `<option value="">(none)</option>${filtered
-        .map((c) => `<option value="${escapeAttr(c.id)}">${escapeAttr(c.name || c.email || c.phone || c.id.slice(0, 8))}</option>`)
-        .join("")}`;
-    });
+    }
 
-    adminRoot.querySelector("#jobs-cal-prev")?.addEventListener("click", () => {
-      editingJobId = null;
-      jobsCalendarMonth -= 1;
-      if (jobsCalendarMonth < 0) {
-        jobsCalendarMonth = 11;
-        jobsCalendarYear -= 1;
-      }
-      void reloadJobsCalendar().then(() => renderDashboard());
-    });
-
-    adminRoot.querySelector("#jobs-cal-next")?.addEventListener("click", () => {
-      editingJobId = null;
-      jobsCalendarMonth += 1;
-      if (jobsCalendarMonth > 11) {
-        jobsCalendarMonth = 0;
-        jobsCalendarYear += 1;
-      }
-      void reloadJobsCalendar().then(() => renderDashboard());
-    });
-
-    adminRoot.querySelector("#jobs-filter-apply")?.addEventListener("click", () => {
-      const pf = adminRoot.querySelector(
-        "#jobs-filter-promoter",
-      ) as HTMLSelectElement | null;
-      const cf = adminRoot.querySelector("#jobs-filter-club") as HTMLSelectElement | null;
-      jobsFilterPromoterId = pf?.value.trim() ?? "";
-      jobsFilterClubSlug = cf?.value.trim() ?? "";
-      void reloadJobsCalendar().then(() => renderDashboard());
-    });
-
-    adminRoot.querySelector("#jobs-filter-reset")?.addEventListener("click", () => {
-      jobsFilterPromoterId = "";
-      jobsFilterClubSlug = "";
-      void reloadJobsCalendar().then(() => renderDashboard());
-    });
-
-    adminRoot.querySelectorAll("[data-open-job-edit]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        editingJobId =
-          (btn as HTMLButtonElement).dataset.openJobEdit?.trim() || null;
-        renderDashboard();
-      });
-    });
-
-    adminRoot.querySelectorAll("[data-job-delete]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = (btn as HTMLButtonElement).dataset.jobDelete?.trim();
-        if (!id) return;
-        if (
-          !globalThis.confirm(
-            "Delete this job? Guestlist rows on this job will be removed. If the job was completed, linked payout expense and earning rows will be removed too.",
-          )
-        )
-          return;
-        void (async () => {
-          const res = await deletePromoterJob(supabase, id);
-          if (!res.ok) {
-            flash(`Delete failed: ${res.message}`, "error");
-            return;
-          }
-          editingJobId = null;
-          await reloadPromoters();
-          await reloadJobsCalendar();
-          await reloadFinancialReport();
-          flashAfterJobDelete(res);
-          renderDashboard();
-        })();
-      });
-    });
-
-    adminRoot.querySelectorAll("[data-job-complete]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = (btn as HTMLButtonElement).dataset.jobComplete?.trim();
-        if (!id) return;
-        void (async () => {
-          const res = await completePromoterJob(supabase, id);
-          if (!res.ok) {
-            flash(`Complete job failed: ${res.message}`, "error");
-            return;
-          }
-          editingJobId = null;
-          await reloadPromoters();
-          await reloadJobsCalendar();
-          await reloadFinancialReport();
-          flash("Job completed and earnings recorded.");
-          renderDashboard();
-        })();
-      });
-    });
-
-    adminRoot.querySelector("#admin-job-edit-dismiss")?.addEventListener("click", () => {
-      const dlg = adminRoot.querySelector(
-        "#admin-job-edit-dialog",
-      ) as HTMLDialogElement | null;
-      dlg?.close();
-      editingJobId = null;
-      renderDashboard();
-    });
-
-    adminRoot.querySelector("#admin-job-edit-save")?.addEventListener("click", () => {
-      const form = adminRoot.querySelector(
-        "#admin-job-edit-form",
-      ) as HTMLFormElement | null;
-      if (!form) return;
-      const fd = new FormData(form);
-      const jobId = String(fd.get("jobId") || "").trim();
-      if (!jobId) return;
-      const clubRaw = String(fd.get("clubSlug") || "").trim();
-      void (async () => {
-        const rawSt = String(fd.get("status") || "assigned").trim();
-        const status: PromoterJob["status"] =
-          rawSt === "cancelled" ? "cancelled" : "assigned";
-        const res = await updatePromoterJob(supabase, jobId, {
-          club_slug: clubRaw ? clubRaw : null,
-          service: String(fd.get("service") || "guestlist").trim() || "guestlist",
-          job_date: String(fd.get("jobDate") || "").trim(),
-          status,
-          guests_count: Number(fd.get("guestCount") || 0) || 0,
-          shift_fee: Number(fd.get("shiftFee") || 0) || 0,
-          guestlist_fee: Number(fd.get("guestFee") || 0) || 0,
-          notes: String(fd.get("notes") || "").trim(),
-        });
-        if (!res.ok) {
-          flash(`Save failed: ${res.message}`, "error");
-          return;
-        }
-        (
-          adminRoot.querySelector(
-            "#admin-job-edit-dialog",
-          ) as HTMLDialogElement | null
-        )?.close();
-        editingJobId = null;
-        await reloadPromoters();
-        await reloadJobsCalendar();
-        flash("Job updated.");
-        renderDashboard();
-      })();
-    });
-
-    adminRoot.querySelector("#admin-job-edit-delete")?.addEventListener("click", () => {
-      const fromForm = adminRoot.querySelector(
-        '#admin-job-edit-form input[name="jobId"]',
-      ) as HTMLInputElement | null;
-      const fromRo = adminRoot.querySelector(
-        "#admin-job-edit-id",
-      ) as HTMLInputElement | null;
-      const jobId = (fromForm?.value ?? fromRo?.value ?? "").trim();
-      if (!jobId) return;
-      if (
-        !globalThis.confirm(
-          "Delete this job permanently? Guestlist rows will be removed. If it was completed, linked payout expense and earning rows will be removed as well.",
-        )
-      )
-        return;
-      void (async () => {
-        const res = await deletePromoterJob(supabase, jobId);
-        if (!res.ok) {
-          flash(`Delete failed: ${res.message}`, "error");
-          return;
-        }
-        (
-          adminRoot.querySelector(
-            "#admin-job-edit-dialog",
-          ) as HTMLDialogElement | null
-        )?.close();
-        editingJobId = null;
-        await reloadPromoters();
-        await reloadJobsCalendar();
-        await reloadFinancialReport();
-        flashAfterJobDelete(res);
-        renderDashboard();
-      })();
-    });
-
-    adminRoot.querySelector("#admin-job-edit-complete")?.addEventListener("click", () => {
-      const form = adminRoot.querySelector(
-        "#admin-job-edit-form",
-      ) as HTMLFormElement | null;
-      if (!form) return;
-      const jobId = String(new FormData(form).get("jobId") || "").trim();
-      if (!jobId) return;
-      void (async () => {
-        const res = await completePromoterJob(supabase, jobId);
-        if (!res.ok) {
-          flash(`Complete job failed: ${res.message}`, "error");
-          return;
-        }
-        (
-          adminRoot.querySelector(
-            "#admin-job-edit-dialog",
-          ) as HTMLDialogElement | null
-        )?.close();
-        editingJobId = null;
-        await reloadPromoters();
-        await reloadJobsCalendar();
-        await reloadFinancialReport();
-        flash("Job completed and earnings recorded.");
-        renderDashboard();
-      })();
-    });
-
-    adminRoot.querySelector("#promoter-invoice-generate")?.addEventListener("click", () => {
+        adminRoot.querySelector("#promoter-invoice-generate")?.addEventListener("click", () => {
       const form = adminRoot.querySelector("#promoter-invoice-form") as HTMLFormElement | null;
       if (!form) return;
       const fd = new FormData(form);
@@ -6863,7 +6179,9 @@ export async function initAdminPortal(): Promise<void> {
           pendingDashboardModalClose = null;
           return;
         }
+        selectedInvoiceId = res.invoiceId;
         await reloadPromoters();
+        await reloadAdminInvoices();
         flash(`Invoice generated: ${res.invoiceId.slice(0, 8)}…`);
         if (pendingDashboardModalClose) {
           flushPendingDashboardModalClose();
@@ -6872,6 +6190,29 @@ export async function initAdminPortal(): Promise<void> {
         }
       })();
     });
+
+    if (view === "invoices") {
+      bindInvoicesLedgerEvents({
+        adminRoot,
+        supabase,
+        getSelectedInvoiceId: () => selectedInvoiceId,
+        setSelectedInvoiceId: (id) => { selectedInvoiceId = id; },
+        getFilters: () => invoicesLedgerFilters,
+        setFilters: (f) => { invoicesLedgerFilters = f; },
+        getInvoices: () => adminInvoices,
+        setDiffLines: (lines) => { invoiceVerificationDiffLines = lines; },
+        reloadInvoices: reloadAdminInvoices,
+        reloadPromoters,
+        flash,
+        renderDashboard,
+        openJobsView: (jobId) => {
+          view = "jobs";
+          editingJobId = jobId;
+          void reloadJobsCalendar().then(() => renderDashboard());
+        },
+        getView: () => view,
+      });
+    }
 
     adminRoot.querySelector("#enquiry-status-save")?.addEventListener("click", () => {
       const sel = adminRoot.querySelector("#enquiry-status-select") as HTMLSelectElement | null;
@@ -6904,6 +6245,7 @@ export async function initAdminPortal(): Promise<void> {
           flash(`Clients: ${res.message}`, "error");
           return;
         }
+        await reloadEnquiries();
         await reloadClients();
         renderDashboard();
         flash(
@@ -6911,6 +6253,57 @@ export async function initAdminPortal(): Promise<void> {
             ? "No new clients (all rows already exist or nothing to import)."
             : `Created ${res.created} client(s).`,
         );
+      })();
+    });
+
+    adminRoot.querySelectorAll("[data-open-client-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = (btn as HTMLElement).getAttribute("data-open-client-id");
+        if (!id) return;
+        view = "clients";
+        adminNavExpanded = "enquiries";
+        selectedClientId = id;
+        clientDetailTab = "profile";
+        void reloadClients().then(() => renderDashboard());
+      });
+    });
+
+    adminRoot.querySelectorAll("[data-client-detail-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        clientDetailTab = parseClientDetailTab(
+          (btn as HTMLElement).getAttribute("data-client-detail-tab") || "",
+        );
+        renderDashboard();
+      });
+    });
+
+    adminRoot.querySelector("#admin-client-save-notes")?.addEventListener("click", () => {
+      const form = adminRoot.querySelector(
+        "#admin-client-notes-form",
+      ) as HTMLFormElement | null;
+      if (!form || !selectedClientId) return;
+      const c = clients.find((x) => x.id === selectedClientId);
+      if (!c) return;
+      const fd = new FormData(form);
+      void (async () => {
+        const res = await updateClientById(supabase, selectedClientId!, {
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          instagram: c.instagram,
+          notes: String(fd.get("notes") || "").trim() || null,
+          typical_spend_gbp: c.typical_spend_gbp,
+          preferred_nights: c.preferred_nights,
+          preferred_promoter_id: c.preferred_promoter_id,
+          preferred_club_slug: c.preferred_club_slug,
+        });
+        if (!res.ok) {
+          flash(`Save failed: ${res.message}`, "error");
+          return;
+        }
+        await reloadClients();
+        flash("Notes saved.");
+        renderDashboard();
       })();
     });
 
@@ -6924,13 +6317,14 @@ export async function initAdminPortal(): Promise<void> {
       const spend =
         spendParsed != null && Number.isFinite(spendParsed) ? spendParsed : null;
       const promoId = String(fd.get("preferred_promoter_id") || "").trim();
+      const c = clients.find((x) => x.id === selectedClientId);
       void (async () => {
         const res = await updateClientById(supabase, selectedClientId!, {
           name: String(fd.get("name") || "").trim() || null,
           email: String(fd.get("email") || "").trim().toLowerCase() || null,
           phone: String(fd.get("phone") || "").trim() || null,
           instagram: String(fd.get("instagram") || "").trim() || null,
-          notes: String(fd.get("notes") || "").trim() || null,
+          notes: c?.notes ?? null,
           typical_spend_gbp: spend,
           preferred_nights: String(fd.get("preferred_nights") || "").trim() || null,
           preferred_promoter_id: promoId || null,

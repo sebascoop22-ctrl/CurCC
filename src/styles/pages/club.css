@@ -229,3 +229,82 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* V4 jobs & disputes */
+.club-jobs-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1100px) {
+  .club-jobs-layout {
+    grid-template-columns: 1.1fr 0.9fr;
+    align-items: start;
+  }
+}
+
+.club-jobs-table tbody tr.club-job-row {
+  cursor: pointer;
+}
+
+.club-jobs-table tbody tr.club-job-row.is-selected {
+  background: var(--cc-gold-soft, #fef9e8);
+}
+
+.club-job-detail__header h4 {
+  margin: 0 0 0.35rem;
+}
+
+.club-job-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.65rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.club-job-detail__label {
+  display: block;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.club-job-payout {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #e4e7ec;
+  background: #f9fafb;
+}
+
+.club-job-payout__amount {
+  margin: 0.25rem 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.club-job-detail__warn {
+  color: #b45309;
+}
+
+.club-job-flag {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.club-job-flag--ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.club-job-flag--paid {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.club-rate-request {
+  margin-top: 0.5rem;
+}

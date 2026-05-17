@@ -8,12 +8,14 @@ import type {
   PromoterProfile,
 } from "../../types";
 import {
-  CLUB_DETAIL_TABS,
+  clubDetailTabsForClub,
+  normalizeClubDetailTabForClub,
   type ClubDetailTab,
   type ClubEntry,
   applyClubFinancialFromFormData,
   applyClubFullFromFormData,
   applyClubMediaFromFormData,
+  applyClubOverviewFromFormData,
   applyClubPublicFromFormData,
   findClubEntryIndex,
   normalizeCatalogSlug,
@@ -23,12 +25,13 @@ import {
 import {
   loadClubTabCache,
   renderClubTabPanelHtml,
-  saveClubRateFromForm,
+  saveClubVenueMasterFromForms,
   inviteClubAccountFromForm,
   setPromoterAccessFromRow,
   wireClubDetailFieldEnhancements,
   type ClubTabCache,
 } from "./club-catalog-tabs";
+import { masterVenueTypeLabel } from "./club-catalog-venue";
 import { renderEntityDetailChrome } from "./admin-entity-chrome";
 import {
   adminFieldText,
@@ -53,7 +56,7 @@ export function defaultClubCatalogState(): ClubCatalogState {
   return {
     mode: "list",
     detailSlug: "",
-    detailTab: "general",
+    detailTab: "overview",
     quickEditIndex: null,
     editingRateId: null,
     tabCache: null,
@@ -145,15 +148,16 @@ export function renderClubDetailHtml(
   tab: ClubDetailTab,
   tabPanelHtml: string,
 ): string {
+  const visibleTab = normalizeClubDetailTabForClub(tab, club);
   return renderEntityDetailChrome({
     backLabel: "← Back to catalog",
     backDataAttr: "data-club-back-catalog",
     title: club.name || "Unnamed club",
-    subtitle: club.slug,
+    subtitle: `${club.slug} · ${masterVenueTypeLabel(club.masterVenueType)}`,
     saveDataAttr: "data-club-detail-save",
     saveLabel: "Save changes",
-    tabs: CLUB_DETAIL_TABS,
-    activeTab: tab,
+    tabs: clubDetailTabsForClub(club),
+    activeTab: visibleTab,
     tabDataAttr: "data-club-detail-tab",
     bodyHtml: tabPanelHtml,
     catalogSlug: club.slug.trim(),
@@ -211,12 +215,21 @@ function getEntry(ctx: ClubCatalogBindCtx, slug: string): ClubEntry | null {
   return i >= 0 ? entries[i]! : null;
 }
 
-function updateEntryClub(ctx: ClubCatalogBindCtx, slug: string, club: Club): void {
+function updateEntryClub(
+  ctx: ClubCatalogBindCtx,
+  slug: string,
+  club: Club,
+  isActive?: boolean,
+): void {
   const entries = ctx.getEntries();
   const i = findClubEntryIndex(entries, slug);
   if (i < 0) return;
   const next = [...entries];
-  next[i] = { ...next[i]!, club };
+  next[i] = {
+    ...next[i]!,
+    club,
+    isActive: isActive ?? next[i]!.isActive,
+  };
   ctx.onEntriesChange(next);
 }
 
@@ -228,12 +241,19 @@ function persistClubDetailDomToEntries(ctx: ClubCatalogBindCtx): void {
   if (!entry) return;
 
   let club = { ...entry.club };
-  const publicForm = ctx.adminRoot.querySelector("#club-detail-public-form") as HTMLFormElement | null;
-  const finForm = ctx.adminRoot.querySelector("#club-tab-financial-form") as HTMLFormElement | null;
+  let isActive = entry.isActive;
+  const overviewForm = ctx.adminRoot.querySelector("#club-tab-overview-form") as HTMLFormElement | null;
+  const listingForm = ctx.adminRoot.querySelector("#club-detail-listing-form") as HTMLFormElement | null;
+  const finForm = ctx.adminRoot.querySelector("#club-tab-banking-form") as HTMLFormElement | null;
   const mediaForm = ctx.adminRoot.querySelector("#club-tab-media-form") as HTMLFormElement | null;
 
-  if (publicForm) {
-    club = applyClubFullFromFormData(club, new FormData(publicForm));
+  if (overviewForm) {
+    const applied = applyClubOverviewFromFormData(club, new FormData(overviewForm));
+    club = applied.club;
+    isActive = applied.isActive;
+  }
+  if (listingForm) {
+    club = applyClubFullFromFormData(club, new FormData(listingForm));
   }
   if (finForm) {
     club = applyClubFinancialFromFormData(club, new FormData(finForm));
@@ -247,7 +267,7 @@ function persistClubDetailDomToEntries(ctx: ClubCatalogBindCtx): void {
     }
   }
 
-  updateEntryClub(ctx, slug, club);
+  updateEntryClub(ctx, slug, club, isActive);
 }
 
 let clubDetailMountSeq = 0;
@@ -304,13 +324,26 @@ export function mountClubCatalogListTable(
       },
       { key: "slug", label: "Slug", sortable: true, accessor: ({ entry }) => entry.club.slug, render: ({ entry }) => `<code>${escHtml(entry.club.slug)}</code>` },
       { key: "name", label: "Name", sortable: true, accessor: ({ entry }) => entry.club.name, render: ({ entry }) => escHtml(truncate(entry.club.name, 36)) },
-      { key: "location", label: "Location", sortable: true, accessor: ({ entry }) => entry.club.locationTag, render: ({ entry }) => escHtml(truncate(entry.club.locationTag || "—", 24)) },
-      { key: "days", label: "Days open", sortable: true, accessor: ({ entry }) => entry.club.daysOpen, render: ({ entry }) => escHtml(truncate(entry.club.daysOpen || "—", 20)) },
       {
-        key: "featured",
-        label: "Featured",
+        key: "region",
+        label: "Region",
         sortable: true,
-        accessor: ({ entry }) => (entry.club.featured ? "yes" : "no"),
+        accessor: ({ entry }) => entry.club.region ?? entry.club.locationTag ?? "",
+        render: ({ entry }) => escHtml(truncate(entry.club.region || entry.club.locationTag || "—", 20)),
+      },
+      {
+        key: "venueType",
+        label: "Venue type",
+        sortable: true,
+        accessor: ({ entry }) => entry.club.masterVenueType ?? "",
+        render: ({ entry }) => escHtml(masterVenueTypeLabel(entry.club.masterVenueType)),
+      },
+      {
+        key: "active",
+        label: "Active",
+        sortable: true,
+        accessor: ({ entry }) => (entry.isActive ? "yes" : "no"),
+        render: ({ entry }) => (entry.isActive ? "Yes" : "No"),
       },
       {
         key: "actions",
@@ -386,8 +419,8 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       const i = Number(allIdx);
       const slug = entries[i]?.club.slug?.trim();
       if (!slug) return;
-      ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "general", tabCache: null });
-      writeClubCatalogUrl(slug, "general");
+      ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "overview", tabCache: null });
+      writeClubCatalogUrl(slug, "overview");
       ctx.renderDashboard();
       return;
     }
@@ -457,8 +490,8 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
       const slug = i != null ? entries[i]?.club.slug?.trim() : "";
       adminRoot.querySelector("#club-quick-edit-host")?.remove();
       if (!slug) return;
-      ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "general", quickEditIndex: null, tabCache: null });
-      writeClubCatalogUrl(slug, "general");
+      ctx.onStateChange({ mode: "detail", detailSlug: slug, detailTab: "overview", quickEditIndex: null, tabCache: null });
+      writeClubCatalogUrl(slug, "overview");
       ctx.renderDashboard();
       return;
     }
@@ -521,24 +554,17 @@ export function bindClubCatalogEvents(ctx: ClubCatalogBindCtx): void {
     if (!form) return;
     const slug = resolveClubSlugFromCtx(ctx);
     if (!slug) return;
-    if (form.id === "club-detail-public-form") {
+    if (
+      form.id === "club-tab-overview-form" ||
+      form.id === "club-detail-listing-form" ||
+      form.id === "club-tab-guestlist-form" ||
+      form.id === "club-tab-tickets-form" ||
+      form.id === "club-tab-tables-form" ||
+      form.id === "club-tab-events-form" ||
+      form.id === "club-tab-banking-form"
+    ) {
       ev.preventDefault();
       void saveClubDetail(ctx);
-      return;
-    }
-    if (form.id === "club-tab-rates-form") {
-      ev.preventDefault();
-      void (async () => {
-        const res = await saveClubRateFromForm(ctx.supabase, slug, form as HTMLFormElement, ctx.rates);
-        if (!res.ok) {
-          ctx.flash(res.message, "error");
-          return;
-        }
-        await ctx.reloadRates();
-        ctx.onStateChange({ editingRateId: null, tabCache: null });
-        ctx.flash("Rate saved.");
-        ctx.renderDashboard();
-      })();
       return;
     }
     if (form.id === "club-tab-account-invite") {
@@ -648,9 +674,10 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
     ctx.flash(errs.join(" "), "error");
     return;
   }
+  const entryForActive = getEntry(ctx, previousSlug);
   const res = await ctx.upsertClub(club, {
     sortOrder: Math.max(1, idx + 1),
-    isActive: true,
+    isActive: entryForActive?.isActive ?? true,
     previousSlug,
   });
   if (!res.ok) {
@@ -658,9 +685,22 @@ async function saveClubDetail(ctx: ClubCatalogBindCtx): Promise<void> {
     return;
   }
   const savedSlug = club.slug;
-  updateEntryClub(ctx, previousSlug, club);
+  const venueRes = await saveClubVenueMasterFromForms(ctx.supabase, savedSlug, club, ctx.rates, {
+    overview: ctx.adminRoot.querySelector("#club-tab-overview-form") as HTMLFormElement | null,
+    guestlist: ctx.adminRoot.querySelector("#club-tab-guestlist-form") as HTMLFormElement | null,
+    tickets: ctx.adminRoot.querySelector("#club-tab-tickets-form") as HTMLFormElement | null,
+    tables: ctx.adminRoot.querySelector("#club-tab-tables-form") as HTMLFormElement | null,
+    events: ctx.adminRoot.querySelector("#club-tab-events-form") as HTMLFormElement | null,
+  });
+  if (!venueRes.ok) {
+    ctx.flash(venueRes.message, "error");
+    return;
+  }
+  await ctx.reloadRates();
+
+  updateEntryClub(ctx, previousSlug, club, entryForActive?.isActive);
   const state = ctx.getState();
-  const tab = state.detailTab;
+  const tab = normalizeClubDetailTabForClub(state.detailTab, club);
   ctx.onStateChange({
     mode: "detail",
     detailSlug: savedSlug,
@@ -708,7 +748,9 @@ export async function buildClubDetailTabHtml(
         .toLowerCase()
         .includes(club.name.toLowerCase()),
   );
-  return renderClubTabPanelHtml(tab, club, {
+  const entry = getEntry(ctx, club.slug);
+  const visibleTab = normalizeClubDetailTabForClub(tab, club);
+  return renderClubTabPanelHtml(visibleTab, club, {
     rates: ctx.rates,
     editingRateId: latest.editingRateId,
     heroIndex: latest.heroImageIndex,
@@ -718,5 +760,6 @@ export async function buildClubDetailTabHtml(
     promoters: ctx.promoters,
     clubPromoters: cache.clubPromoters,
     accounts: cache.accounts,
+    isActive: entry?.isActive ?? true,
   });
 }

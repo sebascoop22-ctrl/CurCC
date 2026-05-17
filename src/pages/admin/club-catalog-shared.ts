@@ -1,35 +1,66 @@
 import { normalizeCatalogSlug } from "../../lib/catalog-slug";
 import type { Club, GuestlistRecurrence, VenueType } from "../../types";
+import { parseMasterVenueType } from "./club-catalog-venue";
 
 export { normalizeCatalogSlug } from "../../lib/catalog-slug";
 
-export type ClubEntry = { dbId: string | null; club: Club };
+export type ClubEntry = { dbId: string | null; club: Club; isActive: boolean };
 
 export type ClubDetailTab =
-  | "general"
-  | "financial"
-  | "rates"
+  | "overview"
+  | "guestlist"
+  | "tickets"
+  | "tables"
+  | "events"
+  | "banking"
+  | "listing"
   | "media"
-  | "payments"
   | "jobs"
-  | "promoters"
-  | "accounts";
+  | "promoters";
+
+const CLUB_DETAIL_TAB_ALIASES: Record<string, ClubDetailTab> = {
+  general: "overview",
+  financial: "banking",
+  rates: "guestlist",
+  payments: "banking",
+  accounts: "promoters",
+};
 
 export const CLUB_DETAIL_TABS: Array<{ id: ClubDetailTab; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "financial", label: "Financial" },
-  { id: "rates", label: "Rates" },
+  { id: "overview", label: "Overview" },
+  { id: "guestlist", label: "Guestlist rules" },
+  { id: "tickets", label: "Tickets" },
+  { id: "tables", label: "Tables & hire" },
+  { id: "events", label: "Event overrides" },
+  { id: "banking", label: "Banking & tax" },
+  { id: "listing", label: "Public listing" },
   { id: "media", label: "Media" },
-  { id: "payments", label: "Payments" },
   { id: "jobs", label: "Jobs" },
-  { id: "promoters", label: "Promoters" },
-  { id: "accounts", label: "Accounts" },
+  { id: "promoters", label: "Promoters & access" },
 ];
+
+/** Tabs shown for this club; tickets vs guestlist/table depend on `masterVenueType`. */
+export function clubDetailTabsForClub(club: Club): Array<{ id: ClubDetailTab; label: string }> {
+  const ops = club.masterVenueType ?? "high_end";
+  return CLUB_DETAIL_TABS.filter((t) => {
+    if (t.id === "tickets") return ops === "regional_ticket";
+    if (t.id === "guestlist" || t.id === "tables") return ops !== "regional_ticket";
+    return true;
+  });
+}
 
 export function parseClubDetailTab(raw: string): ClubDetailTab {
   const t = raw.trim().toLowerCase();
-  if (CLUB_DETAIL_TABS.some((x) => x.id === t)) return t as ClubDetailTab;
-  return "general";
+  const mapped = CLUB_DETAIL_TAB_ALIASES[t] ?? t;
+  if (CLUB_DETAIL_TABS.some((x) => x.id === mapped)) return mapped as ClubDetailTab;
+  return "overview";
+}
+
+/** If current tab is hidden for this venue type, pick the first visible tab. */
+export function normalizeClubDetailTabForClub(tab: ClubDetailTab, club: Club): ClubDetailTab {
+  const visible = clubDetailTabsForClub(club);
+  if (visible.some((t) => t.id === tab)) return tab;
+  return visible[0]?.id ?? "overview";
 }
 
 export function cloneClub(c?: Partial<Club>): Club {
@@ -39,6 +70,8 @@ export function cloneClub(c?: Partial<Club>): Club {
     shortDescription: c?.shortDescription ?? "",
     longDescription: c?.longDescription ?? "",
     locationTag: c?.locationTag ?? "",
+    region: c?.region ?? c?.locationTag ?? null,
+    masterVenueType: c?.masterVenueType ?? null,
     address: c?.address ?? "",
     daysOpen: c?.daysOpen ?? "",
     bestVisitDays: c?.bestVisitDays ?? [],
@@ -144,6 +177,26 @@ export function applyClubMediaFromFormData(club: Club, fd: FormData): Club {
     ...club,
     images: parseLines(String(fd.get("images") || "")),
     guestlists: parseGuestlists(String(fd.get("guestlists") || "")),
+  };
+}
+
+export function applyClubOverviewFromFormData(
+  club: Club,
+  fd: FormData,
+): { club: Club; isActive: boolean } {
+  const region = String(fd.get("region") ?? "").trim() || club.locationTag?.trim() || null;
+  const masterVenueType = parseMasterVenueType(String(fd.get("masterVenueType") ?? ""));
+  return {
+    club: {
+      ...club,
+      slug: fd.has("slug")
+        ? normalizeCatalogSlug(String(fd.get("slug") || "")) || club.slug
+        : club.slug,
+      name: String(fd.get("name") ?? "").trim() || club.name,
+      region,
+      masterVenueType: masterVenueType ?? club.masterVenueType ?? null,
+    },
+    isActive: fd.get("catalogIsActive") != null,
   };
 }
 

@@ -1,6 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeCatalogSlug } from "../lib/catalog-slug";
-import type { Car, Club } from "../types";
+import type { Car, Club, ClubMasterVenueType } from "../types";
+
+function parseClubMasterVenueType(v: unknown): ClubMasterVenueType | null {
+  const x = String(v ?? "").trim().toLowerCase();
+  if (x === "high_end" || x === "regional_ticket") return x;
+  return null;
+}
+
+function applyClubMasterColumns(payload: Club, raw: Record<string, unknown>): Club {
+  const regionCol = raw.region != null ? String(raw.region).trim() : "";
+  const venueTypeCol = parseClubMasterVenueType(raw.venue_type);
+  return {
+    ...payload,
+    region: regionCol || payload.region || payload.locationTag?.trim() || null,
+    masterVenueType: venueTypeCol ?? payload.masterVenueType ?? null,
+  };
+}
 
 export type ClubRow = {
   id: string;
@@ -35,15 +51,16 @@ export async function loadClubsForAdmin(
 ): Promise<{ ok: true; rows: ClubRow[] } | { ok: false; message: string }> {
   const { data, error } = await supabase
     .from("clubs")
-    .select("id, slug, name, sort_order, is_active, payment_details, tax_details, payload")
+    .select("id, slug, name, sort_order, is_active, payment_details, tax_details, payload, region, venue_type")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) return { ok: false, message: error.message };
   const rows: ClubRow[] = (data ?? [])
     .map((raw) => {
       const r = raw as Record<string, unknown>;
-      const payload = asClubPayload(r.payload);
-      if (!payload) return null;
+      const base = asClubPayload(r.payload);
+      if (!base) return null;
+      const payload = applyClubMasterColumns(base, r);
       return {
         id: String(r.id ?? ""),
         slug: String(r.slug ?? "").trim(),
@@ -102,6 +119,8 @@ export async function upsertClubToDb(
   const slug = normalizeCatalogSlug(club.slug);
   if (!slug) return { ok: false, message: "Club slug is required." };
   const payload: Club = { ...club, slug };
+  const region =
+    (payload.region ?? "").trim() || payload.locationTag?.trim() || null;
   const row = {
     slug,
     name: payload.name.trim() || slug,
@@ -109,7 +128,9 @@ export async function upsertClubToDb(
     is_active: opts.isActive,
     payment_details: payload.paymentDetails ?? {},
     tax_details: payload.taxDetails ?? {},
-    payload,
+    region,
+    venue_type: payload.masterVenueType ?? null,
+    payload: { ...payload, region, masterVenueType: payload.masterVenueType ?? null },
     updated_at: new Date().toISOString(),
   };
   const prev = opts.previousSlug?.trim();

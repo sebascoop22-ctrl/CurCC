@@ -52,7 +52,7 @@ const HUBS: Record<HubSlug, ServiceHubPage> = {
       {
         title: "Events",
         teaser:
-          "Private celebrations and corporate hospitality with production-aware concierge support end to end.",
+          "Events coming soon...",
         href: "/services/events",
         image: "/media/nightlife/hero-atmosphere.svg",
         imageAlt: "Event atmosphere",
@@ -60,7 +60,7 @@ const HUBS: Record<HubSlug, ServiceHubPage> = {
       {
         title: "Venue hire",
         teaser:
-          "Shortlists, site visits, and contract-ready briefs for spaces that match capacity, sound, and curfew reality.",
+          "Private venue hire with production-aware concierge support end to end.",
         href: "/services/venue-hire",
         image: "/media/home/bento-venue-hire.jpg",
         imageAlt: "Venue interior",
@@ -102,7 +102,7 @@ const HUBS: Record<HubSlug, ServiceHubPage> = {
   protection: {
     title: "Protection",
     intro:
-      "Licensed venue teams and close protection calibrated to the environment—visible when useful, invisible when it matters.",
+      "Licensed venue teams and close protection calibrated to the environment. Visible when useful, invisible when it matters.",
     canonicalPath: "/services/protection",
     items: [
       {
@@ -116,7 +116,7 @@ const HUBS: Record<HubSlug, ServiceHubPage> = {
       {
         title: "Bodyguards and personal protection",
         teaser:
-          "Close protection with advance work and extraction planning integrated into your diary.",
+          "Close protection to help you stay safe and discreet.",
         href: "/security",
         image: "/media/security/hero-bg.svg",
         imageAlt: "Close protection",

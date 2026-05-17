@@ -12,6 +12,7 @@ export type EnquiryRow = {
   name: string | null;
   email: string | null;
   phone: string | null;
+  client_id: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -29,7 +30,7 @@ export async function loadEnquiriesForAdmin(
   const { data, error } = await supabase
     .from("enquiries")
     .select(
-      "id, created_at, submitted_at, form_name, form_label, service, status, source, name, email, phone, payload",
+      "id, created_at, submitted_at, form_name, form_label, service, status, source, name, email, phone, client_id, payload",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -52,6 +53,7 @@ export async function loadEnquiriesForAdmin(
       name: r.name != null ? String(r.name) : null,
       email: r.email != null ? String(r.email) : null,
       phone: r.phone != null ? String(r.phone) : null,
+      client_id: r.client_id != null ? String(r.client_id) : null,
       payload,
     };
   });

@@ -11,6 +11,13 @@ import type {
   FinancialConfigChangeRequest,
 } from "../types";
 import { computeNightlife, computeService } from "../lib/financial/calculations";
+import {
+  emptyClubFinancialRuleSheetExtension,
+  emptyPromoterFinancialSheetExtension,
+  mergeSheetExtensions,
+  normalizeClubFinancialRuleSheetExtension,
+  normalizePromoterFinancialSheetExtension,
+} from "../lib/financial/club-financial-sheet-template";
 
 type Raw = Record<string, unknown>;
 
@@ -55,7 +62,6 @@ function parsePaymentStatus(v: unknown): FinancialPaymentStatus {
 }
 
 function mapClubPaymentRate(raw: Raw): FinancialClubPaymentRate {
-  const ext = raw.sheet_extension;
   return {
     id: String(raw.id ?? ""),
     department: parseDept(raw.department),
@@ -71,13 +77,11 @@ function mapClubPaymentRate(raw: Raw): FinancialClubPaymentRate {
     isActive: Boolean(raw.is_active),
     effectiveFrom: String(raw.effective_from ?? ""),
     effectiveTo: raw.effective_to != null ? String(raw.effective_to) : null,
-    sheetExtension:
-      ext && typeof ext === "object" && !Array.isArray(ext) ? (ext as Record<string, unknown>) : {},
+    sheetExtension: normalizeClubFinancialRuleSheetExtension(raw.sheet_extension),
   };
 }
 
 function mapPromoter(raw: Raw): FinancialPromoterProfile {
-  const ext = raw.sheet_extension;
   return {
     id: String(raw.id ?? ""),
     userId: raw.user_id != null ? String(raw.user_id) : null,
@@ -86,8 +90,7 @@ function mapPromoter(raw: Raw): FinancialPromoterProfile {
     isActive: Boolean(raw.is_active),
     contact: String(raw.contact ?? ""),
     notes: String(raw.notes ?? ""),
-    sheetExtension:
-      ext && typeof ext === "object" && !Array.isArray(ext) ? (ext as Record<string, unknown>) : {},
+    sheetExtension: normalizePromoterFinancialSheetExtension(raw.sheet_extension),
   };
 }
 
@@ -98,6 +101,7 @@ function mapBooking(raw: Raw): FinancialBooking {
     bookingDate: String(raw.booking_date ?? ""),
     department: parseDept(raw.department),
     clubSlug: raw.club_slug != null ? String(raw.club_slug) : null,
+    sourceJobId: raw.source_job_id != null ? String(raw.source_job_id) : null,
     promoterId: raw.promoter_id != null ? String(raw.promoter_id) : null,
     promoterName: raw.promoter_name != null ? String(raw.promoter_name) : null,
     clientId: raw.client_id != null ? String(raw.client_id) : null,
@@ -178,10 +182,14 @@ export async function upsertFinancialClubPaymentRate(
   const bonusGoal = Math.max(0, Math.round(Number(input.bonusGoal ?? 0)));
   const department = input.department;
   const logicType = department === "nightlife" ? "flat_fee" : (input.logicType ?? "flat_fee");
-  const sheetExt =
-    input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
-      ? input.sheetExtension
-      : {};
+  const sheetExt = normalizeClubFinancialRuleSheetExtension(
+    mergeSheetExtensions(
+      emptyClubFinancialRuleSheetExtension(),
+      input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
+        ? input.sheetExtension
+        : {},
+    ),
+  );
   const payload = {
     id: input.id?.trim() || undefined,
     department,
@@ -269,10 +277,14 @@ export async function upsertFinancialPromoter(
   if (commission < 0 || commission > 100) {
     return badRequest("Commission percentage must be between 0 and 100.");
   }
-  const sheetExt =
-    input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
-      ? input.sheetExtension
-      : {};
+  const sheetExt = normalizePromoterFinancialSheetExtension(
+    mergeSheetExtensions(
+      emptyPromoterFinancialSheetExtension(),
+      input.sheetExtension && typeof input.sheetExtension === "object" && !Array.isArray(input.sheetExtension)
+        ? input.sheetExtension
+        : {},
+    ),
+  );
   const payload = {
     id: input.id?.trim() || undefined,
     user_id: input.userId ?? null,
@@ -360,6 +372,7 @@ export async function upsertNightlifeFinancialBooking(
     femaleGuests: number;
     otherCosts: number;
     paymentStatus: FinancialPaymentStatus;
+    sourceJobId?: string | null;
   },
 ): Promise<Ok<string> | TypedError> {
   if (!input.clubPaymentRateId.trim()) return badRequest("Club payment rate is required for nightlife bookings.");
@@ -394,6 +407,7 @@ export async function upsertNightlifeFinancialBooking(
     promoter_id: input.promoterId?.trim() || null,
     client_id: input.clientId?.trim() || null,
     club_payment_rate_id: rate.id,
+    source_job_id: input.sourceJobId?.trim() || null,
     venue_or_service_name: input.venueOrServiceName.trim() || rate.venueOrServiceName,
     payment_status: input.paymentStatus,
     rule_snapshot_json: {
@@ -451,6 +465,7 @@ export async function upsertServiceFinancialBooking(
     totalSpend: number;
     commissionPercentage: number;
     paymentStatus: FinancialPaymentStatus;
+    sourceJobId?: string | null;
   },
 ): Promise<Ok<string> | TypedError> {
   const calc = computeService({
@@ -470,6 +485,7 @@ export async function upsertServiceFinancialBooking(
     promoter_id: input.promoterId?.trim() || null,
     client_id: input.clientId?.trim() || null,
     club_payment_rate_id: rid,
+    source_job_id: input.sourceJobId?.trim() || null,
     venue_or_service_name: input.venueOrServiceName.trim(),
     payment_status: input.paymentStatus,
     rule_snapshot_json: {

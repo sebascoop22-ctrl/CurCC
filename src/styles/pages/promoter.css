@@ -906,3 +906,93 @@ html[data-cc-theme="ocean"] .promoter-page .cc-field textarea:focus {
   max-width: 32rem;
   min-height: 10rem;
 }
+
+/* V4 jobs workspace */
+.promoter-jobs-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1100px) {
+  .promoter-jobs-layout {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  .promoter-jobs-detail-panel {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+.promoter-jobs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.85rem;
+}
+
+.promoter-jobs-filters__actions {
+  flex: 0 0 auto;
+}
+
+.promoter-jobs-table tbody tr.promoter-job-row {
+  cursor: pointer;
+}
+
+.promoter-jobs-table tbody tr.promoter-job-row.is-selected {
+  background: var(--cc-gold-soft, #fef9e8);
+}
+
+.promoter-job-detail__header h4 {
+  margin: 0 0 0.35rem;
+}
+
+.promoter-job-detail__flags {
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.promoter-job-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.65rem;
+}
+
+.promoter-job-payout {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #e4e7ec;
+  background: #f9fafb;
+}
+
+.promoter-job-payout__amount {
+  margin: 0.25rem 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.promoter-job-payout__warn {
+  color: #b45309;
+}
+
+.promoter-job-flag {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.promoter-job-flag--ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.promoter-job-flag--paid {
+  background: #dbeafe;
+  color: #1e40af;
+}

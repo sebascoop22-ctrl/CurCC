@@ -10,7 +10,7 @@
     "build": "vite build && node scripts/write-ssr-asset-map.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:financial": "tsx --test src/lib/financial/calculations.test.ts",
+    "test:financial": "tsx --test src/lib/financial/*.test.ts",
     "smoke:routes": "node scripts/smoke-routes.mjs",
     "verify": "npm run lint && npm run typecheck && npm run build && npm run smoke:routes",
     "preview": "vite preview",
