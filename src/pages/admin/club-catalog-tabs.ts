@@ -34,7 +34,11 @@ import {
   validateVenueMasterForms,
 } from "./club-catalog-venue";
 import { applyCollapsibleFormSections } from "../../lib/collapsible-form-sections";
-import type { JsonObject } from "../../lib/financial/club-financial-sheet-template";
+import {
+  mergeSheetExtensions,
+  normalizeClubFinancialRuleSheetExtension,
+  type JsonObject,
+} from "../../lib/financial/club-financial-sheet-template";
 
 import {
   adminFieldCheckbox,
@@ -591,12 +595,17 @@ export async function saveClubVenueMasterFromForms(
   );
   if (venueErrs.length) return { ok: false, message: venueErrs.join(" ") };
 
-  const sheetExt = buildSheetExtensionFromVenueForms(existingSheet, {
-    guestlist: forms.guestlist ? new FormData(forms.guestlist) : null,
-    tickets: forms.tickets ? new FormData(forms.tickets) : null,
-    tables: forms.tables ? new FormData(forms.tables) : null,
-    events: eventsFd,
-  });
+  const sheetExt = normalizeClubFinancialRuleSheetExtension(
+    mergeSheetExtensions(
+      buildSheetExtensionFromVenueForms(existingSheet, {
+        guestlist: forms.guestlist ? new FormData(forms.guestlist) : null,
+        tickets: forms.tickets ? new FormData(forms.tickets) : null,
+        tables: forms.tables ? new FormData(forms.tables) : null,
+        events: eventsFd,
+      }),
+      { venueType: club.masterVenueType ?? null },
+    ),
+  );
 
   const glFd = forms.guestlist ? new FormData(forms.guestlist) : null;
   const baseRate = glFd ? Number(glFd.get("standardRatePerGuest") || 0) || 0 : primary?.baseRate ?? 0;

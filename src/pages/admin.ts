@@ -328,6 +328,8 @@ function cloneClub(c?: Partial<Club>): Club {
     shortDescription: c?.shortDescription ?? "",
     longDescription: c?.longDescription ?? "",
     locationTag: c?.locationTag ?? "",
+    region: c?.region ?? c?.locationTag ?? null,
+    masterVenueType: c?.masterVenueType ?? null,
     address: c?.address ?? "",
     daysOpen: c?.daysOpen ?? "",
     bestVisitDays: c?.bestVisitDays ?? [],
